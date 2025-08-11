@@ -1,7 +1,7 @@
 gdrive:
   credentials_file: credentials.json
   token_file: token.pickle
-  url: "https://drive.google.com/file/d/13BWjHkC7anE6g7WpociMlhW9XHl3ePhS/view?usp=drive_link"
+  url: "https://drive.google.com/file/d/1xK30nC-7VUdY_AmwP7cEEfbTJucDQCmO/view?usp=drive_link"
   chunk_size: 100
 
 whisper:

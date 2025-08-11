@@ -5,9 +5,9 @@
 
 ## 現状分析
 ### 達成済み精度
-- 日本語: 96.3% (kotoba-whisper-v2.2)
+- 日本語: 96.3% (kotoba-whisper-v2.2, HuggingFaceトークン要)
 - 英語: 97.1% (whisper-large-v3)
-- 話者分離: 90.2% (pyannote.audio v3.3.2)
+- 話者分離: 90.2% (pyannote.audio v3.3.2, HuggingFaceトークン要)
 
 ### 残存課題
 - 専門用語・固有名詞の誤認識（3-4%）

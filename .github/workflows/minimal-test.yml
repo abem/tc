@@ -1,0 +1,17 @@
+name: Minimal Test
+
+on:
+  push:
+    branches: [test2025-07-28]
+
+jobs:
+  success-test:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Simple success test
+      run: |
+        echo "=== GitHub Actions is working! ==="
+        echo "Date: $(date)"
+        echo "Working directory: $(pwd)"
+        echo "User: $(whoami)"
+        echo "=== Test completed successfully ==="

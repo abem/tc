@@ -1,0 +1,27 @@
+name: Simple Test
+
+on:
+  push:
+    branches: [ test* ]
+
+jobs:
+  basic-test:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Set up Python 3.11
+      uses: actions/setup-python@v4
+      with:
+        python-version: "3.11"
+    
+    - name: Basic environment check
+      run: |
+        echo "=== Environment Check ==="
+        python --version
+        echo "Working directory: $(pwd)"
+        echo "=== File listing ==="
+        ls -la | head -10
+        echo "=== Success ==="

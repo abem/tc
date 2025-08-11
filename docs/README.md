@@ -8,93 +8,103 @@
 
 ## 📚 ドキュメント一覧
 
-### 🎯 概要・システム全体
-- **[システム概要 2025年版](system_overview_2025.md)** - システム全体の機能・技術詳細
-- **[現在のシステム状況](current_status_2025_july.md)** - 最新の実装状況・機能一覧
-- **[メインREADME](../README.md)** - 基本的な使用方法・セットアップ
+### 📖 ユーザー向けガイド (user/)
+- **[TUTORIAL.md](user/TUTORIAL.md)** - ステップバイステップガイド（uv環境セットアップ〜tc CLI使用方法）
+- **[TROUBLESHOOTING.md](user/TROUBLESHOOTING.md)** - tc CLIトラブルシューティング完全版
+- **[設定ガイド](user/configuration.md)** - config.yaml自動読み込み・統一設定管理
+- **[言語対応ガイド](user/language_support_guide.md)** - 日本語/英語モデル自動選択
+- **[話者分離セットアップ](user/speaker_diarization_setup.md)** - pyannote.audio v3.3.2設定
 
-### 🌐 多言語対応
-- **[言語対応ガイド](language_support_guide.md)** - 言語別モデル自動選択・使用方法
-- **[トラブルシューティング](#)** - 言語選択に関する問題解決
+### 👨‍💻 開発者向けガイド (developer/)
+- **[API仕様書](developer/API.md)** - tc CLI対応プログラマー向けAPIガイド
+- **[tc CLI使用方法](developer/new_cli_usage.md)** - プロダクション品質のモダンCLIシステム
+- **[コーディング標準](developer/coding_standards.md)** - 統一システム（core/）コーディング規約
+- **[実装変更ログ](developer/implementation_changes.md)** - 技術実装の変更点
 
-### 🎤 話者分離機能
-- **[話者分離セットアップガイド](speaker_diarization_setup.md)** - 環境構築・設定方法
-- **[話者分離計画書](feature/speaker_diarization_plan.md)** - 実装計画・技術仕様
+### 🏗️ システムドキュメント (system/)
+- **[システム概要 2025年版](system/system_overview_2025.md)** - tc CLIシステム全体の機能・技術詳細
+- **[最適化機能詳細](system/optimization_features.md)** - uv環境・GPU最適化機能
+- **[依存関係移行](system/dependency_migration.md)** - pipからuvへの移行記録
+- **[実装ノート](system/implementation_notes.md)** - 開発時の技術メモ
 
-### ⚡ パフォーマンス・最適化
-- **[最適化機能詳細](optimization_features.md)** - パフォーマンス改善機能
-- **[最適化レポート](../optimization_summary.md)** - 最適化結果・効果測定
+### 📈 計画・設計 (plans/)
+- **[計画表](plans/計画表.md)** - プロジェクト全体計画・進捗状況
+- **[文脈考慮文字起こし計画](plans/文脈考慮文字起こし実装計画.md)** - 高度機能実装計画
+- **[Whisper改善ガイド](plans/whisper_improvement_guide.md)** - 音声認識精度向上計画
+- **[Whisper API最適化計画](plans/whisper_api最適化計画書.md)** - APIパフォーマンス最適化
+- **[機能別計画](plans/feature/)** - 話者分離・タイムスタンプ機能詳細
 
-### 🔄 アップグレード・変更履歴
-- **[アップグレードサマリー](../upgrade_summary.md)** - システムアップグレード詳細
-- **[変更履歴](change_history.md)** - 機能変更・改善履歴
+### 📈 分析・レポート (reports/)
+- **[進捗報告 2025-05-15](reports/進捗報告_20250515.md)** - 詳細な開発進捗チェックリスト
+- **[完了状況分析](reports/完了状況分析.md)** - 機能別達成度分析
+- **[現在のシステム状況 2025-07](reports/current_status_2025_july.md)** - 2025年7月時点の最新状況
+- **[Geminiレビュー結果](reports/gemini_review_4.md)** - AI分析結果・改善提案
+- **[変更履歴](reports/change_history.md)** - 機能変更・改善履歴
 
-### 🧪 開発・テスト
-- **[開発標準](coding_standards.md)** - コーディング規約・開発ガイドライン
-- **[実装変更ログ](implementation_changes.md)** - 技術実装の変更点
-- **[実装ノート](implementation_notes.md)** - 開発時の技術メモ
-
-### 🔧 技術詳細
-- **[タイムスタンプ機能](feature/timestamp_feature.md)** - タイムスタンプ実装詳細
-- **[文字起こしエンジン改良](transcriber_refactoring.md)** - エンジン改良履歴
-
-### 📊 分析・レポート
-- **[現在状況分析](current_state.md)** - システム状況詳細分析
-- **[Geminiレビュー結果](gemini_review_4.md)** - AI分析結果・改善提案
+### 🗄️ 履歴・アーカイブ (archive/)
+- 過去の調査レポート、問題解決履歴、改善提案など17ファイル
 
 ## 🎯 用途別ドキュメントガイド
 
 ### 💻 新規ユーザー向け
 1. **[メインREADME](../README.md)** - uv環境セットアップ、tc CLI基本使用方法
-2. **[TUTORIAL.md](TUTORIAL.md)** - ステップバイステップガイド
-3. **[新CLI使用方法](new_cli_usage.md)** - tcコマンド詳細使用方法
+2. **[初心者チュートリアル](user/TUTORIAL.md)** - ステップバイステップガイド
+3. **[tc CLI使用方法](developer/new_cli_usage.md)** - プロダクションCLI詳細使用方法
 
 ### 🎤 話者分離機能利用者向け
-1. **[話者分離セットアップガイド](speaker_diarization_setup.md)** - 環境構築
-2. **[システム概要 2025年版](system_overview_2025.md)** - 機能詳細
-3. **[現在のシステム状況](current_status_2025_july.md)** - 実装状況
+1. **[話者分離セットアップ](user/speaker_diarization_setup.md)** - HuggingFaceトークン設定、pyannote.audio v3.3.2特化
+2. **[tc CLI使用方法](developer/new_cli_usage.md)** - `./tc --enable-diarization`コマンド
+3. **[トラブルシューティング](user/TROUBLESHOOTING.md)** - 話者分離エラー対処
 
 ### 🔧 開発者・上級者向け
-1. **[開発標準](coding_standards.md)** - コーディング規約
-2. **[実装変更ログ](implementation_changes.md)** - 技術実装詳細
-3. **[最適化機能詳細](optimization_features.md)** - パフォーマンス技術
+1. **[API仕様書](developer/API.md)** - tc CLI対応プログラマー向けガイド
+2. **[コーディング標準](developer/coding_standards.md)** - 統一システム（core/）規約
+3. **[設定システム](user/configuration.md)** - config.yaml自動読み込み・統一設定
 
 ### 🐛 トラブルシューティング
-1. **[言語対応ガイド](language_support_guide.md#トラブルシューティング)** - 言語選択問題
-2. **[話者分離セットアップガイド](speaker_diarization_setup.md#トラブルシューティング)** - 話者分離問題
-3. **[メインREADME](../README.md#トラブルシューティング)** - 一般的な問題
+1. **[トラブルシューティングガイド](user/TROUBLESHOOTING.md)** - tc CLIトラブルシューティング完全版
+2. **[uv環境問題](../README.md#トラブルシューティング)** - 依存関係エラー対応
+3. **[Google Drive認証問題](user/configuration.md)** - credentials.json/token.pickle設定
 
 ## 📅 最新情報・更新状況
 
-### 2025年7月 主要更新
-- ✅ **話者分離機能完全実装** - pyannote.audio v3.3.2対応
-- ✅ **多言語対応実装** - 英語・日本語の言語別モデル自動選択
-- ✅ **統一CLIインターフェース** - main_cli.py による一貫した操作
-- ✅ **ローカルファイル対応** - Google Drive認証不要処理
-- ✅ **包括的ドキュメント整備** - 全機能の詳細ドキュメント
+### 2025年8月 プロダクション対応完了
+- ✅ **tc CLIコマンド完成** - `./tc` でシンプル実行、config.yamlから自動設定読み込み
+- ✅ **uv環境移行完了** - pip比較10倍高速インストール（170パッケージを30秒）
+- ✅ **Google Drive完全自動化** - YouTube動画→転写→同一フォルダ自動アップロード
+- ✅ **警告抑制完了** - transformers/googleapiclientの不要ログを完全抑制
+- ✅ **docs構造化完了** - 43ファイルから26ファイルに整理、カテゴリ分類
+- ✅ **プロダクション品質** - 完全動作確認済み、手動設定不要
 
 ### 📊 ドキュメント統計
-- **総ドキュメント数**: 25+ ファイル
-- **カテゴリ数**: 8 カテゴリ
-- **最終更新**: 2025年7月13日
+- **有効ドキュメント数**: 26ファイル（archive/に17ファイル整理済み）
+- **カテゴリ構造**: 5フォルダ分類で見やすく整理
+  - **user/**: ユーザー向けガイド (5ファイル)
+  - **developer/**: 開発者向けガイド (4ファイル)
+  - **system/**: システムドキュメント (4ファイル)
+  - **plans/**: 計画・設計 (6ファイル)
+  - **reports/**: 分析・レポート (8ファイル)
+  - **archive/**: 履歴・アーカイブ (17ファイル)
+- **最終更新**: 2025年8月11日
 - **対応言語**: 日本語・英語
-- **技術レベル**: 初心者〜上級者
+- **技術レベル**: 初心者〜上級者、tc CLI中心の説明
 
 ## 🔍 ドキュメント検索ガイド
 
 ### 機能別検索
-- **話者分離**: `speaker_diarization`
-- **多言語対応**: `language`, `multilingual`
-- **パフォーマンス**: `optimization`, `performance`
-- **設定**: `setup`, `config`
-- **トラブル**: `troubleshooting`, `error`
+- **話者分離**: `user/speaker_diarization_setup.md`
+- **多言語対応**: `user/language_support_guide.md`
+- **パフォーマンス**: `system/optimization_features.md`
+- **設定**: `user/configuration.md`
+- **トラブル**: `user/TROUBLESHOOTING.md`
 
-### ファイル命名規則
-- `*_2025*` - 2025年版最新ドキュメント
-- `*_setup*` - セットアップ・設定ガイド
-- `*_guide*` - 使用方法ガイド
-- `feature/*` - 特定機能の詳細仕様
-- `*_summary*` - 要約・まとめレポート
+### フォルダ別アクセス
+- **user/**: 今すぐ使いたい人向け
+- **developer/**: カスタマイズしたい人向け
+- **system/**: システム全体を理解したい人向け
+- **plans/**: 将来の機能を知りたい人向け
+- **reports/**: 開発状況を確認したい人向け
+- **archive/**: 過去の経緯を調べたい人向け
 
 ## 📞 ドキュメントに関するフィードバック
 
@@ -113,16 +123,17 @@
 ## 📝 クイック リファレンス
 
 ### 最も重要なドキュメント（上位5つ）
-1. **[メインREADME](../README.md)** - 必読
-2. **[システム概要 2025年版](system_overview_2025.md)** - 全体理解
-3. **[現在のシステム状況](current_status_2025_july.md)** - 最新状況
-4. **[言語対応ガイド](language_support_guide.md)** - 使用方法
-5. **[話者分離セットアップガイド](speaker_diarization_setup.md)** - 高機能利用
+1. **[メインREADME](../README.md)** - tc CLI基本使用方法、uv環境セットアップ（必読）
+2. **[初心者チュートリアル](user/TUTORIAL.md)** - ステップバイステップガイド
+3. **[tc CLI使用方法](developer/new_cli_usage.md)** - プロダクションCLI詳細ガイド
+4. **[トラブルシューティング](user/TROUBLESHOOTING.md)** - 全エラー対応ガイド
+5. **[API仕様書](developer/API.md)** - プログラマー向けガイド
 
 ### 緊急時・問題解決
-- 🚨 **言語選択問題**: [言語対応ガイド](language_support_guide.md#トラブルシューティング)
-- 🚨 **話者分離エラー**: [話者分離セットアップガイド](speaker_diarization_setup.md#トラブルシューティング)
-- 🚨 **一般的エラー**: [メインREADME](../README.md#トラブルシューティング)
+- 🚨 **tcコマンドエラー**: [トラブルシューティング](user/TROUBLESHOOTING.md)
+- 🚨 **uv環境問題**: [メインREADME](../README.md#トラブルシューティング)
+- 🚨 **YouTube/Google Driveエラー**: [トラブルシューティング](user/TROUBLESHOOTING.md)
+- 🚨 **話者分離エラー**: [話者分離セットアップ](user/speaker_diarization_setup.md)
 
 ---
 

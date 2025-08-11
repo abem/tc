@@ -2,6 +2,23 @@
 
 ## 🚨 絶対にやってはいけないこと
 
+### Git ブランチ戦略関連（最重要）
+- **🔥 feature/hoge → dev → main の更新順序を破るべからず（絶対厳守）**
+  - 必ず feature ブランチ → dev → main の順番で更新すること
+  - dev と main を個別に feature から直接更新してはいけない
+  - この順序を守らないとブランチ履歴が分岐し「X commits ahead/behind」状態になる
+  - 一度分岐すると修復に大量の時間とブランチ削除・再作成が必要になる
+
+- **各ブランチに個別にマージ・コミットするべからず**
+  - feature/test → dev へマージ後、dev → main へマージする
+  - feature/test → main への直接マージは厳禁
+  - feature/test → dev と feature/test → main を並行実行するのも厳禁
+
+- **ブランチ同期問題が発生した場合の対処**
+  - 「This branch is X commits ahead of, Y commits behind feature/test」が表示されたら即座に修復
+  - 修復方法: 問題ブランチを削除 → 正しいブランチから再作成
+  - 例: git push origin --delete dev && git checkout feature/test && git checkout -b dev && git push origin dev
+
 ### 環境・インフラ関連
 - **venv-clean/ ディレクトリを削除すべからず**
   - 本番で使用している仮想環境です

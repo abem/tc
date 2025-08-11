@@ -1,0 +1,108 @@
+gdrive:
+  credentials_file: credentials.json
+  token_file: token.pickle
+  url: "https://www.youtube.com/watch?v=YOUR_VIDEO_ID"
+  chunk_size: 100
+
+whisper:
+  model: kotoba-tech/kotoba-whisper-v2.2
+  language: ja
+  chunk_size: 100
+  device: cuda
+  beam_size: 5
+  best_of: 3
+  temperature: 0.1
+
+  # 言語別モデル設定
+  language_models:
+    ja:
+      default: kotoba-tech/kotoba-whisper-v2.2
+      alternatives:
+        - drewschaub/whisper-large-v3-japanese-4k-steps
+        - openai/whisper-large-v3
+    en:
+      default: openai/whisper-large-v3
+      alternatives:
+        - large-v3
+        - medium
+        - small
+
+  # モデル履歴と利用可能モデル
+  model_history:
+    current: kotoba-tech/kotoba-whisper-v2.2
+    previous:
+      - model: whisper-large-v3
+        commit: c065e48
+        description: "Whisper v3修正時"
+      - model: large-v3
+        commit: f49e744
+        description: "README更新時"
+      - model: large-v3
+        commit: d122bc7
+        description: "スクリプト再構築時"
+
+  available_models:
+    tiny:
+      description: "最小モデル（高速、低精度）"
+      size: "39MB"
+      speed: "fast"
+      accuracy: "low"
+    base:
+      description: "基本モデル（バランス型）"
+      size: "74MB"
+      speed: "medium"
+      accuracy: "medium"
+    small:
+      description: "小モデル（推奨）"
+      size: "244MB"
+      speed: "medium"
+      accuracy: "good"
+    medium:
+      description: "中モデル（高精度）"
+      size: "769MB"
+      speed: "slow"
+      accuracy: "high"
+    large-v3:
+      description: "大モデル（最高精度）"
+      size: "1550MB"
+      speed: "slow"
+      accuracy: "highest"
+    kotoba-tech/kotoba-whisper-v2.2:
+      description: "日本語特化モデル（現在使用）"
+      size: "1550MB"
+      speed: "medium"
+      accuracy: "high"
+      language: "ja"
+    drewschaub/whisper-large-v3-japanese-4k-steps:
+      description: "日本語特化モデル"
+      size: "1550MB"
+      speed: "slow"
+      accuracy: "high"
+      language: "ja"
+    openai/whisper-large-v3:
+      description: "OpenAI公式大モデル"
+      size: "1550MB"
+      speed: "slow"
+      accuracy: "highest"
+
+speaker_diarization:
+  enable: false  # 話者分離機能の有効/無効（exec.shのデフォルト動作）
+  model: "pyannote/speaker-diarization-3.1"
+  min_speakers: null  # 最小話者数（自動検出）
+  max_speakers: null  # 最大話者数（自動検出）
+  device: "auto"  # auto/cuda/cpu
+  
+  # 出力設定
+  output_format:
+    show_speaker_labels: true  # 話者ラベル表示
+    speaker_label_format: "話者{num}"  # 話者ラベル形式
+    include_confidence: false  # 信頼度表示
+    merge_short_segments: true  # 短い区間をマージ
+    min_segment_duration: 0.5  # 最小区間長（秒）
+
+logging:
+  level: INFO
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+  file: logs/transcribe.log
+  max_size: 10485760
+  backup_count: 5

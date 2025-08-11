@@ -1,0 +1,137 @@
+# =============================================
+# 機密情報（最優先 - 絶対にコミットしない）
+# =============================================
+
+# 認証・トークン系
+credentials.json
+token.pickle
+token.json
+client_secret*.json
+service_account*.json
+.huggingface/
+hf_*
+huggingface_token*
+*_token*
+*_secret*
+*_key*
+*_password*
+*_pass*
+api_key*
+auth_*
+
+# 環境変数
+.env*
+*.env
+
+# 証明書・キー
+*.key
+*.pem
+*.p12
+*.pfx
+id_rsa*
+id_ed25519*
+
+# =============================================
+# 開発・ビルド成果物
+# =============================================
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# 仮想環境
+venv*/
+ENV/
+env/
+.venv/
+
+# =============================================
+# IDE・エディタ
+# =============================================
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# =============================================
+# アプリケーション固有
+# =============================================
+
+# ログ・出力
+logs/
+*.log
+transcribe*.log
+output/
+results/
+temp/
+tmp/
+
+# メディアファイル
+*.wav
+*.mp3
+*.mp4
+*.avi
+*.mov
+*.png
+*.jpg
+*.jpeg
+*.gif
+
+# テスト・開発
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+.hypothesis/
+
+# バックアップ
+*.bak
+*.tmp
+*.backup
+*~
+.#*
+
+# テキスト出力（サンプル除く）
+*.txt
+!requirements*.txt
+!README*.txt
+!LICENSE*
+
+# OS・システム
+*:Zone.Identifier
+
+# プロジェクト固有
+.serena/cache/
+.claude/
+mcp.log
+playwright_mcp_*.md
+experimental_*
+test_*
+*_test.py
+quick_*.py

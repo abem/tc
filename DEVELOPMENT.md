@@ -40,7 +40,7 @@ pip install -r requirements.txt
 # 開発用ツールインストール
 pip install black flake8 isort mypy pytest pytest-cov
 
-# HuggingFaceトークン設定（話者分離用）
+# HuggingFaceトークン設定（日本語転写・話者分離用）
 export HUGGINGFACE_TOKEN=hf_your_token_here
 ```
 

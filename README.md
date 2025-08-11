@@ -78,7 +78,7 @@ source venv-clean/bin/activate
 # 依存関係インストール（最小構成推奨）
 pip install -r requirements/base.txt
 
-# HuggingFaceトークン設定（話者分離用）
+# HuggingFaceトークン設定（日本語転写・話者分離用）
 export HUGGINGFACE_TOKEN=hf_your_token_here
 ```
 
@@ -128,11 +128,13 @@ export HUGGINGFACE_TOKEN=hf_your_token_here
 
 ### HuggingFaceアクセストークン設定
 
-話者分離機能を使用するには、HuggingFaceアクセストークンが必要です：
+**日本語転写（kotoba-whisper）と話者分離機能**を使用するには、HuggingFaceアクセストークンが必要です：
 
 1. [HuggingFace](https://huggingface.co/)でアカウント作成・ログイン
 2. [設定ページ](https://huggingface.co/settings/tokens)でアクセストークン生成
-3. [pyannote/speaker-diarization-3.1](https://huggingface.co/pyannote/speaker-diarization-3.1)で「Agree and access」
+3. 以下のモデルで「Agree and access」をクリック：
+   - [kotoba-tech/kotoba-whisper-v2.2](https://huggingface.co/kotoba-tech/kotoba-whisper-v2.2) (日本語転写用)
+   - [pyannote/speaker-diarization-3.1](https://huggingface.co/pyannote/speaker-diarization-3.1) (話者分離用)
 4. 環境変数に設定:
 ```bash
 export HUGGINGFACE_TOKEN=hf_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx

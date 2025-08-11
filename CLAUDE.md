@@ -14,10 +14,17 @@
   - feature/test → main への直接マージは厳禁
   - feature/test → dev と feature/test → main を並行実行するのも厳禁
 
-- **ブランチ同期問題が発生した場合の対処**
+- **mainブランチを削除するべからず（緊急事態）**
+  - **mainブランチの削除は完全に事故であり、絶対に再現してはいけない**
+  - mainは本番ブランチのため、削除すると重大な影響がある
+  - GitHub上でデフォルトブランチが失われ、リポジトリ状態が不安定になる
+  - 今回は緊急対応として実行したが、通常は絶対に行ってはいけない
+
+- **ブランチ同期問題が発生した場合の正しい対処**
   - 「This branch is X commits ahead of, Y commits behind feature/test」が表示されたら即座に修復
-  - 修復方法: 問題ブランチを削除 → 正しいブランチから再作成
+  - **mainは削除せず**、問題のあるfeature/devブランチのみ削除・再作成する
   - 例: git push origin --delete dev && git checkout feature/test && git checkout -b dev && git push origin dev
+  - mainは最後の手段として、他の方法で解決できない場合のみ検討する
 
 ### 環境・インフラ関連
 - **venv-clean/ ディレクトリを削除すべからず**

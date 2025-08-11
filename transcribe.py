@@ -45,7 +45,7 @@ from core.transcription_interface import UnifiedTranscriber
 
 # 音声処理
 from youtube_handler import YouTubeHandler, check_yt_dlp_installed, install_yt_dlp
-from youtube_gdrive_handler import YouTubeGDriveHandler
+from youtube_handler import YouTubeHandler
 from scripts.core.audio_loader import AudioLoader
 from scripts.core.storage_handler import GDriveStorageHandler
 from scripts.core.output_handler import OutputHandler
@@ -257,7 +257,7 @@ class TranscribeLoader:
         try:
             if input_info["type"] == "youtube" and metadata:
                 console.print("Google Driveにアップロード中...")
-                gdrive_handler = YouTubeGDriveHandler()
+                gdrive_handler = YouTubeHandler()
                 upload_result = gdrive_handler.upload_transcription_result(str(output_file), metadata)
                 
                 if upload_result:

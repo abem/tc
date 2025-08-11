@@ -24,9 +24,9 @@
 - **[CLAUDE.md](./CLAUDE.md)** - べからず集（絶対にやってはいけないこと）
 - **[DEVELOPMENT_QUICKREF.md](./DEVELOPMENT_QUICKREF.md)** - 開発者クイックリファレンス
 - **[DEVELOPMENT.md](./DEVELOPMENT.md)** - 包括的な開発者ガイド
-- **[docs/API.md](./docs/API.md)** - プログラマー向けAPI仕様書
-- **[docs/TUTORIAL.md](./docs/TUTORIAL.md)** - 初心者向けチュートリアル
-- **[docs/TROUBLESHOOTING.md](./docs/TROUBLESHOOTING.md)** - トラブルシューティングガイド
+- **[docs/developer/API.md](./docs/developer/API.md)** - プログラマー向けAPI仕様書
+- **[docs/user/TUTORIAL.md](./docs/user/TUTORIAL.md)** - 初心者向けチュートリアル
+- **[docs/user/TROUBLESHOOTING.md](./docs/user/TROUBLESHOOTING.md)** - トラブルシューティングガイド
 
 ## 🔥 最新アップデート (2025-08-11) - プロダクション対応完了
 

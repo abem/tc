@@ -201,6 +201,17 @@ class YouTubeHandler:
                 logger.info(f"一時ファイルを削除しました: {file_path}")
         except Exception as e:
             logger.warning(f"一時ファイルの削除に失敗: {e}")
+    
+    def upload_transcription_result(self, transcription_file: str, video_metadata: Dict) -> Optional[Dict]:
+        """文字起こし結果をGoogle Driveにアップロード"""
+        try:
+            from youtube_gdrive_handler import YouTubeGDriveHandler
+            gdrive_handler = YouTubeGDriveHandler()
+            result = gdrive_handler.upload_transcription_result(transcription_file, video_metadata)
+            return result
+        except Exception as e:
+            logger.error(f"Google Driveアップロードエラー: {e}")
+            return None
 
 
 def check_yt_dlp_installed() -> bool:

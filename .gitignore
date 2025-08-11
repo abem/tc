@@ -135,3 +135,22 @@ experimental_*
 test_*
 *_test.py
 quick_*.py
+
+# ダウンロードした音声ファイル（テスト用以外）
+千と千尋の神隠し*.wav
+*_GhT65BunFHo.wav
+tmp*.mp3
+
+# モデルキャッシュ
+models/
+.cache/
+model_cache/
+
+# yt-dlp関連
+ytdl-org/
+*.ytdl
+*.part
+
+# HuggingFace環境変数ファイル
+HUGGINGFACE_TOKEN
+.huggingface_token

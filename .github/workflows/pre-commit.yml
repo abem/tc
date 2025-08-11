@@ -1,0 +1,35 @@
+name: Pre-commit checks
+
+on:
+  pull_request:
+  push:
+    branches: [main, dev]
+
+jobs:
+  pre-commit:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+    
+    - name: Run pre-check script
+      run: |
+        chmod +x scripts/pre_check.sh
+        ./scripts/pre_check.sh || true
+    
+    - name: Check for large files
+      run: |
+        find . -type f -size +100M | grep -v "\.git" | while read file; do
+          echo "Warning: Large file detected: $file"
+        done
+    
+    - name: Check for sensitive data
+      run: |
+        # Check for potential secrets
+        grep -r "HUGGINGFACE_TOKEN\s*=\s*['\"]hf_" . --exclude-dir=.git || true
+        grep -r "api_key\s*=\s*['\"]" . --exclude-dir=.git || true
+        grep -r "password\s*=\s*['\"]" . --exclude-dir=.git || true

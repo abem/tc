@@ -135,3 +135,4 @@ experimental_*
 test_*
 *_test.py
 quick_*.py
+snapshots/

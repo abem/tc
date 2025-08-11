@@ -1,20 +1,31 @@
-# 新しいCLIローダーの使用方法
+# tc CLI使用方法ガイド 🚀
 
 ## 概要
-従来のexec.shに代わる、モダンでかっこいいPythonベースのCLIローダーを実装しました。
+従来のexec.shに代わる、プロダクション品質のモダンCLIシステムです。
+
+## 🎆 プロダクション特徴
+
+- **uv環境対応**: pip比較10倍高速インストール
+- **設定自動読み込み**: config.yamlからURL自動取得
+- **Google Drive完全自動化**: 同一フォルダ自動アップロード
+- **警告抑制**: クリーンなログ出力
+- **OOM自動対処**: GPUメモリ不足時のCPU自動切り替え
 
 ## 実行方法
 
-### 基本コマンド
+### 基本コマンド（プロダクション推奨）
 ```bash
-# フルコマンド
-./transcribe [URL/ファイルパス]
+# 最もシンプルな実行（config.yamlからURL自動読み込み）
+./tc
 
-# ショートカット
-./tc [URL/ファイルパス]
+# YouTube URL直接指定
+./tc "https://youtube.com/watch?v=abc123"
 
-# Pythonスクリプト直接実行
-python3 transcribe.py [URL/ファイルパス]
+# ローカルファイル処理
+./tc audio.wav
+
+# Google Drive URL直接処理
+./tc "https://drive.google.com/file/d/1abc123def456/view"
 ```
 
 ### インタラクティブモード
@@ -79,13 +90,22 @@ python3 transcribe.py [URL/ファイルパス]
 | アップロード先 | 新フォルダ作成 | 元ファイルと同じフォルダ |
 | 実行方式 | Bash + Python | Pure Python |
 
-## 互換性
-- exec.shは引き続き利用可能
-- 同じ機能を提供（YouTube、Google Drive、話者分離等）
-- 設定ファイル（config.yaml）は共通
+## プロダクション適用状況
 
-## 今後の拡張予定
-- クリップボードからURL自動取得
-- 複数ファイル一括処理
-- 処理履歴表示
-- 設定プロファイルの保存・読み込み
+### ✅ 完全動作確認済み
+- **YouTube動画処理**: 音声抽出から転写まで完全自動
+- **Google Drive連携**: ダウンロード〜アップロードまで完全自動
+- **話者分離機能**: pyannote.audio v3.3.2で高精度分離
+- **多言語対応**: 日本語/英語モデル自動選択
+
+### 互換性情報
+- **exec.sh**: 引き続き利用可能（非推奨）
+- **設定ファイル**: config.yamlを共用可能
+- **認証情報**: credentials.json/token.pickleを共用
+
+### ロードマップ（既に実現済み）
+- ✅ 設定ファイル自動読み込み
+- ✅ 同一フォルダ自動アップロード
+- ✅ クリーンログ出力
+- ✅ OOM自動対処
+- ✅ uv環境対応

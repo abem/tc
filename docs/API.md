@@ -1,6 +1,20 @@
 # API仕様書 📖
 
-音声文字起こしシステム（transcribe_audio）のプログラマー向けAPI仕様書です。
+音声文字起こしシステム（tc）のプログラマー向けAPI仕様書です。
+
+## 🚀 新CLI対応
+
+**推奨実行方法**: `./tc` コマンドを使用してください。
+```bash
+# 基本実行（config.yamlから自動設定読み込み）
+./tc
+
+# YouTube URL直接指定
+./tc "https://youtube.com/watch?v=abc123"
+
+# ローカルファイル処理
+./tc audio.wav --language ja
+```
 
 ## 📋 目次
 
@@ -17,10 +31,13 @@
 
 このシステムは以下の主要コンポーネントで構成されています：
 
+- **tc CLI**: シンプルで強力なコマンドライン interface（推奨）
 - **UnifiedTranscriber**: 統一された音声転写インターフェース
 - **WhisperTranscriber**: Whisperモデルベースの音声認識
 - **SpeakerDiarizer**: 話者分離機能
-- **UnifiedConfig**: 統一設定管理システム
+- **UnifiedConfig**: 統一設定管理システム（core/）
+- **Google Drive連携**: 自動アップロード・同一フォルダ保存
+- **uv環境**: 高速パッケージマネージャー（pip比較で10倍高速）
 
 ## メインクラス
 
@@ -262,6 +279,12 @@ config = TranscriptionConfig(
 
 ### Google Drive連携
 
+**自動連携（tc CLI使用時）:**
+- YouTube動画処理時、元音声と同じGoogle Driveフォルダに結果を自動保存
+- credentials.json/token.pickleによる永続認証（一度設定すれば自動）
+- 設定不要・手動アップロード不要
+
+**手動API使用:**
 ```python
 from gdrive_handler import GoogleDriveHandler
 
@@ -270,7 +293,7 @@ handler = GoogleDriveHandler()
 # ファイルのダウンロード
 local_path = handler.download_from_drive("drive_url")
 
-# 結果のアップロード
+# 結果のアップロード（同一フォルダ自動保存対応）
 handler.upload_to_drive("result.txt", "folder_id")
 ```
 
@@ -328,6 +351,19 @@ def safe_transcription(audio_path: str, fallback_device: str = "cpu"):
 
 ### 基本的な文字起こし
 
+**推奨方法（tc CLI）:**
+```bash
+# 最もシンプルな実行（config.yamlから設定自動読み込み）
+./tc
+
+# YouTube動画の処理
+./tc "https://youtube.com/watch?v=abc123"
+
+# ローカルファイル処理
+./tc audio.wav --language ja
+```
+
+**プログラム内での使用（API）:**
 ```python
 from core.transcription_interface import UnifiedTranscriber
 from core.config import TranscriptionConfig, UnifiedConfig
@@ -386,6 +422,19 @@ for segment in result["segments"]:
 
 ### YouTube動画の処理
 
+**推奨方法（tc CLI）:**
+```bash
+# YouTube動画の自動処理（最もシンプル）
+./tc "https://youtube.com/watch?v=abc123"
+
+# 設定ファイル（config.yaml）からURL自動取得
+./tc
+
+# 話者分離付きでYouTube処理
+./tc "https://youtube.com/watch?v=abc123" --enable-diarization
+```
+
+**プログラム内での使用（API）:**
 ```python
 from youtube_gdrive_handler import YouTubeGDriveHandler
 from core.transcription_interface import UnifiedTranscriber
@@ -395,11 +444,11 @@ from core.config import TranscriptionConfig
 handler = YouTubeGDriveHandler()
 transcriber = UnifiedTranscriber(TranscriptionConfig(language="ja"))
 
-# YouTube URLから音声抽出・転写・アップロード
+# YouTube URLから音声抽出・転写・同一フォルダ自動アップロード
 result = handler.process_youtube_to_gdrive(
     youtube_url="https://youtube.com/watch?v=...",
     transcriber=transcriber,
-    upload_folder_id="your_folder_id"
+    upload_folder_id="your_folder_id"  # 元音声と同じフォルダに自動保存
 )
 
 print(f"処理完了: {result['gdrive_url']}")
@@ -488,10 +537,22 @@ print(f"総セグメント数: {len(result['segments'])}個")
 
 ## パフォーマンス最適化
 
+### uv環境（推奨）
+
+```bash
+# uv環境セットアップ（pip比較で10倍高速）
+uv venv
+source .venv/bin/activate
+uv sync
+
+# 従来のpip環境
+pip install -r requirements.txt
+```
+
 ### GPU最適化
 
 ```python
-# RTX 4080向け最適化
+# RTX 4080向け最適化（tc CLI使用時は自動設定）
 config = TranscriptionConfig(
     device="cuda",
     optimal_batch_size=8,
@@ -503,12 +564,22 @@ config = TranscriptionConfig(
 ### メモリ効率化
 
 ```python
-# メモリ使用量削減
+# メモリ使用量削減（OOM時の自動CPU切り替え対応）
 config = TranscriptionConfig(
     max_cache_size=3,
     memory_efficiency=True,
-    enable_tensor_sharing=True
+    enable_tensor_sharing=True,
+    auto_fallback_cpu=True  # GPU OOM時の自動CPU切り替え
 )
+```
+
+### ログ出力最適化
+
+```python
+# 警告抑制・クリーンログ出力（tc CLI使用時は自動設定）
+import logging
+logging.getLogger("transformers").setLevel(logging.ERROR)
+logging.getLogger("googleapiclient").setLevel(logging.ERROR)
 ```
 
 ### 非同期処理
@@ -538,7 +609,7 @@ results = asyncio.run(async_transcribe_multiple(audio_files))
 
 ## 📞 サポート
 
-- **GitHub Issues**: [transcribe_audio/issues](https://github.com/yourusername/transcribe_audio/issues)
+- **GitHub Issues**: [tc/issues](https://github.com/abem/tc/issues)
 - **API仕様に関する質問**: GitHub Discussions
 - **バグ報告**: Issue template使用
 

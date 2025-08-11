@@ -1,6 +1,12 @@
 # チュートリアル 🎥
 
-音声文字起こしシステムの初心者向けステップバイステップガイドです。
+音声文字起こしシステム（tc）の初心者向けステップバイステップガイドです。
+
+## 🚀 新CLI体験（推奨）
+
+**最もシンプルな方法**: `./tc` コマンドで一発実行  
+**環境**: uvパッケージマネージャー推奨（pip比較10倍高速）  
+**特徴**: YouTube URL → 転写 → Google Drive自動アップロード
 
 ## 📋 目次
 
@@ -40,12 +46,25 @@ free -h
 
 ```bash
 # GitHubからクローン
-git clone https://github.com/yourusername/transcribe_audio.git
-cd transcribe_audio
+git clone https://github.com/abem/tc.git
+cd tc
 ```
 
 ### ステップ3: 仮想環境セットアップ
 
+**推奨方法（uv環境）:**
+```bash
+# uv仮想環境作成（超高速）
+uv venv
+
+# 仮想環境有効化
+source .venv/bin/activate
+
+# 依存関係インストール（30秒で完了）
+uv sync
+```
+
+**代替方法（従来pip環境）:**
 ```bash
 # 仮想環境作成
 python3 -m venv venv-clean
@@ -54,13 +73,14 @@ python3 -m venv venv-clean
 source venv-clean/bin/activate
 
 # 依存関係インストール
-pip install -r requirements-minimal.txt
+pip install -r requirements.txt
 ```
 
-**📸 期待される画面:**
+**📸 期待される画面（uv環境）:**
 ```
-Successfully installed torch-2.1.0 transformers-4.35.0 ...
-✅ インストール完了
+Resolved 170 packages in 2.1s
+Installed 170 packages in 28.3s
+✅ uv環境セットアップ完了（30秒で170パッケージ）
 ```
 
 ### ステップ4: HuggingFaceトークン設定

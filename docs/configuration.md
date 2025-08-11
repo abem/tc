@@ -1,6 +1,12 @@
 # 設定ガイド ⚙️
 
-transcribe_audioシステムの設定管理に関する包括的なガイドです。
+tcシステムの設定管理に関する包括的なガイドです。
+
+## 🚀 tc CLI設定システム
+
+**推奨設定方法**: config.yamlから自動読み込み  
+**実行コマンド**: `./tc` で設定自動適用  
+**環境**: 統一設定管理（core/UnifiedConfig）
 
 ## 📋 目次
 
@@ -13,38 +19,40 @@ transcribe_audioシステムの設定管理に関する包括的なガイドで�
 
 ## 設定ファイル概要
 
-transcribe_audioは以下の階層で設定を管理します：
+tcシステムは以下の階層で設定を管理します：
 
-1. **config/config.yaml** - メイン設定ファイル
-2. **環境変数** - 機密情報・実行時設定
-3. **コマンドライン引数** - 実行時オーバーライド
-4. **pyproject.toml** - 開発・品質管理設定
+1. **config/config.yaml** - tcコマンド自動読み込み設定ファイル
+2. **環境変数** - HuggingFaceトークン等の機密情報
+3. **tcコマンドライン引数** - 実行時オーバーライド
+4. **統一設定システム（core/UnifiedConfig）** - 内部設定管理
+5. **自動認証** - credentials.json/token.pickleでGoogle Drive永続認証
 
 ## config.yaml詳細
 
 ### 基本構造
 
 ```yaml
-# config/config.yaml
-gdrive:          # Google Drive API設定
+# config/config.yaml - tcコマンド自動読み込み設定
+gdrive:          # Google Drive自動連携設定
 whisper:         # Whisper音声認識設定
-speaker_diarization:  # 話者分離設定
-logging:         # ログ設定
+speaker_diarization:  # 話者分離設定（HuggingFaceトークン必要）
+logging:         # クリーンログ出力設定（警告抑制済み）
 ```
 
 ### Google Drive設定
 
 ```yaml
 gdrive:
-  credentials_file: credentials.json      # Google Drive認証ファイル
-  token_file: token.pickle               # 認証トークンファイル
-  url: "https://www.youtube.com/watch?v=QxnWrMasELQ"  # デフォルトURL
+  credentials_file: credentials.json      # Google Drive永続認証ファイル
+  token_file: token.pickle               # 認証トークンファイル（自動生成）
+  url: "https://www.youtube.com/watch?v=QxnWrMasELQ"  # tcコマンド用デフォルトURL
   chunk_size: 100                        # ダウンロードチャンクサイズ(MB)
+  auto_upload: true                      # 自動アップロード有効（同一フォルダ）
   
   # 追加オプション（省略可能）
   timeout: 300                           # タイムアウト時間（秒）
   retry_count: 3                         # リトライ回数
-  upload_folder_id: null                 # アップロード先フォルダID
+  upload_folder_id: null                 # アップロード先フォルダID（null=元音声と同じフォルダ）
 ```
 
 ### Whisper音声認識設定

@@ -1,6 +1,11 @@
 # トラブルシューティングガイド 🛠️
 
-音声文字起こしシステムで発生する可能性のある問題と解決方法を網羅的にまとめました。
+音声文字起こしシステム（tc）で発生する可能性のある問題と解決方法を網羅的にまとめました。
+
+## 🚀 tc CLI 固有のトラブルシューティング
+
+**推奨実行方法**: `./tc` コマンド  
+**環境**: uvパッケージマネージャー推奨
 
 ## 📋 目次
 
@@ -18,18 +23,26 @@
 
 ### エラー: `ModuleNotFoundError: No module named 'torch'`
 
-**原因:** PyTorchがインストールされていない
+**原因:** PyTorchがインストールされていないまたはuv環境が正しく設定されていない
 
-**解決策:**
+**解決策（uv環境推奨）:**
+```bash
+# uv環境の再構築
+uv venv --force
+source .venv/bin/activate
+uv sync
+
+# 確認
+python3 -c "import torch; print('PyTorch version:', torch.__version__)"
+```
+
+**代替解決策（pip環境）:**
 ```bash
 # 仮想環境が有効化されているか確認
 source venv-clean/bin/activate
 
 # PyTorchのインストール
 pip install torch torchvision torchaudio
-
-# CUDA版が必要な場合
-pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
 ```
 
 **確認方法:**
@@ -71,33 +84,44 @@ source venv-clean/bin/activate
 
 ### エラー: `./tc: Permission denied`
 
-**原因:** 実行権限がない
+**原因:** tcコマンドに実行権限がない
 
 **解決策:**
 ```bash
-# 実行権限を付与
-chmod +x exec.sh
-chmod +x exec_local.sh
+# tcコマンドに実行権限を付与
+chmod +x tc
+chmod +x transcribe.py
 
 # 確認
-ls -la exec*.sh
+ls -la tc
+
+# テスト実行
+./tc --help
 ```
 
-### エラー: `./venv-clean/bin/activate: No such file or directory`
+### エラー: `source .venv/bin/activate` または `source venv-clean/bin/activate` が失敗
 
 **原因:** 仮想環境が削除または作成されていない
 
-**解決策:**
+**解決策（uv環境推奨）:**
+```bash
+# uv仮想環境の再作成
+uv venv --force
+source .venv/bin/activate
+uv sync
+
+# HuggingFaceトークンの設定
+export HUGGINGFACE_TOKEN=hf_your_token_here
+```
+
+**代替解決策（pip環境）:**
 ```bash
 # 仮想環境の再作成
 python3 -m venv venv-clean
 source venv-clean/bin/activate
 
 # 依存関係の再インストール
-pip install -r requirements-minimal.txt
-
-# HuggingFaceトークンの再設定
-export HUGGINGFACE_TOKEN=hf_your_token_here
+pip install -r requirements.txt
 ```
 
 ## ⚡ GPU・CUDA関連
@@ -106,9 +130,14 @@ export HUGGINGFACE_TOKEN=hf_your_token_here
 
 **原因:** GPU メモリ不足
 
-**解決策1: CPUを使用**
+**解決策1: 自動CPUフォールバック（tc CLIは自動対応）**
 ```bash
-./tc --device cpu "audio.wav"
+# tc CLIは自動的にCPUに切り替わります
+./tc "audio.wav"
+
+# 手動でCPU指定したい場合
+export CUDA_VISIBLE_DEVICES=""
+./tc "audio.wav"
 ```
 
 **解決策2: バッチサイズを減らす**

@@ -1,0 +1,11 @@
+#!/bin/bash
+# Transcribe Audio ショートカット
+
+# スクリプトディレクトリに移動
+cd "$(dirname "$0")"
+
+# 仮想環境を有効化
+source ./venv-clean/bin/activate
+
+# Pythonスクリプト実行
+python3 transcribe.py "$@"

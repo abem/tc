@@ -1,126 +1,58 @@
-# ドキュメント インデックス - 音声文字起こしシステム
+# 📚 Documentation Index - transcribe_audio
 
-## 📚 ドキュメント一覧
+## 📖 User Guides
+Essential documentation for end users:
 
-### 🎯 概要・システム全体
-- **[システム概要 2025年版](system_overview_2025.md)** - システム全体の機能・技術詳細
-- **[現在のシステム状況](current_status_2025_july.md)** - 最新の実装状況・機能一覧
-- **[メインREADME](../README.md)** - 基本的な使用方法・セットアップ
+- **[🚀 Tutorial](user-guides/TUTORIAL.md)** - Step-by-step beginner guide
+- **[🔧 Configuration](user-guides/configuration.md)** - System configuration reference
+- **[🆘 Troubleshooting](user-guides/TROUBLESHOOTING.md)** - Problem resolution guide
+- **[🌐 Language Support](user-guides/language_support_guide.md)** - Multi-language setup
+- **[🎤 Speaker Diarization](user-guides/speaker_diarization_setup.md)** - Speaker separation features
+- **[💻 Modern CLI Usage](user-guides/new_cli_usage.md)** - New tc command guide
+- **[⚡ Optimization Features](user-guides/optimization_features.md)** - Performance optimization
 
-### 🌐 多言語対応
-- **[言語対応ガイド](language_support_guide.md)** - 言語別モデル自動選択・使用方法
-- **[トラブルシューティング](#)** - 言語選択に関する問題解決
+## 👨‍💻 Developer Guides
+Technical documentation for developers:
 
-### 🎤 話者分離機能
-- **[話者分離セットアップガイド](speaker_diarization_setup.md)** - 環境構築・設定方法
-- **[話者分離計画書](feature/speaker_diarization_plan.md)** - 実装計画・技術仕様
+- **[🔌 API Reference](developer-guides/API.md)** - Complete API documentation
+- **[📋 Coding Standards](developer-guides/coding_standards.md)** - Development guidelines
 
-### ⚡ パフォーマンス・最適化
-- **[最適化機能詳細](optimization_features.md)** - パフォーマンス改善機能
-- **[最適化レポート](../optimization_summary.md)** - 最適化結果・効果測定
+## 🔧 System Documentation
+Current system status and architecture:
 
-### 🔄 アップグレード・変更履歴
-- **[アップグレードサマリー](../upgrade_summary.md)** - システムアップグレード詳細
-- **[変更履歴](change_history.md)** - 機能変更・改善履歴
+- **[📊 System Overview 2025](system-docs/system_overview_2025.md)** - Complete system architecture
+- **[📈 Current Status (July 2025)](system-docs/current_status_2025_july.md)** - Latest system state
+- **[📦 Dependency Migration](system-docs/dependency_migration.md)** - Package management structure
 
-### 🧪 開発・テスト
-- **[開発標準](coding_standards.md)** - コーディング規約・開発ガイドライン
-- **[実装変更ログ](implementation_changes.md)** - 技術実装の変更点
-- **[実装ノート](implementation_notes.md)** - 開発時の技術メモ
+## 📜 Historical Records
+Historical documentation and analysis:
 
-### 🔧 技術詳細
-- **[タイムスタンプ機能](feature/timestamp_feature.md)** - タイムスタンプ実装詳細
-- **[文字起こしエンジン改良](transcriber_refactoring.md)** - エンジン改良履歴
+- **[📝 Change History](historical-records/change_history.md)** - System evolution log
+- **[🔍 Incident Reports](historical-records/incident_report.md)** - Past issues and resolutions
+- **[🏗️ Architecture Refactoring](historical-records/transcriber_refactoring.md)** - System redesign history
 
-### 📊 分析・レポート
-- **[現在状況分析](current_state.md)** - システム状況詳細分析
-- **[Geminiレビュー結果](gemini_review_4.md)** - AI分析結果・改善提案
+## 🗃️ Archive Folders
 
-## 🎯 用途別ドキュメントガイド
+- **`obsolete/`** - Deprecated documentation (17 files moved here)
+- **`feature/`** - Legacy feature plans (2 files)
+- **`kaizen/`** - Improvement proposals (1 file)
 
-### 💻 新規ユーザー向け
-1. **[メインREADME](../README.md)** - 基本セットアップ
-2. **[システム概要 2025年版](system_overview_2025.md)** - 全体像理解
-3. **[言語対応ガイド](language_support_guide.md)** - 使用方法詳細
+## 📋 Summary of Changes
 
-### 🎤 話者分離機能利用者向け
-1. **[話者分離セットアップガイド](speaker_diarization_setup.md)** - 環境構築
-2. **[システム概要 2025年版](system_overview_2025.md)** - 機能詳細
-3. **[現在のシステム状況](current_status_2025_july.md)** - 実装状況
+### ✅ Organized (26 files total)
+- **User Guides**: 7 files - Current user documentation
+- **Developer Guides**: 2 files - Technical API & standards
+- **System Docs**: 3 files - Current system state
+- **Historical Records**: 10 files - Past documentation with archival value
+- **Obsolete**: 17 files - Deprecated content moved but preserved
+- **Legacy Folders**: 3 files in feature/ and kaizen/
 
-### 🔧 開発者・上級者向け
-1. **[開発標準](coding_standards.md)** - コーディング規約
-2. **[実装変更ログ](implementation_changes.md)** - 技術実装詳細
-3. **[最適化機能詳細](optimization_features.md)** - パフォーマンス技術
-
-### 🐛 トラブルシューティング
-1. **[言語対応ガイド](language_support_guide.md#トラブルシューティング)** - 言語選択問題
-2. **[話者分離セットアップガイド](speaker_diarization_setup.md#トラブルシューティング)** - 話者分離問題
-3. **[メインREADME](../README.md#トラブルシューティング)** - 一般的な問題
-
-## 📅 最新情報・更新状況
-
-### 2025年7月 主要更新
-- ✅ **話者分離機能完全実装** - pyannote.audio v3.3.2対応
-- ✅ **多言語対応実装** - 英語・日本語の言語別モデル自動選択
-- ✅ **統一CLIインターフェース** - main_cli.py による一貫した操作
-- ✅ **ローカルファイル対応** - Google Drive認証不要処理
-- ✅ **包括的ドキュメント整備** - 全機能の詳細ドキュメント
-
-### 📊 ドキュメント統計
-- **総ドキュメント数**: 25+ ファイル
-- **カテゴリ数**: 8 カテゴリ
-- **最終更新**: 2025年7月13日
-- **対応言語**: 日本語・英語
-- **技術レベル**: 初心者〜上級者
-
-## 🔍 ドキュメント検索ガイド
-
-### 機能別検索
-- **話者分離**: `speaker_diarization`
-- **多言語対応**: `language`, `multilingual`
-- **パフォーマンス**: `optimization`, `performance`
-- **設定**: `setup`, `config`
-- **トラブル**: `troubleshooting`, `error`
-
-### ファイル命名規則
-- `*_2025*` - 2025年版最新ドキュメント
-- `*_setup*` - セットアップ・設定ガイド
-- `*_guide*` - 使用方法ガイド
-- `feature/*` - 特定機能の詳細仕様
-- `*_summary*` - 要約・まとめレポート
-
-## 📞 ドキュメントに関するフィードバック
-
-### 改善要求・質問
-- **GitHub Issues**: ドキュメント改善要求
-- **内容追加**: 不足している情報の指摘
-- **誤記訂正**: 誤字・脱字・技術的誤りの報告
-
-### 貢献方法
-1. **新規ドキュメント作成**: 新機能・用途別ガイド
-2. **既存ドキュメント改善**: 内容更新・詳細追加
-3. **翻訳作業**: 英語版ドキュメント作成
+### 🧹 Cleanup Results
+- **Removed duplicates**: 5 status documents → 1 current
+- **Archived obsolete**: 17 planning documents from 2025 projects
+- **Categorized by purpose**: Clear user vs developer vs system distinction
+- **Maintained history**: Important incident reports and refactoring docs preserved
 
 ---
-
-## 📝 クイック リファレンス
-
-### 最も重要なドキュメント（上位5つ）
-1. **[メインREADME](../README.md)** - 必読
-2. **[システム概要 2025年版](system_overview_2025.md)** - 全体理解
-3. **[現在のシステム状況](current_status_2025_july.md)** - 最新状況
-4. **[言語対応ガイド](language_support_guide.md)** - 使用方法
-5. **[話者分離セットアップガイド](speaker_diarization_setup.md)** - 高機能利用
-
-### 緊急時・問題解決
-- 🚨 **言語選択問題**: [言語対応ガイド](language_support_guide.md#トラブルシューティング)
-- 🚨 **話者分離エラー**: [話者分離セットアップガイド](speaker_diarization_setup.md#トラブルシューティング)
-- 🚨 **一般的エラー**: [メインREADME](../README.md#トラブルシューティング)
-
----
-
-**最終更新**: 2025年7月13日  
-**ドキュメントバージョン**: v2025.07  
-**システム対応**: 完全対応  
-**多言語**: 日本語・英語対応
+*Documentation reorganized: 2025-08-11*  
+*Total files: 43 → 26 active + 17 archived*

@@ -241,34 +241,63 @@ class WhisperTranscriptionEngine(TranscriptionEngine):
         if not chunks:
             return ""
         
-        # Get decoder prompt for language
-        forced_decoder_ids = self._processor.get_decoder_prompt_ids(
-            language=self.config.language, task="transcribe"
-        )
-        
         texts = []
-        
+
         # Process each chunk with timestamps
         for i, chunk in enumerate(tqdm(chunks, desc="音声文字起こし")):
             chunk_start_seconds = i * 30
-            
-            # Process single chunk
+
+            # Process single chunk with proper attention mask
             inputs = self._processor(
-                chunk, 
-                sampling_rate=sr, 
-                return_tensors="pt"
+                chunk,
+                sampling_rate=sr,
+                return_tensors="pt",
+                padding=True,
+                truncation=True
             ).to(self.config.device)
-            
-            # Generate transcription
+
+            # Ensure attention mask is set to avoid warnings
+            if not hasattr(inputs, 'attention_mask') or inputs.attention_mask is None:
+                inputs.attention_mask = torch.ones(inputs.input_features.shape[:2], dtype=torch.long, device=self.config.device)
+
+            # Generate transcription with modern API
             with torch.no_grad(), warnings.catch_warnings():
-                warnings.simplefilter("ignore")
-                generated_ids = self._model.generate(
-                    inputs.input_features,
-                    forced_decoder_ids=forced_decoder_ids,
-                    max_new_tokens=400,  # Reduced from 448 to avoid exceeding model limits
-                    do_sample=False,
-                    temperature=0.0
-                )
+                warnings.filterwarnings("ignore", category=UserWarning)
+                warnings.filterwarnings("ignore", category=FutureWarning)
+                warnings.filterwarnings("ignore", message=".*attention_mask.*")
+                warnings.filterwarnings("ignore", message=".*pad token.*")
+
+                # Prepare generation kwargs with modern parameters
+                generation_kwargs = {
+                    "language": self.config.language,
+                    "task": "transcribe",
+                    "max_new_tokens": 400,
+                    "do_sample": False,
+                    "temperature": 0.0,
+                    "use_cache": True,
+                    "pad_token_id": self._processor.tokenizer.eos_token_id,
+                    "suppress_tokens": None
+                }
+
+                # Create proper generate arguments with attention_mask
+                generate_kwargs = generation_kwargs.copy()
+
+                # Remove attention_mask from generation_kwargs and pass it separately
+                if 'attention_mask' in generate_kwargs:
+                    del generate_kwargs['attention_mask']
+
+                # Generate with proper attention_mask handling
+                if hasattr(inputs, 'attention_mask') and inputs.attention_mask is not None:
+                    generated_ids = self._model.generate(
+                        inputs.input_features,
+                        attention_mask=inputs.attention_mask,
+                        **generate_kwargs
+                    )
+                else:
+                    generated_ids = self._model.generate(
+                        inputs.input_features,
+                        **generate_kwargs
+                    )
             
             # Decode text
             text = self._processor.batch_decode(
@@ -299,8 +328,13 @@ class WhisperTranscriptionEngine(TranscriptionEngine):
         
         # Resample to 16kHz if needed
         if sr != 16000:
-            import librosa
-            audio = librosa.resample(audio, orig_sr=sr, target_sr=16000)
+            try:
+                import resampy
+                audio = resampy.resample(audio, sr, 16000)
+            except ImportError:
+                # Fallback: simple linear interpolation if resampy not available
+                import scipy.signal
+                audio = scipy.signal.resample(audio, int(len(audio) * 16000 / sr))
             sr = 16000
         
         return audio, sr
@@ -500,8 +534,8 @@ class UnifiedTranscriber:
     
     def _get_audio_duration(self, audio_path: str) -> float:
         """Get audio file duration."""
-        import librosa
-        audio, sr = librosa.load(audio_path, sr=None)
+        import soundfile as sf
+        audio, sr = sf.read(audio_path)
         return len(audio) / sr
     
     def get_stats(self) -> Dict[str, Any]:

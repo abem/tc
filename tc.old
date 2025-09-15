@@ -1,5 +1,5 @@
 #!/bin/bash
-# Transcribe Audio フルコマンド
+# Transcribe Audio ショートカット
 
 # スクリプトディレクトリに移動
 cd "$(dirname "$0")"

@@ -1,353 +1,315 @@
-# 音声文字起こしシステム（transcribe_audio） 🎙️
+# 音声文字起こしシステム（tc） 🎙️
 
-[![CI](https://github.com/yourusername/transcribe_audio/workflows/CI/badge.svg)](https://github.com/yourusername/transcribe_audio/actions)
-[![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
+[![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
+[![UV Package Manager](https://img.shields.io/badge/package--manager-uv-orange.svg)](https://github.com/astral-sh/uv)
+[![Whisper](https://img.shields.io/badge/model-kotoba--whisper--v2.2-green.svg)](https://huggingface.co/kotoba-tech/kotoba-whisper-v2.2)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Tests](https://img.shields.io/badge/tests-23%20passed-brightgreen.svg)](#testing)
 
 ## ✨ 概要
 
-**企業レベルの品質を持つ多言語音声文字起こしシステム**
+**シンプルで高精度な日本語音声文字起こしツール**
 
-- **🌐 多言語対応** - 日本語・英語音声の高精度文字起こし（句読点・タイムスタンプ付与）
-- **🎤 話者分離機能** - pyannote.audio v3.3.2による複数話者の自動識別・分離
-- **🧠 言語別モデル自動選択** - 英語は openai/whisper-large-v3、日本語は kotoba-tech/kotoba-whisper-v2.2
-- **⚡ GPU最適化** - transformers方式でローカルGPU推論（RTX 4080対応）
-- **📊 タイムスタンプ機能** - 高精度時刻情報付与
-- **🏗️ OOP設計パターン** - Abstract Factory, Strategy, Command, Observer patterns実装
-- **☁️ クラウド連携** - Google Drive・YouTube自動処理対応
-- **🧪 包括的テストスイート** - 23個のテスト（100%通過）
-- **🔄 CI/CD パイプライン** - GitHub Actions自動化
-
-## 📚 開発者向けドキュメント
-
-- **[CLAUDE.md](./CLAUDE.md)** - べからず集（絶対にやってはいけないこと）
-- **[DEVELOPMENT_QUICKREF.md](./DEVELOPMENT_QUICKREF.md)** - 開発者クイックリファレンス
-- **[DEVELOPMENT.md](./DEVELOPMENT.md)** - 包括的な開発者ガイド
-- **[docs/API.md](./docs/API.md)** - プログラマー向けAPI仕様書
-- **[docs/TUTORIAL.md](./docs/TUTORIAL.md)** - 初心者向けチュートリアル
-- **[docs/TROUBLESHOOTING.md](./docs/TROUBLESHOOTING.md)** - トラブルシューティングガイド
-
-## 🔥 最新アップデート (2025-07-29) - 技術的負債解消完了
-
-### 🛠️ **コード品質向上**
-- **統一コード標準**: `pyproject.toml`でblack, flake8, isort, mypy設定統合
-- **例外処理統合**: 分散していた3つのexceptionsファイルを1つに統合
-- **重複コード削除**: `scripts/core/main.py`等の重複実装を整理
-- **GitHub Actions CI/CD**: 自動テスト・リント・セキュリティスキャン完備
-
-### 🧪 **テスト基盤強化**
-- **23個のテスト100%通過**: 基本機能・統合・コード品質すべてカバー
-- **自動化パイプライン**: プッシュ時の自動品質チェック
-- **依存関係最適化**: 210個→50個のパッケージに削減（75%減）
-
-### 📚 **ドキュメント整備**
-- **構造化ドキュメント**: 古いファイルを`docs/archive/`に整理
-- **詳細CHANGELOG**: バージョン管理の透明性向上
-- **開発ガイド**: 新しい開発者向けの包括的ガイド
+- **🇯🇵 日本語特化** - kotoba-tech/kotoba-whisper-v2.2による高精度日本語文字起こし
+- **⚡ ワンコマンド実行** - `./tc`だけでconfig.yamlから設定を自動読み込み
+- **☁️ Google Drive連携** - 音声ファイルの自動ダウンロード・結果アップロード
+- **🔧 uv パッケージ管理** - 最新のPython依存関係管理ツール使用
+- **🎯 シンプル設計** - 複雑な設定不要、すぐに使える
 
 ## 🚀 クイックスタート
 
-### 新しいCLI（推奨）
+### 1. 必要な準備
+
 ```bash
-# シンプルな実行（設定ファイル自動読み込み）
+# uvのインストール（未インストールの場合）
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# プロジェクトのクローン
+git clone <repository-url>
+cd tc
+
+# Hugging Faceトークンの設定
+echo "HUGGINGFACE_TOKEN=hf_your_token_here" > .env
+
+# Google Drive認証ファイルの配置
+# Google Cloud Consoleからcredentials.jsonを取得して配置
+```
+
+### 2. 設定ファイル編集
+
+`config/config.yaml`を編集して処理対象URLを設定：
+
+```yaml
+gdrive:
+  url: "https://drive.google.com/file/d/your_file_id/view"
+
+whisper:
+  model: kotoba-tech/kotoba-whisper-v2.2
+  language: ja
+  device: cuda  # または cpu
+```
+
+### 3. 実行
+
+```bash
+# シンプル実行（推奨）
 ./tc
 
-# ショートカット
-./transcribe
-
-# YouTube URL指定
-./tc "https://youtube.com/watch?v=abc123"
-
-# ローカルファイル指定
-./tc audio.wav --language en --diarization
+# 完了！結果はoutput/フォルダとGoogle Driveに保存されます
 ```
 
-### 従来のexec.sh
+## 💻 使用方法
 
-### 1. 環境セットアップ
+### 基本実行
+
 ```bash
-# リポジトリクローン
-git clone https://github.com/yourusername/transcribe_audio.git
-cd transcribe_audio
-
-# 仮想環境作成・有効化
-python3 -m venv venv-clean
-source venv-clean/bin/activate
-
-# 依存関係インストール（最小構成推奨）
-pip install -r requirements/base.txt
-
-# HuggingFaceトークン設定（日本語転写・話者分離用）
-export HUGGINGFACE_TOKEN=hf_your_token_here
-```
-
-### 2. 基本的な使用方法
-
-**推奨: 新しいCLI**
-```bash
-# 設定ファイルのURLで自動実行
+# config.yamlの設定で自動実行
 ./tc
 
-# YouTube URL指定
-./tc "https://youtube.com/watch?v=abc123"
+# 別のファイルを指定
+./tc https://drive.google.com/file/d/another_file_id/view
 
-# ローカル音声ファイル
-./tc audio.wav --language ja
-
-# 話者分離機能付き
-./tc "youtube_url" --diarization
-
-# 英語音声の処理
-./tc audio.wav --language en --diarization
+# ローカルファイルを処理
+./tc audio.mp3
 ```
 
-**代替: 従来のexec.sh**
+### オプション
+
 ```bash
-# Google Drive/YouTube URLから文字起こし（レガシー）
-./exec.sh
+# アップロードをスキップ
+./tc --no-upload
 
-# ローカル音声ファイルの処理（レガシー）  
-./exec_local.sh audio.wav --language ja
+# 出力ディレクトリを指定
+./tc --output-dir results
 
-# 話者分離機能付き（レガシー）
-./exec.sh --enable-diarization --max-speakers 3
+# モデルを変更
+./tc --model openai/whisper-large-v3
+
+# デバイスを指定
+./tc --device cpu
+
+# ヘルプ表示
+./tc --help
 ```
 
-## 📋 システム要件
+## 🔧 設定
 
-### 必須環境
-- **Python**: 3.11以上
-- **OS**: Linux, macOS, Windows (WSL2推奨)
-- **メモリ**: 8GB以上（GPU使用時は12GB推奨）
+### config/config.yaml
 
-### 推奨環境
-- **GPU**: NVIDIA RTX 4080以上（CUDA対応）
-- **ストレージ**: 10GB以上の空き容量
-- **ネットワーク**: HuggingFace・Google Drive API用
+```yaml
+gdrive:
+  credentials_file: credentials.json
+  token_file: token.pickle
+  url: "処理対象のGoogle Drive URL"
+  chunk_size: 100
 
-### HuggingFaceアクセストークン設定
+whisper:
+  model: kotoba-tech/kotoba-whisper-v2.2
+  language: ja
+  device: cuda
+  beam_size: 5
+  best_of: 3
+  temperature: 0.1
 
-**日本語転写（kotoba-whisper）と話者分離機能**を使用するには、HuggingFaceアクセストークンが必要です：
+  # 言語別モデル設定
+  language_models:
+    ja:
+      default: kotoba-tech/kotoba-whisper-v2.2
+      alternatives:
+        - drewschaub/whisper-large-v3-japanese-4k-steps
+        - openai/whisper-large-v3
+    en:
+      default: openai/whisper-large-v3
+      alternatives:
+        - large-v3
+        - medium
 
-1. [HuggingFace](https://huggingface.co/)でアカウント作成・ログイン
-2. [設定ページ](https://huggingface.co/settings/tokens)でアクセストークン生成
-3. 以下のモデルで「Agree and access」をクリック：
-   - [kotoba-tech/kotoba-whisper-v2.2](https://huggingface.co/kotoba-tech/kotoba-whisper-v2.2) (日本語転写用)
-   - [pyannote/speaker-diarization-3.1](https://huggingface.co/pyannote/speaker-diarization-3.1) (話者分離用)
-4. 環境変数に設定:
+speaker_diarization:
+  enable: false
+  model: "pyannote/speaker-diarization-3.1"
+
+logging:
+  level: INFO
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+  file: logs/transcribe.log
+```
+
+### .env ファイル
+
 ```bash
-export HUGGINGFACE_TOKEN=hf_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+# Hugging Face認証トークン
+HUGGINGFACE_TOKEN=hf_your_token_here
 ```
-
-## 🎯 主要機能
-
-### 🌐 多言語対応
-- **日本語**: `kotoba-tech/kotoba-whisper-v2.2`（日本語特化）
-- **英語**: `openai/whisper-large-v3`（標準高精度）
-- **自動選択**: `--language ja|en`で最適モデル自動選択
-
-### 🎤 話者分離（Speaker Diarization）
-
-**新しいCLI（推奨）**
-```bash
-# 基本的な話者分離
-./tc audio.wav --diarization
-
-# YouTube動画の話者分離
-./tc "https://youtube.com/watch?v=abc123" --diarization
-
-# 英語音声の話者分離
-./tc audio.wav --language en --diarization
-```
-
-**代替: 従来のexec.sh**
-```bash
-# 基本的な話者分離（レガシー）
-./exec.sh --enable-diarization
-
-# 話者数制限（レガシー）
-./exec.sh --enable-diarization --max-speakers 4
-```
-
-### ⚡ パフォーマンス最適化
-- **RTX 4080最適化**: 専用バッチサイズ・メモリ設定
-- **モデルキャッシュ**: 2回目以降75%高速化
-- **非同期処理**: CPU/GPU並列処理
-- **動的メモリ管理**: OOM回避機能
-
-### ☁️ クラウド連携
-- **Google Drive**: 自動ダウンロード・アップロード
-- **YouTube**: 動画URL直接処理
-- **認証管理**: OAuth2自動認証
-
-## 🧪 テスト・品質管理
-
-### テスト実行
-```bash
-# 全テスト実行
-python -m pytest tests/ -v
-
-# カバレッジ付きテスト
-python -m pytest tests/ --cov=. --cov-report=html
-
-# 特定テストのみ
-python -m pytest tests/test_basic.py -v
-```
-
-### コード品質チェック
-```bash
-# フォーマット確認
-black . --check
-
-# リント実行
-flake8 .
-
-# インポート順序確認
-isort . --check-only
-
-# 型チェック
-mypy .
-```
-
-### 事前チェックスクリプト
-```bash
-# 包括的な品質チェック
-./scripts/pre_check.sh
-```
-
-## 📊 パフォーマンス指標
-
-| 項目 | 最適化前 | 最適化後 | 改善率 |
-|------|----------|----------|--------|
-| 初回実行時間 | 100% | 95% | 5%改善 |
-| 2回目以降実行 | 100% | 25% | **75%改善** |
-| GPU処理速度 | 100% | 20-40% | **2.5-5倍高速** |
-| メモリ使用量 | 100% | 45-60% | **40-55%削減** |
-| 依存関係 | 210個 | 50個 | **75%削減** |
-| テストカバレッジ | なし | 23個 | **完全カバー** |
 
 ## 🏗️ アーキテクチャ
 
-### OOP設計パターン実装
-
-```python
-# Factory Pattern - モデル作成
-from patterns import create_japanese_transcriber
-transcriber = create_japanese_transcriber(quality='high_quality')
-
-# Strategy Pattern - 最適化戦略
-from patterns.strategies import StrategyRegistry
-batch_strategy = StrategyRegistry.get_batch_strategy('gpu', rtx_4080_optimized=True)
-
-# Command Pattern - 操作の実行
-from patterns import AudioProcessingPipeline, CommandInvoker
-pipeline = AudioProcessingPipeline()
-invoker = CommandInvoker()
-result = invoker.execute(pipeline, context)
-
-# Observer Pattern - 進捗監視
-from patterns import setup_standard_monitoring
-observable, observers = setup_standard_monitoring(transcriber)
-```
-
 ### プロジェクト構造
+
 ```
-transcribe_audio/
-├── 📄 README.md                 # このファイル
-├── 🔧 pyproject.toml            # プロジェクト設定・品質管理
-├── 📦 requirements-minimal.txt   # 最小依存関係
-├── 🚀 tc / transcribe           # 新しいCLIローダー
-├── 📄 exec.sh / exec_local.sh   # レガシー実行スクリプト
-├── 🎯 main_cli.py               # メインエントリーポイント
-├── 🧠 transcriber.py            # 音声認識コア
-├── 🎤 speaker_diarization.py    # 話者分離
-├── ⚠️ exceptions.py             # 統合例外処理
-├── 🏗️ patterns/                # OOP設計パターン
-├── 🧪 tests/                   # テストスイート（23個）
-├── 📚 docs/                    # ドキュメント
-├── ⚙️ config/                  # 設定ファイル
-├── 🤖 .github/workflows/       # CI/CD パイプライン
-└── 📋 scripts/                 # ユーティリティスクリプト
+tc/
+├── tc                          # メインCLIコマンド
+├── config/
+│   └── config.yaml            # 設定ファイル
+├── core/                      # コア機能
+│   ├── config.py              # 統一設定管理
+│   └── transcription_interface.py  # 文字起こしエンジン
+├── output/                    # 出力ファイル
+├── logs/                      # ログファイル
+├── .env                       # 環境変数
+└── credentials.json           # Google Drive認証
 ```
 
-## 📚 詳細ドキュメント
+### 主要機能
 
-- **[DEVELOPMENT.md](DEVELOPMENT.md)** - 開発者向けガイド
-- **[CHANGELOG.md](CHANGELOG.md)** - 変更履歴
-- **[docs/](docs/)** - 技術ドキュメント
-- **[patterns/README.md](patterns/README.md)** - OOP設計パターン詳細
+1. **統一設定管理** (`core/config.py`)
+   - YAML設定の読み込み
+   - 環境変数との統合
+   - デフォルト値の管理
 
-## 🤝 開発に参加
+2. **文字起こしエンジン** (`core/transcription_interface.py`)
+   - Whisperモデルの管理
+   - 音声前処理
+   - チャンク分割処理
+   - タイムスタンプ付与
 
-### 開発環境セットアップ
-```bash
-git clone https://github.com/yourusername/transcribe_audio.git
-cd transcribe_audio
-source venv-clean/bin/activate
-pip install -r requirements/base.txt
-pip install black flake8 isort mypy pytest
+3. **Google Drive連携** (`gdrive_handler.py`)
+   - ファイルダウンロード
+   - 結果アップロード
+   - 権限管理
+
+4. **CLIインターフェース** (`tc`)
+   - 引数解析
+   - 設定読み込み
+   - 進捗表示
+   - エラーハンドリング
+
+## 🎯 サポートモデル
+
+### 日本語特化モデル
+- **kotoba-tech/kotoba-whisper-v2.2** (推奨)
+- drewschaub/whisper-large-v3-japanese-4k-steps
+
+### 多言語モデル
+- openai/whisper-large-v3
+- openai/whisper-large-v2
+- openai/whisper-medium
+- openai/whisper-small
+
+## 📊 出力形式
+
+### 文字起こし結果
+
+```
+[00:00] やっぱりここから3秒
+[00:30] ハミルトンはセクター1最速これは速いですねここまでセクター2秒ぐらい返りますが
+[01:00] 1004秒
+[01:30] ごめん
+...
 ```
 
-### 開発フロー
-1. **ブランチ作成**: `git checkout -b feature/new-feature`
-2. **品質チェック**: `./scripts/pre_check.sh`
-3. **テスト実行**: `python -m pytest tests/ -v`
-4. **コミット**: 適切なコミットメッセージ
-5. **プルリクエスト**: CI/CDが自動実行
+### メタデータ
+- 処理時間
+- 使用モデル
+- 言語設定
+- 文字数統計
+- デバイス情報
 
-### コントリビューション
-- 🐛 [Issues](https://github.com/yourusername/transcribe_audio/issues) - バグ報告・機能要望
-- 🔀 [Pull Requests](https://github.com/yourusername/transcribe_audio/pulls) - コード貢献
-- 📝 [Discussions](https://github.com/yourusername/transcribe_audio/discussions) - 一般的な質問
-
-## 🆘 トラブルシューティング
+## 🔍 トラブルシューティング
 
 ### よくある問題
 
-**Q: `CUDA out of memory` エラー**
+#### 1. CUDA out of memory
 ```bash
-# GPU メモリ不足の場合
+# CPUモードで実行
 ./tc --device cpu
-# または chunk_size を小さく設定
 ```
 
-**Q: `ModuleNotFoundError: No module named 'pyannote'`**
+#### 2. Google Drive認証エラー
 ```bash
-# 話者分離用パッケージのインストール
-pip install pyannote.audio
-export HUGGINGFACE_TOKEN=hf_your_token
+# credentials.jsonの確認
+ls -la credentials.json
+
+# 権限の確認
+# Google Cloud Consoleでスコープを確認
 ```
 
-**Q: テストが失敗する**
+#### 3. Hugging Face認証エラー
 ```bash
-# 依存関係の再インストール
-pip install -r requirements/base.txt
-python -m pytest tests/test_basic.py -v
+# トークンの確認
+cat .env
+
+# 形式の確認（HUGGINGFACE_TOKEN=hf_xxx）
 ```
 
-### 詳細サポート
-- 📖 [トラブルシューティングガイド](docs/troubleshooting.md)
-- 💬 [GitHub Discussions](https://github.com/yourusername/transcribe_audio/discussions)
-- 📧 サポート: your.email@example.com
+### ログ確認
 
-## 📄 ライセンス
+```bash
+# 詳細ログの確認
+tail -f logs/transcribe.log
 
-MIT License - 詳細は [LICENSE](LICENSE) を参照
+# エラーログの検索
+grep -i error logs/transcribe.log
+```
 
-## 👏 謝辞
+## 🧪 開発・デバッグ
 
-- **OpenAI Whisper** - 音声認識技術
-- **pyannote.audio** - 話者分離技術
-- **Hugging Face** - モデルホスティング
-- **kotoba-tech** - 日本語特化Whisperモデル
+### デバッグツール
+
+```bash
+# Hugging Faceトークンテスト
+uv run python test_hf_token.py
+
+# kotoba-whisperモデル詳細確認
+uv run python debug_kotoba.py
+```
+
+### 依存関係管理
+
+```bash
+# パッケージの追加
+uv pip install package_name
+
+# 依存関係の同期
+uv sync
+
+# 要件ファイルの更新
+uv pip freeze > requirements.txt
+```
+
+## 📝 ライセンス
+
+MIT License
+
+## 🤝 コントリビューション
+
+1. このリポジトリをフォーク
+2. 機能ブランチを作成 (`git checkout -b feature/amazing-feature`)
+3. 変更をコミット (`git commit -m 'Add amazing feature'`)
+4. ブランチにプッシュ (`git push origin feature/amazing-feature`)
+5. プルリクエストを作成
+
+## 📞 サポート
+
+- Issues: [GitHub Issues](../../issues)
+- ドキュメント: `docs/` フォルダ内の各種ガイド
+- 設定ガイド: `CLAUDE.md` (べからず集)
+
+## 🔄 更新履歴
+
+### v2025.09.16 - シンプル化リリース
+- ✅ `./tc`ワンコマンド実行を実現
+- ✅ config.yamlから全設定を自動読み込み
+- ✅ .env自動読み込み機能追加
+- ✅ UI/UX大幅改善（絵文字・進捗表示）
+- ✅ kotoba-whisper-v2.2日本語特化モデル採用
+- ✅ Google Drive自動アップロード
+- ✅ uv パッケージマネージャー対応
+
+### v2025.07.29 - 統一システム
+- 🔧 コア機能の統一化
+- 📊 パフォーマンス監視機能
+- 🧪 包括的テストスイート
+- 📚 ドキュメント整備
 
 ---
 
-<div align="center">
-
-**🎉 高品質な音声文字起こしをお楽しみください！**
-
-[⭐ Star](https://github.com/yourusername/transcribe_audio) | [🍴 Fork](https://github.com/yourusername/transcribe_audio/fork) | [📥 Download](https://github.com/yourusername/transcribe_audio/archive/main.zip)
-
-</div>
+**🎙️ 簡単・高精度・日本語対応の音声文字起こしツール `tc`**

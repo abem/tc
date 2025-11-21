@@ -329,12 +329,22 @@ class WhisperTranscriptionEngine(TranscriptionEngine):
         # Resample to 16kHz if needed
         if sr != 16000:
             try:
-                import resampy
-                audio = resampy.resample(audio, sr, 16000)
-            except ImportError:
-                # Fallback: simple linear interpolation if resampy not available
-                import scipy.signal
-                audio = scipy.signal.resample(audio, int(len(audio) * 16000 / sr))
+                # Use librosa for stable resampling
+                import librosa
+                audio = librosa.resample(audio, orig_sr=sr, target_sr=16000)
+            except (ImportError, Exception) as e:
+                # Fallback: scipy resampling
+                try:
+                    import scipy.signal
+                    audio = scipy.signal.resample(audio, int(len(audio) * 16000 / sr))
+                except Exception:
+                    # Last resort: simple linear interpolation
+                    import numpy as np
+                    audio = np.interp(
+                        np.linspace(0, len(audio), int(len(audio) * 16000 / sr)),
+                        np.arange(len(audio)),
+                        audio
+                    )
             sr = 16000
         
         return audio, sr

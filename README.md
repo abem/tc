@@ -27,14 +27,62 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 git clone <repository-url>
 cd tc
 
+# 必要なパッケージのインストール
+uv pip install google-api-python-client google-auth google-auth-httplib2 google-auth-oauthlib
+uv pip install scipy librosa soundfile
+uv pip install transformers torch torchaudio
+
 # Hugging Faceトークンの設定
 echo "HUGGINGFACE_TOKEN=hf_your_token_here" > .env
-
-# Google Drive認証ファイルの配置
-# Google Cloud Consoleからcredentials.jsonを取得して配置
 ```
 
-### 2. 設定ファイル編集
+### 2. Google Drive認証設定
+
+#### credentials.jsonの取得
+
+1. **Google Cloud Consoleにアクセス**
+   ```
+   https://console.cloud.google.com/
+   ```
+
+2. **Google Drive APIを有効化**
+   - 「APIとサービス」→「ライブラリ」
+   - 「Google Drive API」を検索して有効化
+
+3. **OAuth 2.0クライアントIDの作成**
+   - 「APIとサービス」→「認証情報」
+   - 「認証情報を作成」→「OAuth クライアント ID」
+   - アプリケーションの種類: **「デスクトップアプリ」**
+   - 名前を入力（例: "TC Transcription App"）
+
+4. **credentials.jsonをダウンロード**
+   - 作成した認証情報の右側にある**ダウンロードアイコン**をクリック
+   - ダウンロードしたファイルを `credentials.json` にリネーム
+   - プロジェクトルート (`/path/to/tc/`) に配置
+
+5. **OAuth同意画面の設定**
+   ```
+   https://console.cloud.google.com/apis/credentials/consent
+   ```
+   - 公開ステータスを「本番環境」に設定
+   - または「テストユーザー」に自分のGmailアドレスを追加
+
+#### 初回認証（WSL/Linux環境）
+
+```bash
+# 初回実行時に認証URLが表示されます
+./tc
+
+# 1. 表示されたURLをブラウザ（Windows側）で開く
+# 2. Googleアカウントでログインして権限を許可
+# 3. ブラウザがlocalhost:8080にリダイレクトされる
+# 4. アドレスバーのURL全体をコピー（例: http://localhost:8080/?code=...）
+# 5. ターミナルに戻ってURLを貼り付けてEnter
+
+# 一度認証すると token.pickle が生成され、次回から自動認証されます
+```
+
+### 3. 設定ファイル編集
 
 `config/config.yaml`を編集して処理対象URLを設定：
 
@@ -48,7 +96,7 @@ whisper:
   device: cuda  # または cpu
 ```
 
-### 3. 実行
+### 4. 実行
 
 ```bash
 # シンプル実行（推奨）
@@ -217,27 +265,62 @@ tc/
 
 ### よくある問題
 
-#### 1. CUDA out of memory
+#### 1. Google Drive認証エラー（WSL環境）
+
+**エラー**: `could not locate runnable browser`
+
+**原因**: WSL環境ではブラウザを自動起動できません。
+
+**解決策**: 認証URLを手動でブラウザにコピーしてください。
+```bash
+# 実行すると認証URLが表示されます
+./tc
+
+# 表示されたURLをWindows側のブラウザで開いて認証
+# リダイレクトされたURLをターミナルに貼り付け
+```
+
+#### 2. OAuth 2.0認証エラー
+
+**エラー**: `Error 400: invalid_request` または `Missing required parameter: redirect_uri`
+
+**原因**: Google Cloud Consoleの設定が不足しています。
+
+**解決策**:
+1. OAuth同意画面を「本番環境」に設定
+   - https://console.cloud.google.com/apis/credentials/consent
+2. または「テストユーザー」に自分のメールアドレスを追加
+
+#### 3. numba初期化エラー
+
+**エラー**: `initialization of _internal failed without raising an exception`
+
+**原因**: `resampy`パッケージの依存関係の問題です。
+
+**解決策**: このエラーはv2025.11.21で修正済み（`librosa`に切り替え）
+```bash
+# 念のため必要なパッケージを再インストール
+uv pip install librosa soundfile scipy
+```
+
+#### 4. CUDA out of memory
 ```bash
 # CPUモードで実行
 ./tc --device cpu
 ```
 
-#### 2. Google Drive認証エラー
-```bash
-# credentials.jsonの確認
-ls -la credentials.json
-
-# 権限の確認
-# Google Cloud Consoleでスコープを確認
-```
-
-#### 3. Hugging Face認証エラー
+#### 5. Hugging Face認証エラー
 ```bash
 # トークンの確認
 cat .env
 
 # 形式の確認（HUGGINGFACE_TOKEN=hf_xxx）
+```
+
+#### 6. ModuleNotFoundError: No module named 'googleapiclient'
+```bash
+# Google API関連パッケージのインストール
+uv pip install google-api-python-client google-auth google-auth-httplib2 google-auth-oauthlib
 ```
 
 ### ログ確認
@@ -294,6 +377,25 @@ MIT License
 - 設定ガイド: `CLAUDE.md` (べからず集)
 
 ## 🔄 更新履歴
+
+### v2025.11.21 - WSL環境対応とOAuth認証改善
+- 🔧 **WSL環境での認証フロー改善**
+  - `OAUTHLIB_INSECURE_TRANSPORT`環境変数の設定
+  - 手動認証フロー（localhostリダイレクト対応）
+  - WSL環境でのブラウザ起動問題を解決
+- 🎯 **音声処理エンジンの安定化**
+  - `resampy`から`librosa`への切り替え
+  - `numba`初期化エラーを回避
+  - 音声リサンプリングのフォールバック機能強化
+- 📦 **依存関係の明確化**
+  - Google API関連パッケージの追加
+  - scipy、librosa、soundfileの明示的インストール
+  - インストール手順の詳細化
+- 📚 **ドキュメント大幅改善**
+  - Google Cloud Console設定手順の追加
+  - OAuth 2.0認証の詳細ガイド
+  - WSL特有の問題と解決策の追加
+  - トラブルシューティングの充実
 
 ### v2025.09.16 - シンプル化リリース
 - ✅ `./tc`ワンコマンド実行を実現

@@ -88,3 +88,24 @@ def build_output_file(output_dir: Path, diarization_enabled: bool = False) -> Pa
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     suffix = "_with_speakers" if diarization_enabled else ""
     return output_dir / f"{timestamp}_transcription{suffix}.txt"
+
+
+def upload_text_to_gdrive_sibling(file_path: Path, original_audio_source: str) -> Optional[str]:
+    """
+    Upload a local text file to the same Google Drive folder as original audio source.
+    Returns web URL when successful, otherwise None.
+    """
+    from gdrive_handler import GDriveHandler
+
+    original_audio_id = extract_gdrive_file_id(original_audio_source)
+    if not original_audio_id:
+        return None
+
+    handler = GDriveHandler()
+    parent_id = handler.get_parent_folder_id(original_audio_id)
+    uploaded_file_id = handler.upload_file(
+        str(file_path),
+        file_path.name,
+        parent_id=parent_id,
+    )
+    return handler.get_file_url(uploaded_file_id)

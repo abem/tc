@@ -31,7 +31,12 @@ from rich.console import Console
 from rich.prompt import Prompt, Confirm
 
 # プロジェクトモジュール
-from core.cli_common import build_output_file, detect_input_type, extract_gdrive_file_id, resolve_device
+from core.cli_common import (
+    build_output_file,
+    detect_input_type,
+    resolve_device,
+    upload_text_to_gdrive_sibling,
+)
 from core.config import UnifiedConfig, TranscriptionConfig, DiarizationConfig
 from core.transcription_interface import UnifiedTranscriber
 
@@ -249,40 +254,12 @@ class TranscribeLoader:
             elif input_info["type"] == "gdrive":
                 # Google Drive音声ファイルの場合、同じフォルダにアップロード
                 console.print("Google Driveにアップロード中...")
-                
-                # 既存のconfig.pyのget_drive_serviceを使用
-                from config import get_drive_service
-                service = get_drive_service()
-                
-                # 元の音声ファイルのIDを取得
-                original_file_id = extract_gdrive_file_id(input_info["url"])
-                if original_file_id:
-                    
-                    # 元ファイルの親フォルダIDを取得
-                    original_file = service.files().get(fileId=original_file_id, fields='parents').execute()
-                    parent_folder_id = original_file.get('parents', [None])[0]
-                    
-                    if parent_folder_id:
-                        # 同じフォルダにアップロード
-                        file_metadata = {
-                            'name': output_file.name,
-                            'parents': [parent_folder_id]
-                        }
-                        
-                        from googleapiclient.http import MediaFileUpload
-                        media = MediaFileUpload(str(output_file), mimetype='text/plain')
-                        
-                        file_result = service.files().create(
-                            body=file_metadata,
-                            media_body=media,
-                            fields='id, webViewLink'
-                        ).execute()
-                        
-                        full_url = file_result.get('webViewLink')
-                        console.print("Google Drive URL:")
-                        console.print(f"{full_url}")
-                    else:
-                        console.print("元ファイルの親フォルダが見つかりません")
+                full_url = upload_text_to_gdrive_sibling(output_file, input_info["url"])
+                if full_url:
+                    console.print("Google Drive URL:")
+                    console.print(f"{full_url}")
+                else:
+                    console.print("Google Driveアップロードに失敗")
                 
         except Exception as e:
             console.print(f"Google Driveアップロードエラー: {e}")

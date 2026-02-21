@@ -8,13 +8,11 @@ from pathlib import Path
 
 import suppress_warnings  # noqa: F401
 
-from core.cli_common import build_output_file, extract_gdrive_file_id, resolve_device, select_model
+from core.cli_common import build_output_file, resolve_device, select_model, upload_text_to_gdrive_sibling
 from core.config import DiarizationConfig, TranscriptionConfig, UnifiedConfig
 from core.logging_config import UnifiedLogger
 from core.transcription_interface import UnifiedTranscriber
 from scripts.core.audio_loader import AudioLoader
-from scripts.core.output_handler import OutputHandler
-from scripts.core.storage_handler import GDriveStorageHandler
 from youtube_gdrive_handler import YouTubeGDriveHandler
 from youtube_handler import YouTubeHandler, check_yt_dlp_installed, install_yt_dlp
 
@@ -73,11 +71,8 @@ def resolve_input_audio(audio_path: str, output_dir: Path, logger):
 
 def upload_for_gdrive_source(original_audio_url: str, output_file: Path, logger):
     try:
-        original_audio_id = extract_gdrive_file_id(original_audio_url)
-        output_handler = OutputHandler(storage_handler=GDriveStorageHandler())
-        upload_info = output_handler.upload(output_file, original_audio_gdrive_id=original_audio_id)
-        if upload_info:
-            url = upload_info.get("file_url", "URL取得失敗")
+        url = upload_text_to_gdrive_sibling(output_file, original_audio_url)
+        if url:
             logger.info(f"Google Driveアップロード完了: {url}")
             print(f"Google Driveにアップロードしました: {url}")
     except Exception as error:

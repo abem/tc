@@ -1,299 +1,172 @@
 #!/usr/bin/env -S uv run python3
-"""
-Transcribe CLI - シンプルな音声文字起こしツール
-config/config.yamlから設定を自動読み込み
-"""
+"""Transcribe CLI - config/config.yaml対応の音声文字起こしツール。"""
 
+import argparse
 import os
 import sys
-import argparse
-import logging
 import tempfile
-import yaml
 from pathlib import Path
-from typing import Optional, Dict, Any
-from datetime import datetime
+from typing import Any, Dict, Optional
 
-# .envファイルを読み込み
+import warnings
+import yaml
+
 try:
     from dotenv import load_dotenv
+
     load_dotenv()
 except ImportError:
-    pass  # python-dotenvがない場合はスキップ
+    pass
 
-# 警告を抑制
-import warnings
 warnings.filterwarnings("ignore", category=UserWarning, module="transformers")
 warnings.filterwarnings("ignore", category=FutureWarning, module="transformers")
 os.environ["TRANSFORMERS_VERBOSITY"] = "error"
 
-# プロジェクトルートをPATHに追加
 PROJECT_ROOT = Path(__file__).parent.absolute()
 sys.path.insert(0, str(PROJECT_ROOT))
 
-# 必要なモジュールをインポート
-from core.config import UnifiedConfig
-from core.transcription_interface import UnifiedTranscriber, TranscriptionConfig
+from core.cli_common import build_output_file, extract_gdrive_file_id, is_google_drive_url, resolve_device, update_whisper_config
+from core.config import TranscriptionConfig
+from core.transcription_interface import UnifiedTranscriber
 from gdrive_handler import GDriveHandler
 from logger import Logger
 
-# ロガー設定
 logger = Logger.get_logger(__name__)
 
+
 def load_config() -> Dict[str, Any]:
-    """config/config.yamlから設定を読み込み"""
     config_path = PROJECT_ROOT / "config" / "config.yaml"
     if not config_path.exists():
         logger.error(f"設定ファイルが見つかりません: {config_path}")
         sys.exit(1)
 
-    with open(config_path, 'r', encoding='utf-8') as f:
-        config = yaml.safe_load(f)
+    with open(config_path, "r", encoding="utf-8") as config_file:
+        config = yaml.safe_load(config_file)
 
     logger.info("設定ファイルを読み込みました")
     return config
 
-def extract_file_id(url: str) -> str:
-    """Google Drive URLからファイルIDを抽出"""
-    if '/file/d/' in url:
-        file_id = url.split('/file/d/')[1].split('/')[0]
-        return file_id
-    elif '/open?id=' in url:
-        file_id = url.split('/open?id=')[1].split('&')[0]
-        return file_id
-    else:
-        return url
 
 def download_from_gdrive(url: str) -> str:
-    """Google Driveからファイルをダウンロード"""
-    try:
-        handler = GDriveHandler()
-        file_id = extract_file_id(url)
+    handler = GDriveHandler()
+    file_id = extract_gdrive_file_id(url)
 
-        # 一時ファイルとしてダウンロード
-        with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as tmp_file:
-            tmp_path = tmp_file.name
+    with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as tmp_file:
+        tmp_path = tmp_file.name
 
-        logger.info(f"ファイルをダウンロード中: {file_id}")
-        handler.download_file(file_id, tmp_path)
-        logger.info(f"ダウンロード完了: {tmp_path}")
+    logger.info(f"ファイルをダウンロード中: {file_id}")
+    handler.download_file(file_id, tmp_path)
+    logger.info(f"ダウンロード完了: {tmp_path}")
+    return tmp_path
 
-        return tmp_path
-    except Exception as e:
-        logger.error(f"ダウンロードエラー: {e}")
-        raise
 
 def upload_to_gdrive(local_path: str, original_file_id: str) -> Optional[str]:
-    """結果をGoogle Driveにアップロード（元ファイルと同じフォルダ）"""
     try:
         handler = GDriveHandler()
-
-        # 元ファイルの親フォルダを取得
         parent_id = handler.get_parent_folder_id(original_file_id)
-
-        if parent_id:
-            logger.info(f"アップロード先フォルダID: {parent_id}")
-
-        # ファイル名を生成
-        filename = Path(local_path).name
-
-        # アップロード
-        file_id = handler.upload_file(local_path, filename, parent_id)
-
-        # URLを取得
-        url = handler.get_file_url(file_id)
-        logger.info(f"アップロード完了: {url}")
-
-        return url
-    except Exception as e:
-        logger.error(f"アップロードエラー: {e}")
+        file_id = handler.upload_file(local_path, Path(local_path).name, parent_id)
+        return handler.get_file_url(file_id)
+    except Exception as error:
+        logger.error(f"アップロードエラー: {error}")
         return None
 
+
 def transcribe_audio(audio_path: str, config: Dict[str, Any]) -> str:
-    """音声ファイルを文字起こし"""
-    # Whisper設定を取得
-    whisper_config = config.get('whisper', {})
+    whisper_config = config.get("whisper", {})
+    device = resolve_device(whisper_config.get("device", "cuda"))
 
-    # 言語とモデルを決定
-    language = whisper_config.get('language', 'ja')
-    model = whisper_config.get('model', 'kotoba-tech/kotoba-whisper-v2.2')
-    device = whisper_config.get('device', 'cuda')
-
-    # デバイスの自動選択
-    if device == 'auto':
-        import torch
-        device = 'cuda' if torch.cuda.is_available() else 'cpu'
-        logger.info(f"デバイス自動選択: {device}")
-
-    # TranscriptionConfigを作成
     transcription_config = TranscriptionConfig(
-        model=model,
-        language=language,
+        model=whisper_config.get("model", "kotoba-tech/kotoba-whisper-v2.2"),
+        language=whisper_config.get("language", "ja"),
         device=device,
-        beam_size=whisper_config.get('beam_size', 5),
-        best_of=whisper_config.get('best_of', 3),
-        temperature=whisper_config.get('temperature', 0.1)
+        beam_size=whisper_config.get("beam_size", 5),
+        best_of=whisper_config.get("best_of", 3),
+        temperature=whisper_config.get("temperature", 0.1),
     )
 
-    # 文字起こし実行
-    logger.info(f"文字起こし開始: モデル={model}, 言語={language}, デバイス={device}")
+    logger.info(
+        "文字起こし開始: モデル=%s, 言語=%s, デバイス=%s",
+        transcription_config.model,
+        transcription_config.language,
+        transcription_config.device,
+    )
+
     transcriber = UnifiedTranscriber(transcription_config)
-
-    def progress_callback(message):
-        print(message)
-
-    result = transcriber.transcribe(audio_path, progress_callback=progress_callback)
+    result = transcriber.transcribe(audio_path, progress_callback=lambda message: print(message))
 
     logger.info(f"文字起こし完了: {len(result.text)}文字")
     return result.text
 
+
 def save_result(text: str, output_dir: str = "output") -> str:
-    """結果をファイルに保存"""
-    # 出力ディレクトリを作成
-    os.makedirs(output_dir, exist_ok=True)
+    output_path = build_output_file(Path(output_dir))
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text(text, encoding="utf-8")
+    logger.info(f"結果を保存: {output_path}")
+    return str(output_path)
 
-    # タイムスタンプ付きファイル名
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    filename = f"{timestamp}_transcription.txt"
-    filepath = os.path.join(output_dir, filename)
 
-    # ファイルに保存
-    with open(filepath, 'w', encoding='utf-8') as f:
-        f.write(text)
-
-    logger.info(f"結果を保存: {filepath}")
-    return filepath
-
-def main():
-    """メイン処理"""
+def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="音声文字起こしツール - Google DriveのURLまたはローカルファイルを文字起こし",
         formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="""
-使用例:
-  # config.yamlのURLを使用（引数なし）
-  ./tc
-
-  # Google Drive URLを指定
-  ./tc https://drive.google.com/file/d/xxx/view
-
-  # ローカルファイルを指定
-  ./tc audio.mp3
-
-  # 出力ディレクトリを指定
-  ./tc --output-dir results audio.mp3
-        """
     )
+    parser.add_argument("input", nargs="?", help="Google Drive URLまたはローカルファイルパス（省略時はconfig.yamlのURLを使用）")
+    parser.add_argument("--output-dir", default="output", help="出力ディレクトリ（デフォルト: output）")
+    parser.add_argument("--no-upload", action="store_true", help="Google Driveへのアップロードをスキップ")
+    parser.add_argument("--model", help="使用するモデル（config.yamlの設定を上書き）")
+    parser.add_argument("--language", help="言語コード（config.yamlの設定を上書き）")
+    parser.add_argument("--device", choices=["cuda", "cpu", "auto"], help="使用するデバイス（config.yamlの設定を上書き）")
+    return parser
 
-    parser.add_argument(
-        'input',
-        nargs='?',
-        help='Google Drive URLまたはローカルファイルパス（省略時はconfig.yamlのURLを使用）'
-    )
 
-    parser.add_argument(
-        '--output-dir',
-        default='output',
-        help='出力ディレクトリ（デフォルト: output）'
-    )
+def main():
+    args = build_parser().parse_args()
 
-    parser.add_argument(
-        '--no-upload',
-        action='store_true',
-        help='Google Driveへのアップロードをスキップ'
-    )
-
-    parser.add_argument(
-        '--model',
-        help='使用するモデル（config.yamlの設定を上書き）'
-    )
-
-    parser.add_argument(
-        '--language',
-        help='言語コード（ja/en等、config.yamlの設定を上書き）'
-    )
-
-    parser.add_argument(
-        '--device',
-        choices=['cuda', 'cpu', 'auto'],
-        help='使用するデバイス（config.yamlの設定を上書き）'
-    )
-
-    args = parser.parse_args()
-
-    # 設定を読み込み
     config = load_config()
+    config = update_whisper_config(config, model=args.model, language=args.language, device=args.device)
 
-    # コマンドライン引数で設定を上書き
-    if args.model:
-        config['whisper']['model'] = args.model
-    if args.language:
-        config['whisper']['language'] = args.language
-    if args.device:
-        config['whisper']['device'] = args.device
+    input_source = args.input or config.get("gdrive", {}).get("url")
+    if not input_source:
+        print("config.yamlにGDriveのURLが設定されていません")
+        sys.exit(1)
 
-    # 入力ソースを決定
-    if args.input:
-        input_source = args.input
-    else:
-        # config.yamlからURLを取得
-        input_source = config.get('gdrive', {}).get('url')
-        if not input_source:
-            print("❌ config.yamlにGDriveのURLが設定されていません")
-            sys.exit(1)
-        print(f"📁 config.yamlのURLを使用: {input_source}")
-
-    # Google Drive URLかローカルファイルかを判定
-    is_gdrive = 'drive.google.com' in input_source or 'docs.google.com' in input_source
-    original_file_id = None
+    is_gdrive_source = is_google_drive_url(input_source)
+    original_file_id = extract_gdrive_file_id(input_source) if is_gdrive_source else None
     temp_file = None
 
     try:
-        if is_gdrive:
-            # Google Driveからダウンロード
-            logger.info("Google Drive URLを検出")
-            original_file_id = extract_file_id(input_source)
+        if is_gdrive_source:
             audio_path = download_from_gdrive(input_source)
             temp_file = audio_path
         else:
-            # ローカルファイル
             audio_path = input_source
             if not os.path.exists(audio_path):
                 logger.error(f"ファイルが見つかりません: {audio_path}")
                 sys.exit(1)
 
-        # 文字起こし実行
-        print("\n🎵 文字起こし開始...")
         transcribed_text = transcribe_audio(audio_path, config)
-
-        # 結果を保存
         output_path = save_result(transcribed_text, args.output_dir)
-        print(f"\n✅ 文字起こし完了: {output_path}")
+        print(f"文字起こし完了: {output_path}")
 
-        # Google Driveにアップロード（元がDriveの場合のみ）
-        if is_gdrive and original_file_id and not args.no_upload:
-            print("\n☁️ Google Driveへアップロード中...")
+        if is_gdrive_source and original_file_id and not args.no_upload:
             upload_url = upload_to_gdrive(output_path, original_file_id)
             if upload_url:
-                print(f"✅ アップロード完了: {upload_url}")
+                print(f"アップロード完了: {upload_url}")
             else:
-                print("⚠️ アップロードに失敗しました")
+                print("アップロードに失敗しました")
 
-        # 結果の一部を表示
-        print(f"\n📝 文字起こし結果（最初の500文字）:")
-        print("-" * 50)
-        print(transcribed_text[:500])
+        preview = transcribed_text[:500]
+        print("\n文字起こし結果（最初の500文字）:")
+        print(preview)
         if len(transcribed_text) > 500:
             print(f"... (全{len(transcribed_text)}文字)")
-        print("-" * 50)
 
     finally:
-        # 一時ファイルを削除
         if temp_file and os.path.exists(temp_file):
             os.remove(temp_file)
             logger.info(f"一時ファイルを削除: {temp_file}")
 
-    print("\n✨ 処理完了!")
 
 if __name__ == "__main__":
     main()

@@ -3,18 +3,15 @@
 Transcribe Audio - モダンなCLI音声文字起こしツール
 """
 
-import sys
-import os
-import re
 import argparse
+import logging
+import os
+import sys
 from pathlib import Path
-from typing import Optional, Dict, Any
-from datetime import datetime
+from typing import Any, Dict
 
 # 警告を抑制
 import warnings
-import logging
-import os
 
 # 環境変数で警告を抑制
 os.environ["TRANSFORMERS_VERBOSITY"] = "error"
@@ -31,24 +28,17 @@ logging.getLogger("googleapiclient.discovery_cache").setLevel(logging.ERROR)
 
 # Rich UI
 from rich.console import Console
-from rich.panel import Panel
-from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TimeRemainingColumn
-from rich.table import Table
 from rich.prompt import Prompt, Confirm
-from rich import print as rprint
-from rich.text import Text
 
 # プロジェクトモジュール
+from core.cli_common import build_output_file, detect_input_type, extract_gdrive_file_id, resolve_device
 from core.config import UnifiedConfig, TranscriptionConfig, DiarizationConfig
-from core.logging_config import UnifiedLogger
 from core.transcription_interface import UnifiedTranscriber
 
 # 音声処理
 from youtube_handler import YouTubeHandler, check_yt_dlp_installed, install_yt_dlp
 from youtube_gdrive_handler import YouTubeGDriveHandler
 from scripts.core.audio_loader import AudioLoader
-from scripts.core.storage_handler import GDriveStorageHandler
-from scripts.core.output_handler import OutputHandler
 
 console = Console(width=200, soft_wrap=True)
 
@@ -65,28 +55,19 @@ class TranscribeLoader:
     
     def detect_input_type(self, input_path: str) -> Dict[str, Any]:
         """入力タイプを自動検出"""
-        # YouTube URL
-        if re.match(r'https?://(?:www\.)?youtube\.com/watch', input_path) or \
-           re.match(r'https?://youtu\.be/', input_path):
-            return {"type": "youtube", "url": input_path}
-        
-        # Google Drive URL
-        if re.match(r'https://drive\.google\.com/', input_path):
-            return {"type": "gdrive", "url": input_path}
-        
-        # ローカルファイル
-        if Path(input_path).exists():
-            return {"type": "local", "path": input_path}
-        
-        # URL形式でない場合は、ファイルとして扱う
-        return {"type": "unknown", "input": input_path}
+        detected = detect_input_type(input_path)
+        input_type = detected["type"]
+        source = detected["source"]
+
+        if input_type in {"youtube", "gdrive"}:
+            return {"type": input_type, "url": source}
+        if input_type == "local":
+            return {"type": input_type, "path": source}
+        return {"type": "unknown", "input": source}
     
     def select_profile(self) -> Dict[str, Any]:
         """プロファイル選択"""
-        import torch
-        
-        # デバイス自動検出
-        device = "cuda" if torch.cuda.is_available() else "cpu"
+        device = resolve_device("auto")
         
         profiles = {
             "1": {
@@ -210,7 +191,7 @@ class TranscribeLoader:
             transcription_config = TranscriptionConfig(
                 model=settings["model"],
                 language=settings["language"],
-                device=settings["device"],
+                device=resolve_device(settings["device"]),
                 show_progress=True  # 元のプログレスバーを使用
             )
             
@@ -240,9 +221,7 @@ class TranscribeLoader:
     
     def save_results(self, result, input_info, settings, metadata=None):
         """結果保存"""
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        suffix = "_with_speakers" if settings.get("diarization") else ""
-        output_file = Path("output") / f"{timestamp}_transcription{suffix}.txt"
+        output_file = build_output_file(Path("output"), diarization_enabled=settings.get("diarization", False))
         
         output_file.parent.mkdir(parents=True, exist_ok=True)
         
@@ -276,10 +255,8 @@ class TranscribeLoader:
                 service = get_drive_service()
                 
                 # 元の音声ファイルのIDを取得
-                import re
-                match = re.search(r'/file/d/([a-zA-Z0-9_-]+)', input_info["url"])
-                if match:
-                    original_file_id = match.group(1)
+                original_file_id = extract_gdrive_file_id(input_info["url"])
+                if original_file_id:
                     
                     # 元ファイルの親フォルダIDを取得
                     original_file = service.files().get(fileId=original_file_id, fields='parents').execute()
@@ -306,9 +283,7 @@ class TranscribeLoader:
                         console.print(f"{full_url}")
                     else:
                         console.print("元ファイルの親フォルダが見つかりません")
-                else:
-                    console.print("Google Drive URLの形式が不正です")
-                    
+                
         except Exception as e:
             console.print(f"Google Driveアップロードエラー: {e}")
     

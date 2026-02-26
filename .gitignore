@@ -133,6 +133,8 @@ mcp.log
 playwright_mcp_*.md
 experimental_*
 test_*
+!tests/
+!tests/**
 *_test.py
 quick_*.py
 snapshots/

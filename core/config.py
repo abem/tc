@@ -5,9 +5,16 @@ Consolidates all configuration classes into a single, authoritative source.
 
 from dataclasses import dataclass, field
 from typing import Optional, Callable, Dict, Any, List
-import torch
 import yaml
 from pathlib import Path
+
+
+def _cuda_is_available() -> bool:
+    try:
+        import torch
+    except ImportError:
+        return False
+    return torch.cuda.is_available()
 
 
 @dataclass
@@ -17,7 +24,7 @@ class TranscriptionConfig:
     # Core model settings
     model: str = "large-v3"
     language: str = "ja"
-    device: str = field(default_factory=lambda: "cuda" if torch.cuda.is_available() else "cpu")
+    device: str = field(default_factory=lambda: "cuda" if _cuda_is_available() else "cpu")
     compute_type: str = "float16"
     
     # Processing settings
@@ -111,7 +118,7 @@ class DiarizationConfig:
     
     # Model settings
     model_name: str = "pyannote/speaker-diarization-3.1"
-    device: str = field(default_factory=lambda: "cuda" if torch.cuda.is_available() else "cpu")
+    device: str = field(default_factory=lambda: "cuda" if _cuda_is_available() else "cpu")
     
     # Processing settings
     chunk_length_s: float = 30.0

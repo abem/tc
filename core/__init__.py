@@ -17,20 +17,38 @@ from .logging_config import (
     get_logger
 )
 
-from .model_manager import (
-    UnifiedModelManager,
-    get_global_model_manager,
-    configure_model_manager
-)
+_model_manager_available = False
+_transcription_available = False
 
-from .transcription_interface import (
-    UnifiedTranscriber,
-    TranscriptionResult,
-    TranscriptionSegment,
-    create_transcriber,
-    create_japanese_transcriber,
-    create_english_transcriber
-)
+try:
+    from .model_manager import (
+        UnifiedModelManager,
+        get_global_model_manager,
+        configure_model_manager
+    )
+    _model_manager_available = True
+except ImportError:
+    UnifiedModelManager = None
+    get_global_model_manager = None
+    configure_model_manager = None
+
+try:
+    from .transcription_interface import (
+        UnifiedTranscriber,
+        TranscriptionResult,
+        TranscriptionSegment,
+        create_transcriber,
+        create_japanese_transcriber,
+        create_english_transcriber
+    )
+    _transcription_available = True
+except ImportError:
+    UnifiedTranscriber = None
+    TranscriptionResult = None
+    TranscriptionSegment = None
+    create_transcriber = None
+    create_japanese_transcriber = None
+    create_english_transcriber = None
 
 __version__ = "2025.07.29-unified"
 __all__ = [
@@ -45,12 +63,12 @@ __all__ = [
     "PerformanceLogger", 
     "get_logger",
     
-    # Model Management
+    # Model Management (optional)
     "UnifiedModelManager",
     "get_global_model_manager",
     "configure_model_manager",
     
-    # Transcription
+    # Transcription (optional)
     "UnifiedTranscriber",
     "TranscriptionResult",
     "TranscriptionSegment",
@@ -70,3 +88,7 @@ UnifiedLogger.configure(
 # Get logger for this module  
 logger = UnifiedLogger.get_logger(__name__)
 logger.info(f"Core unified modules initialized (v{__version__})")
+if not _model_manager_available:
+    logger.info("Model manager modules not available (missing optional dependencies).")
+if not _transcription_available:
+    logger.info("Transcription modules not available (missing optional dependencies).")

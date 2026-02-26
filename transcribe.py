@@ -35,15 +35,10 @@ from core.cli_common import (
     build_output_file,
     detect_input_type,
     resolve_device,
-    upload_text_to_gdrive_sibling,
 )
+from core.cli_workflow import resolve_input_audio, upload_transcription_result
 from core.config import UnifiedConfig, TranscriptionConfig, DiarizationConfig
 from core.transcription_interface import UnifiedTranscriber
-
-# 音声処理
-from youtube_handler import YouTubeHandler, check_yt_dlp_installed, install_yt_dlp
-from youtube_gdrive_handler import YouTubeGDriveHandler
-from scripts.core.audio_loader import AudioLoader
 
 console = Console(width=200, soft_wrap=True)
 
@@ -64,11 +59,7 @@ class TranscribeLoader:
         input_type = detected["type"]
         source = detected["source"]
 
-        if input_type in {"youtube", "gdrive"}:
-            return {"type": input_type, "url": source}
-        if input_type == "local":
-            return {"type": input_type, "path": source}
-        return {"type": "unknown", "input": source}
+        return {"type": input_type, "source": source}
     
     def select_profile(self) -> Dict[str, Any]:
         """プロファイル選択"""
@@ -161,36 +152,17 @@ class TranscribeLoader:
     def process_with_progress(self, input_info: Dict[str, Any], settings: Dict[str, Any]):
         """シンプルな処理"""
         try:
-            # YouTube処理
-            if input_info["type"] == "youtube":
-                console.print("YouTube音声ダウンロード中...")
-                
-                # yt-dlpチェック
-                if not check_yt_dlp_installed():
-                    console.print("yt-dlpをインストール中...")
-                    install_yt_dlp()
-                
-                # ダウンロード
-                youtube_handler = YouTubeHandler(output_dir="output")
-                local_audio_path, metadata = youtube_handler.download_audio(input_info["url"])
-                
-                console.print(f"ダウンロード完了: {metadata.get('title', 'unknown')}")
-                is_temp_file = True
-            
-            # Google Drive処理
-            elif input_info["type"] == "gdrive":
-                console.print("Google Driveからダウンロード中...")
-                audio_loader = AudioLoader()
-                local_audio_path = str(audio_loader.load(input_info["url"]))
-                is_temp_file = False
-                metadata = None
+            resolution = resolve_input_audio(
+                input_info["source"],
+                Path("output"),
+                ensure_yt_dlp=True,
+                on_status=console.print,
+            )
+
+            if resolution.source_type == "youtube" and resolution.metadata:
+                console.print(f"ダウンロード完了: {resolution.metadata.get('title', 'unknown')}")
+            elif resolution.source_type == "gdrive":
                 console.print("ダウンロード完了")
-            
-            # ローカルファイル
-            else:
-                local_audio_path = input_info.get("path", input_info.get("input"))
-                is_temp_file = False
-                metadata = None
             
             # 文字起こし設定
             transcription_config = TranscriptionConfig(
@@ -211,20 +183,20 @@ class TranscribeLoader:
             console.print("音声文字起こし実行中...")
             transcriber = UnifiedTranscriber(transcription_config, diarization_config)
             
-            result = transcriber.transcribe(local_audio_path)
+            result = transcriber.transcribe(resolution.local_audio_path)
             
             # 結果保存
-            self.save_results(result, input_info, settings, metadata)
+            self.save_results(result, resolution, settings)
             
             # クリーンアップ
-            if is_temp_file and input_info["type"] == "youtube":
-                youtube_handler.cleanup_temp_file(local_audio_path)
+            if resolution.is_temp_file and resolution.youtube_handler:
+                resolution.youtube_handler.cleanup_temp_file(resolution.local_audio_path)
             
         except Exception as e:
             console.print(f"エラー: {str(e)}")
             raise
     
-    def save_results(self, result, input_info, settings, metadata=None):
+    def save_results(self, result, resolution, settings):
         """結果保存"""
         output_file = build_output_file(Path("output"), diarization_enabled=settings.get("diarization", False))
         
@@ -239,22 +211,14 @@ class TranscribeLoader:
         
         # Google Driveアップロード
         try:
-            if input_info["type"] == "youtube" and metadata:
+            if resolution.source_type in {"youtube", "gdrive"}:
                 console.print("Google Driveにアップロード中...")
-                gdrive_handler = YouTubeGDriveHandler()
-                upload_result = gdrive_handler.upload_transcription_result(str(output_file), metadata)
-                
-                if upload_result:
-                    full_url = upload_result['file_url']
-                    console.print("Google Drive URL:")
-                    console.print(f"{full_url}")
-                else:
-                    console.print("Google Driveアップロードに失敗")
-            
-            elif input_info["type"] == "gdrive":
-                # Google Drive音声ファイルの場合、同じフォルダにアップロード
-                console.print("Google Driveにアップロード中...")
-                full_url = upload_text_to_gdrive_sibling(output_file, input_info["url"])
+                full_url = upload_transcription_result(
+                    source_type=resolution.source_type,
+                    original_source=resolution.original_source,
+                    output_file=output_file,
+                    metadata=resolution.metadata,
+                )
                 if full_url:
                     console.print("Google Drive URL:")
                     console.print(f"{full_url}")

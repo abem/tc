@@ -335,6 +335,26 @@ grep -i error logs/transcribe.log
 
 ## 🧪 開発・デバッグ
 
+## 🧪 E2Eテスト
+
+### ローカルE2E（推奨）
+
+ドライラン（依存最小で入口確認）:
+```bash
+./scripts/e2e_local.sh
+```
+
+フル実行（モデルがキャッシュ済みの場合）:
+```bash
+E2E_MODE=full ./scripts/e2e_local.sh
+```
+
+### pytestでドライラン確認
+
+```bash
+python -m pytest tests/test_e2e_dry_run.py -v
+```
+
 ### デバッグツール
 
 ```bash

@@ -2,19 +2,15 @@
 """音声文字起こしシステムのメインCLI。"""
 
 import argparse
-import re
 import sys
 from pathlib import Path
 
 import suppress_warnings  # noqa: F401
 
-from core.cli_common import build_output_file, resolve_device, select_model, upload_text_to_gdrive_sibling
+from core.cli_common import build_output_file, resolve_device, select_model
 from core.config import DiarizationConfig, TranscriptionConfig, UnifiedConfig
 from core.logging_config import UnifiedLogger
-from core.transcription_interface import UnifiedTranscriber
-from scripts.core.audio_loader import AudioLoader
-from youtube_gdrive_handler import YouTubeGDriveHandler
-from youtube_handler import YouTubeHandler, check_yt_dlp_installed, install_yt_dlp
+from core.cli_workflow import resolve_input_audio, upload_transcription_result
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -32,6 +28,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--timestamp-format", default="elapsed", choices=["elapsed", "absolute", "relative"], help="タイムスタンプフォーマット")
     parser.add_argument("--enable-diarization", action="store_true", help="話者分離機能を有効化")
     parser.add_argument("--max-speakers", type=int, help="最大話者数（話者分離有効時）")
+    parser.add_argument("--dry-run", action="store_true", help="入力解決と出力パス確認のみ実行")
     return parser
 
 
@@ -42,55 +39,6 @@ def configure_logging(log_level: str):
         log_format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     )
     return UnifiedLogger.get_logger(__name__)
-
-
-def resolve_input_audio(audio_path: str, output_dir: Path, logger):
-    youtube_handler = YouTubeHandler(output_dir=str(output_dir))
-
-    if youtube_handler.is_youtube_url(audio_path):
-        logger.info("YouTube URLを検出")
-        if not check_yt_dlp_installed():
-            logger.warning("yt-dlpがインストールされていないためインストールを試行します")
-            install_yt_dlp()
-
-        local_audio_path, metadata = youtube_handler.download_audio(audio_path)
-        logger.info(f"音声抽出完了: {local_audio_path}")
-        print(f"\n動画タイトル: {metadata.get('title', 'unknown')}")
-        print(f"チャンネル: {metadata.get('channel', 'unknown')}")
-        print(f"動画時間: {metadata.get('duration', 0)}秒\n")
-        return local_audio_path, True, metadata, youtube_handler
-
-    if re.match(r"^https://drive\.google\.com/", audio_path):
-        logger.info("Google Drive URLを検出、ダウンロードを開始")
-        local_audio_path = str(AudioLoader().load(audio_path))
-        logger.info(f"ダウンロード完了: {local_audio_path}")
-        return local_audio_path, False, None, youtube_handler
-
-    return audio_path, False, None, youtube_handler
-
-
-def upload_for_gdrive_source(original_audio_url: str, output_file: Path, logger):
-    try:
-        url = upload_text_to_gdrive_sibling(output_file, original_audio_url)
-        if url:
-            logger.info(f"Google Driveアップロード完了: {url}")
-            print(f"Google Driveにアップロードしました: {url}")
-    except Exception as error:
-        logger.warning(f"Google Driveアップロードに失敗: {error}")
-        print("注意: Google Driveアップロードに失敗しましたが、ローカルファイルは保存されました")
-
-
-def upload_for_youtube_source(metadata: dict, output_file: Path, logger):
-    try:
-        gdrive_handler = YouTubeGDriveHandler()
-        upload_result = gdrive_handler.upload_transcription_result(str(output_file), metadata)
-        if upload_result:
-            logger.info("YouTube結果のGoogle Driveアップロード完了")
-            print("\nGoogle Driveにアップロードしました")
-            print(f"URL: {upload_result['file_url']}")
-    except Exception as error:
-        logger.warning(f"YouTube結果のGoogle Driveアップロード失敗: {error}")
-        print("注意: Google Driveアップロードに失敗しましたが、ローカルファイルは保存されました")
 
 
 def main():
@@ -122,30 +70,58 @@ def main():
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    local_audio_path = None
-    is_temp_file = False
-    metadata = None
-    youtube_handler = None
+    resolution = None
 
     try:
         logger.info(f"文字起こし開始: {args.audio_path}")
-        local_audio_path, is_temp_file, metadata, youtube_handler = resolve_input_audio(args.audio_path, output_dir, logger)
+        resolution = resolve_input_audio(
+            args.audio_path,
+            output_dir,
+            ensure_yt_dlp=True,
+            on_status=logger.info,
+        )
 
-        transcriber = UnifiedTranscriber(transcription_config, diarization_config)
-        transcription_result = transcriber.transcribe(local_audio_path, progress_callback=lambda msg: print(msg))
+        if resolution.source_type == "youtube" and resolution.metadata:
+            print(f"\n動画タイトル: {resolution.metadata.get('title', 'unknown')}")
+            print(f"チャンネル: {resolution.metadata.get('channel', 'unknown')}")
+            print(f"動画時間: {resolution.metadata.get('duration', 0)}秒\n")
 
         output_file = build_output_file(output_dir, diarization_enabled=args.enable_diarization)
+
+        if args.dry_run:
+            logger.info("ドライラン: 入力解決と出力パスのみ確認")
+            print(f"ドライラン: 入力={resolution.local_audio_path}")
+            print(f"ドライラン: 出力先={output_file}")
+            return
+
+        from core.transcription_interface import UnifiedTranscriber
+
+        transcriber = UnifiedTranscriber(transcription_config, diarization_config)
+        transcription_result = transcriber.transcribe(
+            resolution.local_audio_path,
+            progress_callback=lambda msg: print(msg),
+        )
+
         output_file.write_text(transcription_result.text, encoding="utf-8")
 
         logger.info(f"文字起こし完了: {output_file}")
         print(f"文字起こし結果を保存しました: {output_file}")
 
-        if re.match(r"^https://drive\.google\.com/", args.audio_path):
-            upload_for_gdrive_source(args.audio_path, output_file, logger)
-
-        if metadata and youtube_handler and youtube_handler.is_youtube_url(args.audio_path):
-            metadata["audio_file_path"] = local_audio_path
-            upload_for_youtube_source(metadata, output_file, logger)
+        try:
+            if resolution.metadata and resolution.source_type == "youtube":
+                resolution.metadata["audio_file_path"] = resolution.local_audio_path
+            url = upload_transcription_result(
+                source_type=resolution.source_type,
+                original_source=resolution.original_source,
+                output_file=output_file,
+                metadata=resolution.metadata,
+            )
+            if url:
+                logger.info(f"Google Driveアップロード完了: {url}")
+                print(f"Google Driveにアップロードしました: {url}")
+        except Exception as error:
+            logger.warning(f"Google Driveアップロードに失敗: {error}")
+            print("注意: Google Driveアップロードに失敗しましたが、ローカルファイルは保存されました")
 
     except Exception as error:
         logger.error(f"文字起こし処理中にエラーが発生しました: {error}")
@@ -153,9 +129,9 @@ def main():
         sys.exit(1)
 
     finally:
-        if is_temp_file and local_audio_path and youtube_handler:
+        if resolution and resolution.is_temp_file and resolution.local_audio_path and resolution.youtube_handler:
             try:
-                youtube_handler.cleanup_temp_file(local_audio_path)
+                resolution.youtube_handler.cleanup_temp_file(resolution.local_audio_path)
             except Exception as cleanup_error:
                 logger.warning(f"一時ファイルのクリーンアップに失敗: {cleanup_error}")
 

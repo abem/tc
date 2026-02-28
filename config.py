@@ -61,7 +61,7 @@ def get_drive_service(credentials_path: str = "credentials.json", token_path: st
                 print("\n【重要】まず以下の設定を確認してください：")
                 print("1. https://console.cloud.google.com/apis/credentials/consent を開く")
                 print("2. 公開ステータスが「テスト」の場合:")
-                print("   → 「テストユーザー」に your-email@gmail.com を追加")
+                print("   → 「テストユーザー」に自分のGmailアドレスを追加")
                 print("   または「本番環境に公開」をクリック")
                 print("\n設定完了後、以下のURLをブラウザで開いて認証してください：")
                 print(f"\n{auth_url}\n")

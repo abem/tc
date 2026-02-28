@@ -10,13 +10,13 @@ from google.auth.transport.requests import Request
 from googleapiclient.discovery import build
 import pickle
 import yaml
-from logger import Logger
+from core.logging import get_logger
 
 # ローカル開発環境でのHTTP使用を許可（localhostのみ）
 os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1'
 
 # ロガーの設定
-logger = Logger.get_logger(__name__)
+logger = get_logger(__name__)
 
 def get_drive_service(credentials_path: str = "credentials.json", token_path: str = "token.pickle") -> Any:
     """Google Drive APIのサービスを取得"""

@@ -80,12 +80,16 @@ for segment in result["segments"]:
     print(f"[{segment['start']:.2f}s] {segment['text']}")
 ```
 
-### WhisperTranscriber
+### WhisperTranscriber（廃止済み）
 
-Whisperモデルベースの音声認識エンジン。
+**注意**: `WhisperTranscriber`は削除されました。代わりに`UnifiedTranscriber`を使用してください。
 
 ```python
-from transcriber import WhisperTranscriber
+# 旧（廃止）
+# from transcriber import WhisperTranscriber
+
+# 新（推奨）
+from core.transcription_interface import UnifiedTranscriber
 from core.config import TranscriptionConfig
 
 config = TranscriptionConfig(
@@ -94,7 +98,7 @@ config = TranscriptionConfig(
     device="cuda"
 )
 
-transcriber = WhisperTranscriber(config)
+transcriber = UnifiedTranscriber(config)
 ```
 
 #### メソッド
@@ -263,51 +267,64 @@ config = TranscriptionConfig(
 ### Google Drive連携
 
 ```python
-from gdrive_handler import GoogleDriveHandler
+from handlers import GDriveClient
 
-handler = GoogleDriveHandler()
+client = GDriveClient()
 
 # ファイルのダウンロード
-local_path = handler.download_from_drive("drive_url")
+client.download_file("file_id", "output_path")
 
 # 結果のアップロード
-handler.upload_to_drive("result.txt", "folder_id")
+file_id = client.upload_file("result.txt", "result.txt", "parent_folder_id")
+
+# URLの取得
+url = client.get_file_url(file_id)
 ```
 
 ### YouTube連携
 
 ```python
-from youtube_handler import YouTubeHandler
+from handlers import YouTubeClient
 
-handler = YouTubeHandler()
+client = YouTubeClient()
 
 # 音声の抽出
-audio_path = handler.extract_audio("https://youtube.com/watch?v=...")
+audio_path, metadata = client.download_audio("https://youtube.com/watch?v=...")
 ```
 
 ## エラーハンドリング
 
-### 例外クラス
+### 例外クラス（handlers）
 
 ```python
-from exceptions import (
-    AudioProcessingError,
-    ModelLoadError,
-    ValidationError,
-    DiarizationError
-)
+from handlers import DriveError, UploadError, DownloadError
 
 try:
-    result = transcriber.transcribe("audio.wav")
-except AudioProcessingError as e:
-    print(f"音声処理エラー: {e}")
-except ModelLoadError as e:
-    print(f"モデル読み込みエラー: {e}")
-except ValidationError as e:
-    print(f"入力検証エラー: {e}")
+    client = GDriveClient()
+    client.download_file(file_id, output_path)
+except DownloadError as e:
+    print(f"ダウンロードエラー: {e}")
+except UploadError as e:
+    print(f"アップロードエラー: {e}")
+except DriveError as e:
+    print(f"Google Driveエラー: {e}")
 ```
 
-### エラー処理パターン
+**注意**: 以前の`exceptions`モジュールは削除されました。ハンドラー関連のエラーは`handlers`モジュールの例外クラスを使用してください。
+
+### エラー処理パターン（handlers）
+
+```python
+from handlers import GDriveClient, DriveError, UploadError, DownloadError
+
+try:
+    client = GDriveClient()
+    client.download_file(file_id, output_path)
+except DownloadError as e:
+    print(f"ダウンロードエラー: {e}")
+except DriveError as e:
+    print(f"Google Driveエラー: {e}")
+```
 
 ```python
 def safe_transcription(audio_path: str, fallback_device: str = "cpu"):
@@ -387,22 +404,27 @@ for segment in result["segments"]:
 ### YouTube動画の処理
 
 ```python
-from youtube_gdrive_handler import YouTubeGDriveHandler
+from handlers import YouTubeClient, GDriveClient
 from core.transcription_interface import UnifiedTranscriber
 from core.config import TranscriptionConfig
 
-# YouTube + Google Drive 統合処理
-handler = YouTubeGDriveHandler()
-transcriber = UnifiedTranscriber(TranscriptionConfig(language="ja"))
+# YouTube音声抽出
+yt_client = YouTubeClient()
+audio_path, metadata = yt_client.download_audio("https://youtube.com/watch?v=...")
 
-# YouTube URLから音声抽出・転写・アップロード
-result = handler.process_youtube_to_gdrive(
-    youtube_url="https://youtube.com/watch?v=...",
-    transcriber=transcriber,
-    upload_folder_id="your_folder_id"
+# 文字起こし
+config = TranscriptionConfig(language="ja")
+transcriber = UnifiedTranscriber(config)
+result = transcriber.transcribe(audio_path)
+
+# Google Driveにアップロード
+gdrive_client = GDriveClient()
+upload_result = gdrive_client.upload_youtube_transcription(
+    "result.txt",
+    metadata
 )
 
-print(f"処理完了: {result['gdrive_url']}")
+print(f"処理完了: {upload_result['file_url']}")
 ```
 
 ### バッチ処理

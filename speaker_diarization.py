@@ -24,8 +24,8 @@ except ImportError:
 
 # 統一システムを使用
 from core.config import TranscriptionConfig, DiarizationConfig
-from core.logging_config import UnifiedLogger
-from transcriber import WhisperTranscriber
+from core.logging import UnifiedLogger
+from core.transcription_interface import UnifiedTranscriber
 
 class SpeakerDiarizer:
     """話者分離クラス"""
@@ -158,18 +158,17 @@ class SpeakerAwareTranscriber:
         
         # コンポーネント初期化
         self.diarizer = SpeakerDiarizer(diarization_config)
-        self.transcriber = WhisperTranscriber(transcription_config)
+        self.transcriber = UnifiedTranscriber(transcription_config, diarization_config)
     
     def load_models(self):
         """全モデルのロード"""
         self.logger.info("話者分離統合文字起こしモデルをロード中...")
-        
+
         # 話者分離モデルロード
         self.diarizer.load_model()
-        
-        # 文字起こしモデルロード
-        self.transcriber.load_model()
-        
+
+        # UnifiedTranscriber は初期化時に自動ロード
+
         self.logger.info("全モデルのロードが完了しました")
     
     def transcribe_with_speakers(self, audio_path: str) -> str:
@@ -188,7 +187,8 @@ class SpeakerAwareTranscriber:
             if not self.diarization_config.enable_diarization:
                 # 話者分離が無効の場合は通常の文字起こし
                 self.logger.info("話者分離無効 - 通常の文字起こしを実行")
-                return self.transcriber.transcribe(audio_path)
+                result = self.transcriber.transcribe(audio_path)
+                return result.text
             
             # 2. 各話者区間ごとに文字起こし
             results = []
@@ -218,8 +218,9 @@ class SpeakerAwareTranscriber:
                     
                     try:
                         # 文字起こし実行
-                        segment_text = self.transcriber.transcribe(temp_path)
-                        
+                        segment_result = self.transcriber.transcribe(temp_path)
+                        segment_text = segment_result.text
+
                         if segment_text.strip():
                             # タイムスタンプとスピーカーラベルを追加
                             formatted_time = self._format_timestamp(start_time)
@@ -242,7 +243,8 @@ class SpeakerAwareTranscriber:
             self.logger.error(error_msg)
             # フォールバック: 通常の文字起こし
             self.logger.info("フォールバック: 通常の文字起こしを実行")
-            return self.transcriber.transcribe(audio_path)
+            result = self.transcriber.transcribe(audio_path)
+            return result.text
     
     def _format_timestamp(self, seconds: float) -> str:
         """タイムスタンプのフォーマット"""

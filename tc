@@ -27,11 +27,11 @@ sys.path.insert(0, str(PROJECT_ROOT))
 
 from core.cli_common import build_output_file, extract_gdrive_file_id, is_google_drive_url, resolve_device, update_whisper_config
 from core.config import TranscriptionConfig
+from core.logging import get_logger
 from core.transcription_interface import UnifiedTranscriber
-from gdrive_handler import GDriveHandler
-from logger import Logger
+from handlers import GDriveClient
 
-logger = Logger.get_logger(__name__)
+logger = get_logger(__name__)
 
 
 def load_config() -> Dict[str, Any]:
@@ -48,24 +48,24 @@ def load_config() -> Dict[str, Any]:
 
 
 def download_from_gdrive(url: str) -> str:
-    handler = GDriveHandler()
+    client = GDriveClient()
     file_id = extract_gdrive_file_id(url)
 
     with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as tmp_file:
         tmp_path = tmp_file.name
 
     logger.info(f"ファイルをダウンロード中: {file_id}")
-    handler.download_file(file_id, tmp_path)
+    client.download_file(file_id, tmp_path)
     logger.info(f"ダウンロード完了: {tmp_path}")
     return tmp_path
 
 
 def upload_to_gdrive(local_path: str, original_file_id: str) -> Optional[str]:
     try:
-        handler = GDriveHandler()
-        parent_id = handler.get_parent_folder_id(original_file_id)
-        file_id = handler.upload_file(local_path, Path(local_path).name, parent_id)
-        return handler.get_file_url(file_id)
+        client = GDriveClient()
+        parent_id = client.get_parent_folder_id(original_file_id)
+        file_id = client.upload_file(local_path, Path(local_path).name, parent_id)
+        return client.get_file_url(file_id)
     except Exception as error:
         logger.error(f"アップロードエラー: {error}")
         return None

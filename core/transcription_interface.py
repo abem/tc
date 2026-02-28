@@ -15,7 +15,7 @@ from pathlib import Path
 import torch
 
 from core.config import TranscriptionConfig, DiarizationConfig
-from core.logging_config import UnifiedLogger, PerformanceLogger
+from core.logging import UnifiedLogger, PerformanceLogger
 from core.model_manager import get_global_model_manager
 
 

@@ -4,56 +4,17 @@ Shared helpers for CLI entry points.
 
 from __future__ import annotations
 
-import re
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, Optional
 
 from core.config import UnifiedConfig
-
-YOUTUBE_URL_PATTERN = re.compile(
-    r"https?://(?:www\.)?(?:youtube\.com/watch|youtu\.be/)"
+from core.utils import (
+    detect_input_type,
+    extract_gdrive_file_id,
+    is_google_drive_url,
+    resolve_device,
 )
-GDRIVE_URL_PATTERN = re.compile(r"^https://drive\.google\.com/")
-GDRIVE_FILE_ID_PATTERN = re.compile(r"/file/d/([a-zA-Z0-9_-]+)")
-GDRIVE_OPEN_ID_PATTERN = re.compile(r"[?&]id=([a-zA-Z0-9_-]+)")
-
-
-def detect_input_type(source: str) -> Dict[str, str]:
-    """Detect whether source is YouTube URL, Google Drive URL, or local file."""
-    if YOUTUBE_URL_PATTERN.match(source):
-        return {"type": "youtube", "source": source}
-    if GDRIVE_URL_PATTERN.match(source):
-        return {"type": "gdrive", "source": source}
-    if Path(source).exists():
-        return {"type": "local", "source": source}
-    return {"type": "unknown", "source": source}
-
-
-def is_google_drive_url(source: str) -> bool:
-    """Return True when source is a Google Drive URL."""
-    return bool(GDRIVE_URL_PATTERN.match(source))
-
-
-def extract_gdrive_file_id(source: str) -> str:
-    """Extract Google Drive file ID from URL, or return input as-is when already ID."""
-    direct_match = GDRIVE_FILE_ID_PATTERN.search(source)
-    if direct_match:
-        return direct_match.group(1)
-    open_match = GDRIVE_OPEN_ID_PATTERN.search(source)
-    if open_match:
-        return open_match.group(1)
-    return source
-
-
-def resolve_device(device: str) -> str:
-    """Resolve auto device selection to cuda/cpu."""
-    if device != "auto":
-        return device
-
-    import torch
-
-    return "cuda" if torch.cuda.is_available() else "cpu"
 
 
 def select_model(language: str, override_model: Optional[str] = None) -> str:
@@ -95,17 +56,17 @@ def upload_text_to_gdrive_sibling(file_path: Path, original_audio_source: str) -
     Upload a local text file to the same Google Drive folder as original audio source.
     Returns web URL when successful, otherwise None.
     """
-    from gdrive_handler import GDriveHandler
+    from handlers.gdrive import GDriveClient
 
     original_audio_id = extract_gdrive_file_id(original_audio_source)
     if not original_audio_id:
         return None
 
-    handler = GDriveHandler()
-    parent_id = handler.get_parent_folder_id(original_audio_id)
-    uploaded_file_id = handler.upload_file(
+    client = GDriveClient()
+    parent_id = client.get_parent_folder_id(original_audio_id)
+    uploaded_file_id = client.upload_file(
         str(file_path),
         file_path.name,
         parent_id=parent_id,
     )
-    return handler.get_file_url(uploaded_file_id)
+    return client.get_file_url(uploaded_file_id)

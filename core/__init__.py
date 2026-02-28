@@ -6,15 +6,23 @@ and transcription interfaces into a single, consistent API.
 
 from .config import (
     TranscriptionConfig,
-    DiarizationConfig, 
+    DiarizationConfig,
     SystemConfig,
     UnifiedConfig
 )
 
-from .logging_config import (
+from .logging import (
     UnifiedLogger,
     PerformanceLogger,
     get_logger
+)
+
+from .utils import (
+    is_youtube_url,
+    is_google_drive_url,
+    extract_gdrive_file_id,
+    detect_input_type,
+    resolve_device
 )
 
 _model_manager_available = False
@@ -54,20 +62,27 @@ __version__ = "2025.07.29-unified"
 __all__ = [
     # Config
     "TranscriptionConfig",
-    "DiarizationConfig", 
+    "DiarizationConfig",
     "SystemConfig",
     "UnifiedConfig",
-    
+
     # Logging
     "UnifiedLogger",
-    "PerformanceLogger", 
+    "PerformanceLogger",
     "get_logger",
-    
+
+    # Utils
+    "is_youtube_url",
+    "is_google_drive_url",
+    "extract_gdrive_file_id",
+    "detect_input_type",
+    "resolve_device",
+
     # Model Management (optional)
     "UnifiedModelManager",
     "get_global_model_manager",
     "configure_model_manager",
-    
+
     # Transcription (optional)
     "UnifiedTranscriber",
     "TranscriptionResult",
@@ -85,7 +100,7 @@ UnifiedLogger.configure(
     enable_file=True
 )
 
-# Get logger for this module  
+# Get logger for this module
 logger = UnifiedLogger.get_logger(__name__)
 logger.info(f"Core unified modules initialized (v{__version__})")
 if not _model_manager_available:

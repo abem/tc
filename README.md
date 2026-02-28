@@ -195,11 +195,21 @@ HUGGINGFACE_TOKEN=hf_your_token_here
 ```
 tc/
 ├── tc                          # メインCLIコマンド
+├── transcribe.py               # Rich UI対話型CLI
 ├── config/
 │   └── config.yaml            # 設定ファイル
 ├── core/                      # コア機能
 │   ├── config.py              # 統一設定管理
-│   └── transcription_interface.py  # 文字起こしエンジン
+│   ├── logging.py             # 統一ロガー
+│   ├── transcription_interface.py  # 文字起こしエンジン
+│   ├── model_manager.py       # モデルキャッシュ管理
+│   ├── cli_common.py          # CLI共通ヘルパー
+│   ├── cli_workflow.py        # 入力解決・アップロードフロー
+│   └── utils.py               # URL検出・デバイス解決
+├── handlers/                  # 外部サービスハンドラー
+│   ├── gdrive.py              # Google Drive クライアント
+│   └── youtube.py             # YouTube音声抽出
+├── tests/                     # テストファイル
 ├── output/                    # 出力ファイル
 ├── logs/                      # ログファイル
 ├── .env                       # 環境変数
@@ -219,12 +229,16 @@ tc/
    - チャンク分割処理
    - タイムスタンプ付与
 
-3. **Google Drive連携** (`gdrive_handler.py`)
+3. **Google Drive連携** (`handlers/gdrive.py`)
    - ファイルダウンロード
    - 結果アップロード
    - 権限管理
 
-4. **CLIインターフェース** (`tc`)
+4. **YouTube音声抽出** (`handlers/youtube.py`)
+   - YouTube動画から音声抽出
+   - メタデータ取得
+
+5. **CLIインターフェース** (`tc`)
    - 引数解析
    - 設定読み込み
    - 進捗表示

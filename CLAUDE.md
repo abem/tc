@@ -105,15 +105,58 @@
 - `venv-clean/`: 本番仮想環境（削除厳禁）
 - `config/`: システム設定（変更は慎重に）
 - `core/`: 統一アーキテクチャ（新機能の基盤）
-- `transcriber.py`: レガシーだが重要な機能
-- `exec.sh`: レガシーメインエントリーポイント
-- `transcribe.py` / `tc`: 新しいモダンなCLIローダー（推奨）
+  - `core/logging.py`: 統一ロガー（`from core.logging import get_logger`）
+  - `core/config.py`: TranscriptionConfig, DiarizationConfig, UnifiedConfig
+  - `core/transcription_interface.py`: UnifiedTranscriber（標準文字起こし）
+  - `core/utils.py`: URL検出・デバイス解決ユーティリティ
+- `handlers/`: 外部サービスハンドラー
+  - `handlers/gdrive.py`: GDriveClient（Google Drive操作）
+  - `handlers/youtube.py`: YouTubeClient（YouTube音声抽出）
+- `transcribe.py` / `tc`: モダンなCLIローダー（推奨）
+- `speaker_diarization.py`: 話者分離機能
 
 ### 新CLI (transcribe.py / tc コマンド)
 - **推奨実行方法**: `./tc` コマンドでシンプル実行
 - **自動設定読み込み**: config.yamlから自動でURL取得
 - **同一フォルダアップロード**: 元音声ファイルと同じGoogle Driveフォルダに結果保存
 - **警告抑制済み**: transformers、googleapiclient等の不要ログを抑制
+
+### 新しいAPI使用方法
+
+```python
+# ロガー
+from core.logging import get_logger
+logger = get_logger(__name__)
+
+# 設定
+from core.config import TranscriptionConfig, DiarizationConfig, UnifiedConfig
+config = TranscriptionConfig.for_language("ja", "high")
+
+# 文字起こし
+from core.transcription_interface import UnifiedTranscriber
+transcriber = UnifiedTranscriber(config)
+result = transcriber.transcribe("audio.wav")
+
+# Google Drive操作
+from handlers import GDriveClient
+client = GDriveClient()
+client.download_file(file_id, output_path)
+
+# YouTube音声抽出
+from handlers import YouTubeClient
+yt_client = YouTubeClient()
+audio_path, metadata = yt_client.download_audio(youtube_url)
+```
+
+### 削除済みモジュール（参照しないこと）
+- `transcriber.py` / `transcriber/`: 削除済み（後継: `core/transcription_interface.py`）
+- `logger.py`: 削除済み（後継: `core/logging.py`）
+- `gdrive_handler.py`: 削除済み（後継: `handlers/gdrive.py`）
+- `youtube_handler.py`: 削除済み（後継: `handlers/youtube.py`）
+- `youtube_gdrive_handler.py`: 削除済み（後継: `handlers/gdrive.py`）
+- `patterns/`: 削除済み（未使用）
+- `exceptions.py`: 削除済み（未使用）
+- `utils.py` (ルート): 削除済み（後継: `core/utils.py`）
 
 ### モデル・API関連
 - Whisperモデルの変更は転写品質に直接影響

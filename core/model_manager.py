@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple, Union
 from pathlib import Path
 
-from core.logging_config import UnifiedLogger, PerformanceLogger
+from core.logging import UnifiedLogger, PerformanceLogger
 
 
 @dataclass

@@ -72,16 +72,26 @@ graph TD
 ## 📁 プロジェクト構造
 
 ```
-transcribe_audio/
-├── main_cli.py                 # メインCLIインターフェース
-├── exec.sh                     # Google Drive対応実行スクリプト
-├── exec_local.sh               # ローカルファイル専用スクリプト
+tc/
+├── tc                          # メインCLIコマンド
+├── transcribe.py               # Rich UI対話型CLI
 ├── speaker_diarization.py      # 話者分離コア実装
-├── transcriber.py              # Whisper文字起こしエンジン
 ├── suppress_warnings.py        # 警告抑制システム
 ├── config/
 │   └── config.yaml            # 設定ファイル
-├── scripts/core/              # レガシーコアスクリプト
+├── core/                      # 統一アーキテクチャ
+│   ├── __init__.py            # パッケージ初期化
+│   ├── config.py              # 統一設定管理
+│   ├── logging.py             # 統一ロガー
+│   ├── transcription_interface.py  # 文字起こしエンジン
+│   ├── model_manager.py       # モデルキャッシュ管理
+│   ├── cli_common.py          # CLI共通ヘルパー
+│   ├── cli_workflow.py        # 入力解決・アップロードフロー
+│   └── utils.py               # URL検出・デバイス解決
+├── handlers/                  # 外部サービスハンドラー
+│   ├── __init__.py
+│   ├── gdrive.py              # Google Drive クライアント
+│   └── youtube.py             # YouTube音声抽出
 ├── docs/                      # ドキュメント
 ├── output/                    # 文字起こし結果
 ├── logs/                      # 実行ログ

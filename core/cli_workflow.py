@@ -20,7 +20,7 @@ class InputResolution:
     local_audio_path: str
     is_temp_file: bool
     metadata: Optional[Dict[str, Any]]
-    youtube_handler: Optional[YouTubeHandler]
+    youtube_handler: Optional[Any]  # YouTubeClient
 
 
 def resolve_input_audio(
@@ -40,13 +40,13 @@ def resolve_input_audio(
 
     if source_type == "youtube":
         status("YouTube URLを検出")
-        from youtube_handler import YouTubeHandler, check_yt_dlp_installed, install_yt_dlp
+        from handlers.youtube import YouTubeClient, check_yt_dlp_installed, install_yt_dlp
 
         if ensure_yt_dlp and not check_yt_dlp_installed():
             status("yt-dlpがインストールされていないためインストールを試行します")
             install_yt_dlp()
 
-        youtube_handler = YouTubeHandler(output_dir=str(output_dir))
+        youtube_handler = YouTubeClient(output_dir=str(output_dir))
         local_audio_path, metadata = youtube_handler.download_audio(source)
         return InputResolution(
             source_type="youtube",
@@ -59,9 +59,10 @@ def resolve_input_audio(
 
     if source_type == "gdrive":
         status("Google Drive URLを検出、ダウンロードを開始")
-        from scripts.core.audio_loader import AudioLoader
+        from handlers.gdrive import GDriveClient
 
-        local_audio_path = str(AudioLoader().load(source))
+        client = GDriveClient()
+        local_audio_path = str(client.download(source))
         return InputResolution(
             source_type="gdrive",
             original_source=source,
@@ -95,10 +96,10 @@ def upload_transcription_result(
     if source_type == "youtube":
         if not metadata:
             return None
-        from youtube_gdrive_handler import YouTubeGDriveHandler
+        from handlers.gdrive import GDriveClient
 
-        gdrive_handler = YouTubeGDriveHandler()
-        upload_result = gdrive_handler.upload_transcription_result(str(output_file), metadata)
+        gdrive_client = GDriveClient()
+        upload_result = gdrive_client.upload_youtube_transcription(str(output_file), metadata)
         if upload_result:
             return upload_result.get("file_url")
         return None

@@ -3,6 +3,7 @@ gdrive:
   token_file: token.pickle
   url: "https://drive.google.com/file/d/1w7o9-MnZv7thmqpqIw0XvtZ26sg4DnuV/view?usp=drive_link"
   chunk_size: 100
+  upload_folder_id: null  # デフォルトアップロード先フォルダID（省略時は元ファイルと同じフォルダ）
 
 whisper:
   model: kotoba-tech/kotoba-whisper-v2.2

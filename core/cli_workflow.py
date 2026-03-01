@@ -91,8 +91,20 @@ def upload_transcription_result(
     original_source: str,
     output_file: Path,
     metadata: Optional[Dict[str, Any]] = None,
+    folder_id: Optional[str] = None,
 ) -> Optional[str]:
-    """Upload transcription result based on source type and return URL if available."""
+    """Upload transcription result based on source type and return URL if available.
+
+    Args:
+        source_type: Type of source (youtube, gdrive, local)
+        original_source: Original source URL or path
+        output_file: Path to output file
+        metadata: YouTube metadata (required for YouTube sources)
+        folder_id: Override folder ID for upload destination
+
+    Returns:
+        File URL if successful, None otherwise
+    """
     if source_type == "youtube":
         if not metadata:
             return None
@@ -105,6 +117,6 @@ def upload_transcription_result(
         return None
 
     if source_type == "gdrive":
-        return upload_text_to_gdrive_sibling(output_file, original_source)
+        return upload_text_to_gdrive_sibling(output_file, original_source, override_folder_id=folder_id)
 
     return None

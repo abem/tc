@@ -60,10 +60,11 @@ def download_from_gdrive(url: str) -> str:
     return tmp_path
 
 
-def upload_to_gdrive(local_path: str, original_file_id: str) -> Optional[str]:
+def upload_to_gdrive(local_path: str, original_file_id: str, folder_id: Optional[str] = None) -> Optional[str]:
     try:
         client = GDriveClient()
-        parent_id = client.get_parent_folder_id(original_file_id)
+        # 優先順位: 引数で指定されたfolder_id > 元ファイルの親フォルダ
+        parent_id = folder_id if folder_id else client.get_parent_folder_id(original_file_id)
         file_id = client.upload_file(local_path, Path(local_path).name, parent_id)
         return client.get_file_url(file_id)
     except Exception as error:
@@ -117,6 +118,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--model", help="使用するモデル（config.yamlの設定を上書き）")
     parser.add_argument("--language", help="言語コード（config.yamlの設定を上書き）")
     parser.add_argument("--device", choices=["cuda", "cpu", "auto"], help="使用するデバイス（config.yamlの設定を上書き）")
+    parser.add_argument("--folder-id", help="アップロード先Google DriveフォルダID（省略時は元ファイルと同じフォルダ）")
     return parser
 
 
@@ -150,7 +152,9 @@ def main():
         print(f"文字起こし完了: {output_path}")
 
         if is_gdrive_source and original_file_id and not args.no_upload:
-            upload_url = upload_to_gdrive(output_path, original_file_id)
+            # フォルダID決定: 引数 > config.yaml > 元ファイルと同じフォルダ
+            folder_id = args.folder_id or config.get("gdrive", {}).get("upload_folder_id")
+            upload_url = upload_to_gdrive(output_path, original_file_id, folder_id)
             if upload_url:
                 print(f"アップロード完了: {upload_url}")
             else:

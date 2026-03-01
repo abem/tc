@@ -149,7 +149,7 @@ class TranscribeLoader:
         
         return settings
     
-    def process_with_progress(self, input_info: Dict[str, Any], settings: Dict[str, Any]):
+    def process_with_progress(self, input_info: Dict[str, Any], settings: Dict[str, Any], folder_id=None):
         """シンプルな処理"""
         try:
             resolution = resolve_input_audio(
@@ -163,7 +163,7 @@ class TranscribeLoader:
                 console.print(f"ダウンロード完了: {resolution.metadata.get('title', 'unknown')}")
             elif resolution.source_type == "gdrive":
                 console.print("ダウンロード完了")
-            
+
             # 文字起こし設定
             transcription_config = TranscriptionConfig(
                 model=settings["model"],
@@ -171,22 +171,22 @@ class TranscribeLoader:
                 device=resolve_device(settings["device"]),
                 show_progress=True  # 元のプログレスバーを使用
             )
-            
+
             diarization_config = None
             if settings.get("diarization"):
                 diarization_config = DiarizationConfig(
                     enable_diarization=True,
                     max_speakers=settings.get("max_speakers")
                 )
-            
+
             # 文字起こし実行
             console.print("音声文字起こし実行中...")
             transcriber = UnifiedTranscriber(transcription_config, diarization_config)
-            
+
             result = transcriber.transcribe(resolution.local_audio_path)
-            
+
             # 結果保存
-            self.save_results(result, resolution, settings)
+            self.save_results(result, resolution, settings, folder_id=folder_id)
             
             # クリーンアップ
             if resolution.is_temp_file and resolution.youtube_handler:
@@ -196,19 +196,19 @@ class TranscribeLoader:
             console.print(f"エラー: {str(e)}")
             raise
     
-    def save_results(self, result, resolution, settings):
+    def save_results(self, result, resolution, settings, folder_id=None):
         """結果保存"""
         output_file = build_output_file(Path("output"), diarization_enabled=settings.get("diarization", False))
-        
+
         output_file.parent.mkdir(parents=True, exist_ok=True)
-        
+
         with open(output_file, 'w', encoding='utf-8') as f:
             f.write(result.text)
-        
+
         # 結果表示
         console.print("文字起こし完了")
         console.print(f"ローカル保存先: {output_file}")
-        
+
         # Google Driveアップロード
         try:
             if resolution.source_type in {"youtube", "gdrive"}:
@@ -218,6 +218,7 @@ class TranscribeLoader:
                     original_source=resolution.original_source,
                     output_file=output_file,
                     metadata=resolution.metadata,
+                    folder_id=folder_id,
                 )
                 if full_url:
                     console.print("Google Drive URL:")
@@ -246,6 +247,7 @@ class TranscribeLoader:
         parser.add_argument("--profile", "-p", help="プロファイル番号を直接指定")
         parser.add_argument("--language", "-l", choices=["ja", "en"], help="言語")
         parser.add_argument("--diarization", "-d", action="store_true", help="話者分離を有効化")
+        parser.add_argument("--folder-id", help="アップロード先Google DriveフォルダID（省略時は元ファイルと同じフォルダ）")
         
         args = parser.parse_args()
         
@@ -294,9 +296,19 @@ class TranscribeLoader:
         
         # 設定表示（確認なし）
         console.print(f"日本語音声文字起こしを開始 (デバイス: {settings['device']})")
-        
+
+        # フォルダID決定: 引数 > config.yaml
+        folder_id = None
+        if args.folder_id:
+            folder_id = args.folder_id
+        else:
+            try:
+                folder_id = UnifiedConfig.get('gdrive', 'upload_folder_id')
+            except:
+                pass
+
         # 処理実行
-        self.process_with_progress(input_info, settings)
+        self.process_with_progress(input_info, settings, folder_id=folder_id)
         
         console.print("すべての処理が完了しました")
         return 0

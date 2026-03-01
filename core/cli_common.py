@@ -51,9 +51,10 @@ def build_output_file(output_dir: Path, diarization_enabled: bool = False) -> Pa
     return output_dir / f"{timestamp}_transcription{suffix}.txt"
 
 
-def upload_text_to_gdrive_sibling(file_path: Path, original_audio_source: str) -> Optional[str]:
+def upload_text_to_gdrive_sibling(file_path: Path, original_audio_source: str, override_folder_id: Optional[str] = None) -> Optional[str]:
     """
     Upload a local text file to the same Google Drive folder as original audio source.
+    If override_folder_id is provided, use that instead of the sibling folder.
     Returns web URL when successful, otherwise None.
     """
     from handlers.gdrive import GDriveClient
@@ -63,7 +64,8 @@ def upload_text_to_gdrive_sibling(file_path: Path, original_audio_source: str) -
         return None
 
     client = GDriveClient()
-    parent_id = client.get_parent_folder_id(original_audio_id)
+    # 優先順位: override_folder_id > 元ファイルの親フォルダ
+    parent_id = override_folder_id if override_folder_id else client.get_parent_folder_id(original_audio_id)
     uploaded_file_id = client.upload_file(
         str(file_path),
         file_path.name,

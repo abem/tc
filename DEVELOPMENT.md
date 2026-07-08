@@ -30,15 +30,8 @@ CUDA Toolkit (GPU使用時)
 git clone https://github.com/yourusername/transcribe_audio.git
 cd transcribe_audio
 
-# 仮想環境作成・有効化
-python3 -m venv venv-clean
-source venv-clean/bin/activate
-
-# 基本依存関係インストール
-pip install -r requirements.txt
-
-# 開発用ツールインストール
-pip install black flake8 isort mypy pytest pytest-cov
+# 依存関係インストール (uv が .venv を自動作成、dev group も含む)
+uv sync
 
 # HuggingFaceトークン設定（日本語転写・話者分離用）
 export HUGGINGFACE_TOKEN=hf_your_token_here
@@ -546,12 +539,9 @@ def transcribe_audio(self, audio_path: str, **kwargs) -> Dict[str, Any]:
 
 **Q: インポートエラーが発生する**
 ```bash
-# 仮想環境確認
-which python
-pip list
-
-# パッケージ再インストール
-pip install -r requirements.txt --force-reinstall
+# .venv を作り直して依存関係を再インストール (uv 管理)
+rm -rf .venv
+uv sync
 ```
 
 **Q: テストが失敗する**

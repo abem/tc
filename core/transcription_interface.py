@@ -392,6 +392,134 @@ class WhisperTranscriptionEngine(TranscriptionEngine):
         return '\n'.join(processed_lines)
 
 
+class Qwen3ASREngine(TranscriptionEngine):
+    """Qwen3-ASR based transcription engine.
+
+    Qwen3-ASR (qwen-asr package) はロングオーディオ対応・タイムスタンプ内蔵で、
+    Whisper のようにチャンク分割が不要。2026年ベンチマークで最上位の精度。
+    """
+
+    def __init__(self, config: TranscriptionConfig):
+        super().__init__(config)
+        self._model = None
+
+    def get_engine_name(self) -> str:
+        return f"qwen3-asr-{self.config.model}"
+
+    @staticmethod
+    def is_qwen3_model(model_name: str) -> bool:
+        """モデル名が Qwen3-ASR 系かどうかを判定。"""
+        name = (model_name or "").lower()
+        return "qwen3-asr" in name or "qwen3_asr" in name
+
+    def _load_model(self):
+        """Qwen3ASRModel を遅延ロード。"""
+        if self._model is None:
+            from qwen_asr import Qwen3ASRModel
+            import torch
+
+            device = self.config.device
+            # device_map は "cuda:0" / "cpu" の形式が必要
+            device_map = f"{device}:0" if device.startswith("cuda") else device
+
+            self._model = Qwen3ASRModel.from_pretrained(
+                self.config.model,
+                dtype=torch.bfloat16 if device.startswith("cuda") else torch.float32,
+                device_map=device_map,
+                max_new_tokens=1024,  # 長音声向けに十分確保
+            )
+
+    def transcribe(self, audio_path: str, **kwargs) -> TranscriptionResult:
+        """Qwen3-ASR で文字起こし。"""
+        self.validate_audio_file(audio_path)
+
+        start_time = time.time()
+        self.perf_logger.start_timing(f"transcribe_{Path(audio_path).name}")
+
+        try:
+            self._load_model()
+
+            # 言語マップ (TranscriptionConfig.language -> Qwen3 の言語名)
+            lang_map = {"ja": "Japanese", "en": "English"}
+            language = lang_map.get(self.config.language, None)
+
+            results = self._model.transcribe(
+                audio=str(audio_path),
+                language=language,
+                # タイムスタンプ取得には forced_aligner モデルの別途ロードが必要なため、
+                # デフォルトでは無効。forced_aligner を初期化時に渡した場合のみ有効化可能。
+                return_time_stamps=False,
+            )
+
+            processing_time = self.perf_logger.end_timing(f"transcribe_{Path(audio_path).name}")
+
+            if not results:
+                raise RuntimeError("Qwen3-ASR returned no results")
+
+            r = results[0]
+            detected_language = self._language_name_to_code(r.language or self.config.language)
+            text = r.text.strip()
+            segments = self._results_to_segments(r, detected_language)
+
+            result = TranscriptionResult(
+                text=text,
+                segments=segments,
+                language=detected_language,
+                duration=self._get_audio_duration(audio_path),
+                processing_time=processing_time,
+                model_name=self.config.model,
+                has_speakers=False,
+                metadata={"detected_language": r.language},
+            )
+
+            self.logger.info(f"Transcription completed: {len(text)} characters")
+            return result
+
+        except Exception as e:
+            self.logger.error(f"Transcription failed: {str(e)}")
+            raise
+
+    def _results_to_segments(self, result, language: str) -> List[TranscriptionSegment]:
+        """Qwen3-ASR の結果を TranscriptionSegment に変換。"""
+        segments = []
+        if getattr(result, "time_stamps", None):
+            for ts in result.time_stamps:
+                segments.append(TranscriptionSegment(
+                    start=ts.start_time,
+                    end=ts.end_time,
+                    text=ts.text,
+                    language=language,
+                ))
+        if not segments and result.text.strip():
+            segments = [TranscriptionSegment(
+                start=0.0,
+                end=self._get_audio_duration_fallback(),
+                text=result.text.strip(),
+                language=language,
+            )]
+        return segments
+
+    @staticmethod
+    def _language_name_to_code(name: Optional[str]) -> str:
+        """'Japanese' -> 'ja' のように言語名をコードに変換。"""
+        mapping = {"japanese": "ja", "english": "en"}
+        return mapping.get((name or "").lower(), name or "ja")
+
+    @staticmethod
+    def _get_audio_duration_fallback() -> float:
+        """音声長取得失敗時のフォールバック。"""
+        return 600.0  # デフォルト 10 分
+
+    def _get_audio_duration(self, audio_path: str) -> float:
+        """音声ファイルの長さを取得。"""
+        import soundfile as sf
+        try:
+            info = sf.info(audio_path)
+            return info.duration
+        except Exception:
+            return self._get_audio_duration_fallback()
+
+
 class UnifiedTranscriber:
     """Unified transcription interface that handles all transcription types."""
     
@@ -405,7 +533,11 @@ class UnifiedTranscriber:
         self.perf_logger = PerformanceLogger(self.__class__.__name__)
         
         # Initialize engines
-        self.transcription_engine = WhisperTranscriptionEngine(transcription_config)
+        # モデル名でエンジンを切替(Qwen3-ASR 系は専用エンジン、それ以外は Whisper)
+        if Qwen3ASREngine.is_qwen3_model(transcription_config.model):
+            self.transcription_engine = Qwen3ASREngine(transcription_config)
+        else:
+            self.transcription_engine = WhisperTranscriptionEngine(transcription_config)
         self.diarization_engine = None
         
         if diarization_config and diarization_config.enable_diarization:

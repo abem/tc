@@ -22,6 +22,14 @@ dependencies = [
     "google-auth-oauthlib>=1.3.1",
     "pyyaml>=6.0.3",
     "python-dotenv>=1.2.2",
+]
+
+[project.optional-dependencies]
+# Qwen3-ASR エンジン(最高精度・2026年ベンチマークトップ)を使う場合のみインストール。
+# qwen-asr が transformers<5 を要求するため、インストールすると transformers が
+# ダウングレードされる(5.x -> 4.57.x)。Qwen3-ASR を使わない場合は影響しない。
+# インストール: uv sync --extra qwen3
+qwen3 = [
     "qwen-asr>=0.0.6",
 ]
 

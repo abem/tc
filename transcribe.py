@@ -8,7 +8,7 @@ import logging
 import os
 import sys
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 # 警告抑制を統一設定(suppress_warnings.py は import 時に自動で全抑制を実行)
 import suppress_warnings  # noqa: F401
@@ -48,8 +48,8 @@ class TranscribeLoader:
 
         return {"type": input_type, "source": source}
     
-    def select_profile(self) -> Dict[str, Any]:
-        """プロファイル選択"""
+    def select_profile(self, profile_num: Optional[str] = None) -> Dict[str, Any]:
+        """プロファイル選択(--profile で指定可、未指定ならデフォルト1)"""
         device = resolve_device("auto")
         
         profiles = {
@@ -91,8 +91,9 @@ class TranscribeLoader:
             }
         }
         
-        # デフォルトプロファイル1を自動選択（確認なし）
-        selected = profiles["1"]
+        # --profile で指定された場合はそのプロファイル、未指定ならデフォルト1
+        selected_key = profile_num if profile_num and profile_num in profiles else "1"
+        selected = profiles[selected_key]
         if selected.get("custom"):
             return self.custom_settings()
         
@@ -276,8 +277,7 @@ class TranscribeLoader:
         
         # プロファイル選択（引数で指定されていない場合）
         if args.profile:
-            # TODO: プロファイル番号から設定を取得
-            settings = self.select_profile()
+            settings = self.select_profile(args.profile)
         else:
             settings = self.select_profile()
         

@@ -22,14 +22,14 @@
 
 **解決策:**
 ```bash
-# 仮想環境が有効化されているか確認
-source venv-clean/bin/activate
+# 依存関係がインストール済みか確認 (uv 管理)
+uv run python -c "import torch; print('✓ torch OK')"
 
-# PyTorchのインストール
-pip install torch torchvision torchaudio
+# 依存関係の再インストール
+uv sync
 
-# CUDA版が必要な場合
-pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
+# ※pip で個別インストールする手順は廃止されました。
+#   依存関係は pyproject.toml/uv.lock を情報源として uv sync で管理されます。
 ```
 
 **確認方法:**
@@ -64,9 +64,8 @@ python3 --version
 sudo apt update
 sudo apt install python3.12 python3.12-venv
 
-# 新しい仮想環境作成
-python3.11 -m venv venv-clean
-source venv-clean/bin/activate
+# uv で依存関係インストール (.venv を自動作成)
+uv sync
 ```
 
 ### エラー: `./tc: Permission denied`
@@ -83,9 +82,9 @@ chmod +x exec_local.sh
 ls -la exec*.sh
 ```
 
-### エラー: `./venv-clean/bin/activate: No such file or directory`
+### エラー: `.venv` の依存関係が壊れている / `ModuleNotFoundError`
 
-**原因:** 仮想環境が削除または作成されていない
+**原因:** .venv の依存関係が破損・不整合を起こしている
 
 **解決策:**
 ```bash

@@ -42,7 +42,7 @@ export HUGGINGFACE_TOKEN=hf_your_token_here
 **VS Code設定例** (`.vscode/settings.json`):
 ```json
 {
-  "python.defaultInterpreterPath": "./venv-clean/bin/python",
+  "python.defaultInterpreterPath": "./.venv/bin/python",
   "python.formatting.provider": "black",
   "python.linting.flake8Enabled": true,
   "python.linting.mypyEnabled": true,

@@ -37,7 +37,7 @@ uv run pytest
 - **Test-driven development** - write tests first
 
 ### Important Rules (べからず集)
-- **NEVER delete venv-clean/** - production environment
+- **NEVER delete .venv/** - production environment (uv が管理)
 - **NEVER commit credentials.json or token.pickle**
 - **Check CLAUDE.md** before making significant changes
 - **Use UnifiedConfig** instead of deprecated AppConfig

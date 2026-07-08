@@ -3,7 +3,8 @@
 ## 🚀 Getting Started
 
 ### Prerequisites
-- Python 3.11+
+- Python 3.12+
+- [uv](https://docs.astral.sh/uv/) (依存関係管理)
 - CUDA-capable GPU (recommended)
 - Google Drive API credentials
 
@@ -13,16 +14,11 @@
 git clone https://github.com/yourusername/transcribe_audio.git
 cd transcribe_audio
 
-# Set up virtual environment
-python -m venv venv-clean
-source venv-clean/bin/activate  # Linux/Mac
-# venv-clean\Scripts\activate  # Windows
-
-# Install dependencies
-pip install -r requirements/dev.txt
+# Install dependencies (uv が .venv を自動作成、dev group 含む)
+uv sync
 
 # Run tests
-pytest
+uv run pytest
 ```
 
 ## 📋 Development Guidelines
@@ -41,7 +37,7 @@ pytest
 - **Test-driven development** - write tests first
 
 ### Important Rules (べからず集)
-- **NEVER delete venv-clean/** - production environment
+- **NEVER delete .venv/** - production environment (uv が管理)
 - **NEVER commit credentials.json or token.pickle**
 - **Check CLAUDE.md** before making significant changes
 - **Use UnifiedConfig** instead of deprecated AppConfig
@@ -186,9 +182,9 @@ Clear description of the issue
 
 **Environment**
 - OS: Ubuntu 20.04
-- Python: 3.11.2
+- Python: 3.12
 - GPU: RTX 4080
-- CUDA: 11.8
+- CUDA: 13.0
 
 **Logs**
 Include relevant log output

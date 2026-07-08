@@ -3,12 +3,13 @@ name = "tc"
 version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
-requires-python = ">=3.9.23"
+requires-python = ">=3.12"
 dependencies = [
     "click>=8.1.8",
     "colorama>=0.4.6",
     "numpy<2",
-    "openai-whisper>=20250625",
+    "librosa>=0.10.0",
+    "scipy>=1.11.0",
     "rich>=14.1.0",
     "soundfile>=0.13.1",
     "torch>=2.8.0",
@@ -16,4 +17,26 @@ dependencies = [
     "torchvision>=0.23.0",
     "tqdm>=4.67.1",
     "transformers>=4.56.1",
+    "google-api-python-client>=2.194.0",
+    "google-auth-httplib2>=0.3.1",
+    "google-auth-oauthlib>=1.3.1",
+    "pyyaml>=6.0.3",
+    "python-dotenv>=1.2.2",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0.0",
+]
+
+[tool.pytest.ini_options]
+# テスト実行時にプロジェクトルートを import パスに含める
+# (core/, handlers/ 等のパッケージをテストから import できるようにする)
+pythonpath = ["."]
+# FutureWarning を丸ごと無視しない(レビュー指摘 #6):
+# Python 3.12 化等の移行に伴う本物の FutureWarning が CI で握りつぶされるのを防ぐため、
+# 既知のノイズだけを個別に指定する。
+filterwarnings = [
+    # Whisper/tensor unpickling 警告(既知のノイズ)
+    "ignore:.*weights_only=False.*:FutureWarning",
 ]

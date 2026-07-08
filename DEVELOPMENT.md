@@ -19,7 +19,7 @@
 ### 1. 必要なツール
 ```bash
 # システム要件
-Python 3.11+
+Python 3.12+
 Git
 CUDA Toolkit (GPU使用時)
 ```
@@ -30,15 +30,8 @@ CUDA Toolkit (GPU使用時)
 git clone https://github.com/yourusername/transcribe_audio.git
 cd transcribe_audio
 
-# 仮想環境作成・有効化
-python3 -m venv venv-clean
-source venv-clean/bin/activate
-
-# 基本依存関係インストール
-pip install -r requirements.txt
-
-# 開発用ツールインストール
-pip install black flake8 isort mypy pytest pytest-cov
+# 依存関係インストール (uv が .venv を自動作成、dev group も含む)
+uv sync
 
 # HuggingFaceトークン設定（日本語転写・話者分離用）
 export HUGGINGFACE_TOKEN=hf_your_token_here
@@ -49,7 +42,7 @@ export HUGGINGFACE_TOKEN=hf_your_token_here
 **VS Code設定例** (`.vscode/settings.json`):
 ```json
 {
-  "python.defaultInterpreterPath": "./venv-clean/bin/python",
+  "python.defaultInterpreterPath": "./.venv/bin/python",
   "python.formatting.provider": "black",
   "python.linting.flake8Enabled": true,
   "python.linting.mypyEnabled": true,
@@ -63,7 +56,8 @@ export HUGGINGFACE_TOKEN=hf_your_token_here
 ### コアモジュール
 ```
 transcribe_audio/
-├── main_cli.py                 # メインエントリーポイント
+├── tc                           # メインエントリーポイント(uv run 経由)
+├── transcribe.py                # 代替エントリーポイント(uv run 経由)
 ├── transcriber.py              # 音声認識コア（WhisperTranscriber）
 ├── speaker_diarization.py      # 話者分離（SpeakerDiarizer）
 ├── exceptions.py               # 統合例外処理
@@ -134,7 +128,7 @@ git checkout -b feature/new-awesome-feature
 ./scripts/pre_check.sh
 
 # テスト実行
-python -m pytest tests/ -v
+uv run pytest tests/ -v
 
 # コミット
 git add .
@@ -153,7 +147,7 @@ git checkout -b fix/issue-123
 # ... バグ修正 ...
 
 # リグレッションテスト
-python -m pytest tests/test_basic.py -v
+uv run pytest tests/test_basic.py -v
 
 # コミット
 git commit -m "fix: resolve issue #123 with audio processing"
@@ -219,17 +213,17 @@ disallow_untyped_defs = true
 
 ### 基本テスト
 ```bash
-# 全テスト実行
-python -m pytest tests/ -v
+# 全テスト実行 (uv 経由)
+uv run pytest tests/ -v
 
 # カバレッジ付きテスト
-python -m pytest tests/ --cov=. --cov-report=html
+uv run pytest tests/ --cov=. --cov-report=html
 
 # 特定テストのみ
-python -m pytest tests/test_basic.py::test_basic_imports -v
+uv run pytest tests/test_basic.py::test_basic_imports -v
 
 # 並列実行（高速化）
-python -m pytest tests/ -n auto
+uv run pytest tests/ -n auto
 ```
 
 ### テストカテゴリ
@@ -419,11 +413,11 @@ config = TranscriptionConfig(
 
 ### プロファイリング
 ```bash
-# パフォーマンス測定
-python -m cProfile -o profile.stats main_cli.py
+# パフォーマンス測定 (tc ランチャーは uv run 経由)
+uv run python -m cProfile -o profile.stats tc
 
 # メモリ使用量監視
-python -m memory_profiler main_cli.py
+uv run python -m memory_profiler tc
 ```
 
 ## 🛠️ 新機能開発ガイド
@@ -546,12 +540,9 @@ def transcribe_audio(self, audio_path: str, **kwargs) -> Dict[str, Any]:
 
 **Q: インポートエラーが発生する**
 ```bash
-# 仮想環境確認
-which python
-pip list
-
-# パッケージ再インストール
-pip install -r requirements.txt --force-reinstall
+# .venv を作り直して依存関係を再インストール (uv 管理)
+rm -rf .venv
+uv sync
 ```
 
 **Q: テストが失敗する**
@@ -563,7 +554,7 @@ rm -rf .pytest_cache/ __pycache__/
 pip check
 
 # 個別テスト実行
-python -m pytest tests/test_basic.py::test_basic_imports -v -s
+uv run pytest tests/test_basic.py::test_basic_imports -v -s
 ```
 
 **Q: GPU out of memory**

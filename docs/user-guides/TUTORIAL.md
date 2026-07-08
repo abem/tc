@@ -18,7 +18,7 @@
 
 **必要な環境:**
 ```
-✅ Python 3.11以上
+✅ Python 3.12以上
 ✅ 8GB以上のRAM（推奨: 12GB）
 ✅ 10GB以上のストレージ空き容量
 ✅ NVIDIA GPU（推奨: RTX 4080以上）
@@ -46,20 +46,18 @@ cd transcribe_audio
 
 ### ステップ3: 仮想環境セットアップ
 
+このプロジェクトは [uv](https://docs.astral.sh/uv/) で依存関係を管理しています。
+pyproject.toml / uv.lock が情報源です（requirements-*.txt 系は廃止済）。
+
 ```bash
-# 仮想環境作成
-python3 -m venv venv-clean
-
-# 仮想環境有効化
-source venv-clean/bin/activate
-
-# 依存関係インストール
-pip install -r requirements-minimal.txt
+# 依存関係インストール（.venv を自動作成）
+# dev group(pytest 等)もデフォルトで含まれるため、素の uv sync で開発環境まで揃う
+uv sync
 ```
 
 **📸 期待される画面:**
 ```
-Successfully installed torch-2.1.0 transformers-4.35.0 ...
+Installed packages: torch, transformers, librosa, scipy ...
 ✅ インストール完了
 ```
 
@@ -339,8 +337,8 @@ logging:
 
 **設定確認:**
 ```bash
-# 設定値の確認
-python3 -c "from core.config import UnifiedConfig; UnifiedConfig.load(); print(UnifiedConfig.get('whisper'))"
+# 設定値の確認 (uv 経由)
+uv run python3 -c "from core.config import UnifiedConfig; UnifiedConfig.load(); print(UnifiedConfig.get('whisper'))"
 ```
 
 ### カスタム設定での実行例

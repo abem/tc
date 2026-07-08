@@ -1,5 +1,11 @@
 # 音声文字起こしシステム 2025年版 完全ガイド
 
+> **⚠️ 時点スナップショット:** この文書は **2025年版** の記録です。
+> 記載の `main_cli.py` / `Python 3.11` 等はその後変更され、現在は
+> `tc`/`transcribe.py` ランチャー + Python 3.12 + uv 構成に移行しています。
+> 最新のセットアップ手順は `CONTRIBUTING.md` / `DEVELOPMENT.md` /
+> `docs/user-guides/TUTORIAL.md` を参照してください。
+
 ## 📊 システム概要
 
 ### 🎯 主要機能

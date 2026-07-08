@@ -8,7 +8,6 @@ import tempfile
 from pathlib import Path
 from typing import Any, Dict, Optional
 
-import warnings
 import yaml
 
 try:
@@ -18,12 +17,11 @@ try:
 except ImportError:
     pass
 
-warnings.filterwarnings("ignore", category=UserWarning, module="transformers")
-warnings.filterwarnings("ignore", category=FutureWarning, module="transformers")
-os.environ["TRANSFORMERS_VERBOSITY"] = "error"
-
 PROJECT_ROOT = Path(__file__).parent.absolute()
 sys.path.insert(0, str(PROJECT_ROOT))
+
+# 警告抑制を統一設定(suppress_warnings.py は import 時に自動で全抑制を実行)
+import suppress_warnings  # noqa: F401
 
 from core.cli_common import build_output_file, extract_gdrive_file_id, is_google_drive_url, resolve_device, update_whisper_config
 from core.config import TranscriptionConfig

@@ -55,11 +55,12 @@ def setup_instructions():
     print("   echo 'export HUGGINGFACE_TOKEN=hf_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx' >> ~/.bashrc")
     
     print("\\n   方法B: HuggingFace CLI使用")
-    print("   pip install huggingface_hub")
-    print("   huggingface-cli login")
+    print("   # huggingface_hub は依存関係に含まれるためインストール不要")
+    print("   # huggingface-cli は非推奨・後継の hf コマンドを使用")
+    print("   uv run hf auth login")
     
     print("\\n4️⃣ 設定確認")
-    print("   python3 setup_huggingface.py")
+    print("   uv run python3 setup_huggingface.py")
 
 def test_pyannote_model():
     """pyannote.audioモデルアクセステスト"""
@@ -133,7 +134,9 @@ def main():
     
     print("\\n" + "=" * 60)
     print("💡 設定完了後、以下で話者分離機能をテストできます:")
-    print("   python3 test_with_local_file.py")
+    print("   uv run pytest tests/ -v")
+    print("   # または実音声で試す場合:")
+    print("   ./transcribe.py audio_file.wav --diarization")
     
     return False
 

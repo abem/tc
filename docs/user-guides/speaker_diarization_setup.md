@@ -35,19 +35,19 @@ torchvision==0.22.1
 すべての依存ライブラリは最新バージョンにアップデート済みです。
 
 ```bash
-# 仮想環境をアクティベート
-source venv-clean/bin/activate
+# 依存関係インストール (uv が .venv を管理)
+uv sync
 
-# インストール確認
-python -c "import pyannote.audio; print(f'pyannote.audio: {pyannote.audio.__version__}')"
-python -c "import torch; print(f'torch: {torch.__version__}')"
+# インストール確認 (uv 経由)
+uv run python -c "import pyannote.audio; print(f'pyannote.audio: {pyannote.audio.__version__}')"
+uv run python -c "import torch; print(f'torch: {torch.__version__}')"
 ```
 
 ### 1-1. テスト実行
 
 ```bash
-# 話者分離機能のテスト
-python test_speaker_diarization.py
+# 話者分離機能のテスト (uv 経由)
+uv run python test_speaker_diarization.py
 ```
 
 ### 2. HuggingFaceトークンの設定
@@ -70,22 +70,23 @@ HuggingFaceのモデルページでアクセス許可を取得：
 
 ## 使用方法
 
+> **⚠️ 注意:** 現在の `tc` ランチャーは話者分離オプションを持たず、
+> `transcribe.py` は `--enable-diarization` ではなく **`--diarization`/`-d`**
+> フラグで話者分離を有効化します（`main_cli.py` 廃止時の仕様変更）。
+> なお `transcribe.py` のプロファイル選択は現状常にプロファイル1(話者分離なし)
+> を自動選択するため、プロファイル番号ではなく `--diarization` フラグを使って
+> ください。
+
 ### 基本的な使用方法
 
 ```bash
-# 話者分離機能を有効化
-python main_cli.py audio_file.wav --enable-diarization
+# transcribe.py で話者分離を有効化 (-d / --diarization)
+./transcribe.py audio_file.wav --diarization
 
-# 最大話者数を指定
-python main_cli.py audio_file.wav --enable-diarization --max-speakers 3
+# 言語・モデル・デバイスと組み合わせ
+./transcribe.py audio_file.wav --language ja --diarization --device cuda
 
-# その他のオプションと組み合わせ
-python main_cli.py audio_file.wav \
-  --enable-diarization \
-  --max-speakers 4 \
-  --language ja \
-  --device cuda \
-  --log-level DEBUG
+# tc ランチャーでは話者分離未対応のため transcribe.py を使用してください
 ```
 
 ### プログラムからの使用
@@ -151,11 +152,11 @@ speaker_diarization:
 ### 1. pyannote.audioが見つからない
 
 ```bash
-# インストール確認
-python -c "import pyannote.audio; print('OK')"
+# インストール確認 (uv 経由)
+uv run python -c "import pyannote.audio; print('OK')"
 
-# 再インストール
-pip install pyannote.audio --force-reinstall
+# 再インストール (uv 経由)
+uv pip install pyannote.audio --force-reinstall
 ```
 
 ### 2. HuggingFaceトークンエラー
@@ -171,21 +172,21 @@ echo $HUGGINGFACE_TOKEN
 ### 3. CUDA/GPU関連エラー
 
 ```bash
-# CPUモードで実行
-python main_cli.py audio_file.wav --enable-diarization --device cpu
+# CPUモードで実行 (--diarization で話者分離を有効化しつつ CPU 指定)
+./transcribe.py audio_file.wav --diarization --device cpu
 
-# CUDA確認
-python -c "import torch; print(torch.cuda.is_available())"
+# CUDA確認 (uv 経由)
+uv run python -c "import torch; print(torch.cuda.is_available())"
 ```
 
 ### 4. メモリ不足エラー
 
 ```bash
-# 短い音声ファイルでテスト
-python main_cli.py short_audio.wav --enable-diarization
+# 短い音声ファイルでテスト (--diarization 指定)
+./transcribe.py short_audio.wav --diarization
 
 # CPUモード使用
-python main_cli.py audio_file.wav --enable-diarization --device cpu
+./transcribe.py audio_file.wav --diarization --device cpu
 ```
 
 ## パフォーマンス

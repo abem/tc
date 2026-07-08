@@ -4,24 +4,18 @@
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/../lib/common.sh"
 
-# 仮想環境のセットアップ
+# 仮想環境のセットアップ (uv 管理)
 setup_venv() {
-    log_info "仮想環境をセットアップします"
-    
-    # 既存の仮想環境を削除
-    if [ -d "venv" ]; then
-        rm -rf venv
+    log_info "仮想環境をセットアップします (uv)"
+
+    # 既存の .venv を削除
+    if [ -d ".venv" ]; then
+        rm -rf .venv
     fi
-    
-    # 新しい仮想環境を作成
-    python3 -m venv venv
-    source venv/bin/activate
-    
-    # pipのアップグレード
-    pip install --upgrade pip
-    
-    # 依存パッケージのインストール
-    pip install -r requirements/base.txt
+
+    # uv で依存関係をインストール (pyproject.toml/uv.lock が情報源)
+    # dev group もデフォルトで含まれるため素の uv sync で開発環境まで揃う
+    uv sync
 }
 
 # 設定ファイルの作成

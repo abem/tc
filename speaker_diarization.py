@@ -303,4 +303,4 @@ if __name__ == "__main__":
     if len(sys.argv) > 1:
         test_speaker_diarization(sys.argv[1])
     else:
-        print("使用方法: python speaker_diarization.py <音声ファイルパス>")
+        print("使用方法: uv run python speaker_diarization.py <音声ファイルパス>")

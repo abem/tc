@@ -23,3 +23,19 @@ dependencies = [
     "pyyaml>=6.0.3",
     "python-dotenv>=1.2.2",
 ]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0.0",
+]
+
+[tool.pytest.ini_options]
+# テスト実行時にプロジェクトルートを import パスに含める
+# (core/, handlers/ 等のパッケージをテストから import できるようにする)
+pythonpath = ["."]
+filterwarnings = [
+    # Whisper/tensor unpickling 警告を無視
+    "ignore:.*weights_only=False.*:FutureWarning",
+    # その他すべての FutureWarning を無視
+    "ignore::FutureWarning",
+]

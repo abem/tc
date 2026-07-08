@@ -14,8 +14,8 @@ setup_venv() {
     fi
 
     # uv で依存関係をインストール (pyproject.toml/uv.lock が情報源)
-    # dev group も含めてインストール
-    uv sync --group dev
+    # dev group もデフォルトで含まれるため素の uv sync で開発環境まで揃う
+    uv sync
 }
 
 # 設定ファイルの作成

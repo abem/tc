@@ -59,10 +59,10 @@ pip install transformers==4.35.0
 # Pythonバージョン確認
 python3 --version
 
-# Python 3.11以上が必要
+# Python 3.12以上が必要
 # Ubuntu/Debian の場合
 sudo apt update
-sudo apt install python3.11 python3.11-venv
+sudo apt install python3.12 python3.12-venv
 
 # 新しい仮想環境作成
 python3.11 -m venv venv-clean
@@ -642,8 +642,8 @@ chmod 755 logs/
 # 最大詳細ログ
 ./tc --verbose --gpu-monitor "audio.wav"
 
-# Python レベルデバッグ
-PYTHONPATH=$(pwd) python3 -v main_cli.py "audio.wav"
+# Python レベルデバッグ (uv 経由で起動)
+./tc "audio.wav" 2>&1 | tee debug.log
 
 # ログファイル確認
 tail -f logs/transcribe_*.log
@@ -658,7 +658,7 @@ journalctl -u service_name -f
 **解決策:**
 ```bash
 # Python トレースバック表示
-PYTHONPATH=$(pwd) python3 main_cli.py "audio.wav" 2>&1 | tee debug.log
+./tc "audio.wav" 2>&1 | tee debug.log
 
 # ステップバイステップ実行
 python3 -c "
@@ -744,8 +744,8 @@ cat config/config.yaml
 環境:
 - OS: Ubuntu 20.04
 - GPU: RTX 4080 16GB
-- Python: 3.11.5
-- torch: 2.1.0+cu118
+- Python: 3.12
+- torch: 2.11.0+cu130
 
 再現手順:
 1. ./tc "15min_audio.wav" --language ja

@@ -385,11 +385,8 @@ uv run python debug_kotoba.py
 # パッケージの追加
 uv pip install package_name
 
-# 依存関係の同期
+# 依存関係の同期 (uv が pyproject.toml/uv.lock を情報源とする)
 uv sync
-
-# 要件ファイルの更新
-uv pip freeze > requirements.txt
 ```
 
 ## 📝 ライセンス

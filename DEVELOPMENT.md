@@ -19,7 +19,7 @@
 ### 1. 必要なツール
 ```bash
 # システム要件
-Python 3.11+
+Python 3.12+
 Git
 CUDA Toolkit (GPU使用時)
 ```
@@ -56,7 +56,8 @@ export HUGGINGFACE_TOKEN=hf_your_token_here
 ### コアモジュール
 ```
 transcribe_audio/
-├── main_cli.py                 # メインエントリーポイント
+├── tc                           # メインエントリーポイント(uv run 経由)
+├── transcribe.py                # 代替エントリーポイント(uv run 経由)
 ├── transcriber.py              # 音声認識コア（WhisperTranscriber）
 ├── speaker_diarization.py      # 話者分離（SpeakerDiarizer）
 ├── exceptions.py               # 統合例外処理
@@ -412,11 +413,11 @@ config = TranscriptionConfig(
 
 ### プロファイリング
 ```bash
-# パフォーマンス測定
-python -m cProfile -o profile.stats main_cli.py
+# パフォーマンス測定 (tc ランチャーは uv run 経由)
+uv run python -m cProfile -o profile.stats tc
 
 # メモリ使用量監視
-python -m memory_profiler main_cli.py
+uv run python -m memory_profiler tc
 ```
 
 ## 🛠️ 新機能開発ガイド

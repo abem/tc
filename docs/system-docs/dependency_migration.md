@@ -1,5 +1,12 @@
 # 依存関係構造の移行ガイド
 
+> **⚠️ 廃止済ドキュメント:** この文書は **uv 移行前** の古い移行記録です。
+> 記載されている `requirements/base.txt` / `requirements/dev.txt` /
+> `venv-clean` 等はすべて廃止され、現在は **uv** (pyproject.toml / uv.lock) が
+> 唯一の依存関係情報源です。最新のセットアップ手順は
+> `docs/user-guides/TUTORIAL.md` / `CONTRIBUTING.md` / `DEVELOPMENT.md` を
+> 参照してください。以下は歴史記録として残しています。
+
 ## 概要
 依存関係の管理を整理し、用途別に明確に分離した新しい構造に移行しました。
 

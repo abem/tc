@@ -70,22 +70,21 @@ HuggingFaceのモデルページでアクセス許可を取得：
 
 ## 使用方法
 
+> **⚠️ 注意:** 現在の `tc` / `transcribe.py` ランチャーは `--enable-diarization`
+> オプションを直接サポートしていません（`main_cli.py` 廃止時に CLI オプションが
+> 統合されませんでした）。話者分離を使う場合は、下記「プログラムからの使用」
+> (Python API) を利用するか、`transcribe.py` のプロファイル選択 UI
+> (プロファイル 2/4 が話者分離対応) を使ってください。
+> CLI からの話者分離オプション復活は別PRで計画中です。
+
 ### 基本的な使用方法
 
 ```bash
-# 話者分離機能を有効化
-python main_cli.py audio_file.wav --enable-diarization
+# transcribe.py を起動し、プロファイル 2(日本語・話者分離) を選択
+./transcribe.py audio_file.wav
+# → プロファイル選択プロンプトで "2" を入力
 
-# 最大話者数を指定
-python main_cli.py audio_file.wav --enable-diarization --max-speakers 3
-
-# その他のオプションと組み合わせ
-python main_cli.py audio_file.wav \
-  --enable-diarization \
-  --max-speakers 4 \
-  --language ja \
-  --device cuda \
-  --log-level DEBUG
+# または Python API から直接呼び出し(下記「プログラムからの使用」参照)
 ```
 
 ### プログラムからの使用
@@ -171,8 +170,9 @@ echo $HUGGINGFACE_TOKEN
 ### 3. CUDA/GPU関連エラー
 
 ```bash
-# CPUモードで実行
-python main_cli.py audio_file.wav --enable-diarization --device cpu
+# CPUモードで実行 (transcribe.py プロファイル 2 で CPU 指定)
+./transcribe.py audio_file.wav --device cpu
+# → プロファイル選択プロンプトで "2" を入力
 
 # CUDA確認
 python -c "import torch; print(torch.cuda.is_available())"
@@ -182,10 +182,11 @@ python -c "import torch; print(torch.cuda.is_available())"
 
 ```bash
 # 短い音声ファイルでテスト
-python main_cli.py short_audio.wav --enable-diarization
+./transcribe.py short_audio.wav
+# → プロファイル選択プロンプトで "2" を入力
 
 # CPUモード使用
-python main_cli.py audio_file.wav --enable-diarization --device cpu
+./transcribe.py audio_file.wav --device cpu
 ```
 
 ## パフォーマンス

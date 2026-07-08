@@ -182,9 +182,9 @@ Clear description of the issue
 
 **Environment**
 - OS: Ubuntu 20.04
-- Python: 3.11.2
+- Python: 3.12
 - GPU: RTX 4080
-- CUDA: 11.8
+- CUDA: 13.0
 
 **Logs**
 Include relevant log output

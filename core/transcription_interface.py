@@ -439,8 +439,9 @@ class Qwen3ASREngine(TranscriptionEngine):
     # 長音声を分割する閾値(秒)。
     # 実測で10分(600s)までは成功、15分(900s)で CUBLAS_STATUS_INTERNAL_ERROR が
     # 発生することを確認(RTX 4080 SUPER / torch 2.11.0+cu130 / bfloat16)。
-    # 安全マージンを取って 9 分(540s)をチャンク上限とする。
-    CHUNK_THRESHOLD_SEC = 540
+    # Windows 側を含むシステム全体の GPU 負荷ピークを抑えるため、
+    # 安全側に振って 5 分(300s)をチャンク上限とする(実測で成功済み)。
+    CHUNK_THRESHOLD_SEC = 300
 
     def transcribe(self, audio_path: str, **kwargs) -> TranscriptionResult:
         """Qwen3-ASR で文字起こし。長音声は自動的に分割して処理。"""

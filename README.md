@@ -366,8 +366,15 @@ E2E_MODE=full ./scripts/e2e_local.sh
 ### pytestでドライラン確認
 
 ```bash
-python -m pytest tests/test_e2e_dry_run.py -v
+uv run pytest tests/test_e2e_dry_run.py -v
 ```
+
+> **注記:** このテストは現在 skip 中です。`main_cli.py` がリファクタリングで
+> 削除され `tc`/`transcribe.py` に統合された際、`--dry-run` オプションが現ランチャーに
+> 継承されなかったため、テストが実態と乖離しています。E2E テストの再実装は別PRで
+> 計画中です（詳細は `tests/test_e2e_dry_run.py` の skip 理由を参照）。
+> 代わりに `./scripts/e2e_local.sh` (dry-run モードで未対応である旨を明示) または
+> `E2E_MODE=full ./scripts/e2e_local.sh` (実変換) を使ってください。
 
 ### デバッグツール
 

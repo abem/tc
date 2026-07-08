@@ -286,11 +286,10 @@ export HUGGINGFACE_TOKEN=hf_your_new_token
 # モデルアクセス許可確認
 # https://huggingface.co/pyannote/speaker-diarization-3.1 で「Agree and access」
 
-# pyannote 再インストール (.venv を作り直して uv sync)
-# ※pyannote.audio は pyproject.toml で管理されていない場合があるため、
-#   必要に応じて pyproject.toml に追加してから uv sync してください。
-rm -rf .venv
-uv sync
+# pyannote 再インストール (uv 経由の強制再インストール)
+# ※pyannote.audio は pyproject.toml の標準依存に含まれていないため、
+#   uv.lock を介さず uv pip install で直接インストールする。
+uv pip install pyannote.audio --force-reinstall
 ```
 
 ### エラー: `ModuleNotFoundError: No module named 'pyannote'`

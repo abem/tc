@@ -179,6 +179,11 @@ class TranscribeLoader:
 
             result = transcriber.transcribe(resolution.local_audio_path)
 
+            # チャンク失敗があれば警告表示(長音声分割時に一部欠落の可能性)
+            failed = (result.metadata or {}).get("failed_chunks", 0)
+            if failed:
+                console.print(f"⚠️  警告: {failed}個のチャンクが失敗し、該当区間に[チャンクN失敗]プレースホルダが挿入されました")
+
             # 結果保存
             self.save_results(result, resolution, settings, folder_id=folder_id)
             

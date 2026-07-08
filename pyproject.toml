@@ -27,6 +27,7 @@ dependencies = [
 [dependency-groups]
 dev = [
     "pytest>=8.0.0",
+    "nvidia-ml-py>=12.0.0",
 ]
 # Qwen3-ASR エンジン(最高精度・2026年ベンチマークトップ)。
 # default-groups に指定しているため uv sync / uv run(./tc) で自動インストールされる。

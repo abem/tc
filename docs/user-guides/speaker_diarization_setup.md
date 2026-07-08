@@ -70,21 +70,23 @@ HuggingFaceのモデルページでアクセス許可を取得：
 
 ## 使用方法
 
-> **⚠️ 注意:** 現在の `tc` / `transcribe.py` ランチャーは `--enable-diarization`
-> オプションを直接サポートしていません（`main_cli.py` 廃止時に CLI オプションが
-> 統合されませんでした）。話者分離を使う場合は、下記「プログラムからの使用」
-> (Python API) を利用するか、`transcribe.py` のプロファイル選択 UI
-> (プロファイル 2/4 が話者分離対応) を使ってください。
-> CLI からの話者分離オプション復活は別PRで計画中です。
+> **⚠️ 注意:** 現在の `tc` ランチャーは話者分離オプションを持たず、
+> `transcribe.py` は `--enable-diarization` ではなく **`--diarization`/`-d`**
+> フラグで話者分離を有効化します（`main_cli.py` 廃止時の仕様変更）。
+> なお `transcribe.py` のプロファイル選択は現状常にプロファイル1(話者分離なし)
+> を自動選択するため、プロファイル番号ではなく `--diarization` フラグを使って
+> ください。
 
 ### 基本的な使用方法
 
 ```bash
-# transcribe.py を起動し、プロファイル 2(日本語・話者分離) を選択
-./transcribe.py audio_file.wav
-# → プロファイル選択プロンプトで "2" を入力
+# transcribe.py で話者分離を有効化 (-d / --diarization)
+./transcribe.py audio_file.wav --diarization
 
-# または Python API から直接呼び出し(下記「プログラムからの使用」参照)
+# 言語・モデル・デバイスと組み合わせ
+./transcribe.py audio_file.wav --language ja --diarization --device cuda
+
+# tc ランチャーでは話者分離未対応のため transcribe.py を使用してください
 ```
 
 ### プログラムからの使用
@@ -170,9 +172,8 @@ echo $HUGGINGFACE_TOKEN
 ### 3. CUDA/GPU関連エラー
 
 ```bash
-# CPUモードで実行 (transcribe.py プロファイル 2 で CPU 指定)
-./transcribe.py audio_file.wav --device cpu
-# → プロファイル選択プロンプトで "2" を入力
+# CPUモードで実行 (--diarization で話者分離を有効化しつつ CPU 指定)
+./transcribe.py audio_file.wav --diarization --device cpu
 
 # CUDA確認
 python -c "import torch; print(torch.cuda.is_available())"
@@ -181,12 +182,11 @@ python -c "import torch; print(torch.cuda.is_available())"
 ### 4. メモリ不足エラー
 
 ```bash
-# 短い音声ファイルでテスト
-./transcribe.py short_audio.wav
-# → プロファイル選択プロンプトで "2" を入力
+# 短い音声ファイルでテスト (--diarization 指定)
+./transcribe.py short_audio.wav --diarization
 
 # CPUモード使用
-./transcribe.py audio_file.wav --device cpu
+./transcribe.py audio_file.wav --diarization --device cpu
 ```
 
 ## パフォーマンス

@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env -S uv run python3
 """
 GPU monitoring script for transcribe_audio execution.
 Shows real-time GPU utilization during processing.
@@ -18,13 +18,18 @@ except ImportError:
     PSUTIL_AVAILABLE = False
 
 try:
-    import nvidia_ml_py3 as nvml
+    import pynvml as nvml
     nvml.nvmlInit()
     NVIDIA_ML_AVAILABLE = True
 except ImportError:
     NVIDIA_ML_AVAILABLE = False
 except Exception:
     NVIDIA_ML_AVAILABLE = False
+
+
+def _nvml_str(value):
+    """nvidia-ml-py returns str in recent versions, bytes in older pynvml."""
+    return value.decode("utf-8") if isinstance(value, bytes) else value
 
 try:
     import torch
@@ -203,13 +208,13 @@ class GPUMonitor:
             for i in range(self.gpu_count):
                 try:
                     handle = nvml.nvmlDeviceGetHandleByIndex(i)
-                    name = nvml.nvmlDeviceGetName(handle).decode('utf-8')
+                    name = _nvml_str(nvml.nvmlDeviceGetName(handle))
                     mem_info = nvml.nvmlDeviceGetMemoryInfo(handle)
                     memory_gb = mem_info.total / (1024**3)
-                    
+
                     # Driver version
                     try:
-                        driver_version = nvml.nvmlSystemGetDriverVersion().decode('utf-8')
+                        driver_version = _nvml_str(nvml.nvmlSystemGetDriverVersion())
                     except Exception:
                         driver_version = "Unknown"
                     

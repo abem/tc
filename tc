@@ -93,6 +93,11 @@ def transcribe_audio(audio_path: str, config: Dict[str, Any]) -> str:
     transcriber = UnifiedTranscriber(transcription_config)
     result = transcriber.transcribe(audio_path, progress_callback=lambda message: print(message))
 
+    # チャンク失敗があれば警告表示(長音声分割時に一部欠落の可能性)
+    failed = (result.metadata or {}).get("failed_chunks", 0)
+    if failed:
+        print(f"⚠️  警告: {failed}個のチャンクが失敗し、該当区間に[チャンクN失敗]プレースホルダが挿入されました")
+
     logger.info(f"文字起こし完了: {len(result.text)}文字")
     return result.text
 

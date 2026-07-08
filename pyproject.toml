@@ -27,7 +27,25 @@ dependencies = [
 [dependency-groups]
 dev = [
     "pytest>=8.0.0",
+    "nvidia-ml-py>=12.0.0",
 ]
+# Qwen3-ASR エンジン(最高精度・2026年ベンチマークトップ)。
+# default-groups に指定しているため uv sync / uv run(./tc) で自動インストールされる。
+#
+# 注意(transformers バージョンについて):
+#   qwen-asr は transformers<5 を要求するため、インストールすると transformers が
+#   5.x -> 4.57.x にダウングレードされる。Qwen3-ASR を使わない環境でも
+#   default-groups の仕様上インストールされるが、Whisper エンジンは
+#   transformers 4.57.x でも回帰なし(レビュー検証済み)。
+#   Qwen3-ASR を除外したい場合は uv sync --no-default-groups --group dev 等。
+qwen3 = [
+    "qwen-asr>=0.0.6",
+]
+
+[tool.uv]
+# dev と qwen3 をデフォルトでインストール。
+# これにより ./tc を実行するだけで Qwen3-ASR が使える(uv run が自動で解決)。
+default-groups = ["dev", "qwen3"]
 
 [tool.pytest.ini_options]
 # テスト実行時にプロジェクトルートを import パスに含める

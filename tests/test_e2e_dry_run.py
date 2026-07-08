@@ -33,7 +33,10 @@ def _ensure_sample_wav(path: Path) -> None:
     reason=(
         "main_cli.py はリファクタリングで削除され tc/transcribe.py に統合された。"
         "かつ --dry-run オプションも現ランチャーには存在しないため、"
-        "このテストは実態と乖離している。再実装は別PRで行う。"
+        "このテストは実態と乖離している。"
+        "TODO: tc/transcribe.py 起動を検証する E2E テストを別PRで再実装する"
+        "(本PRの import suppress_warnings 追加・import 順序変更がランチャー起動を"
+        "壊していないかを検知できるようにするため)。"
     )
 )
 def test_e2e_dry_run(tmp_path: Path) -> None:

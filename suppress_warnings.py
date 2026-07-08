@@ -9,15 +9,18 @@ import os
 def suppress_all_warnings():
     """不要な警告を抑制する。
 
-    設計方針(レビュー指摘 #3/#4/#5 を反映):
+    設計方針(レビュー指摘 #3/#4/#5/#6/#7 を反映):
     - カテゴリ全体の丸ごと無視は避け、意図したノイズだけを絞る。
-      特に RuntimeWarning は librosa/numpy が音声データの NaN/Inf を知らせる
-      ためのチャネルでもあるため、丸ごと消さない(異常検知シグナルを残す)。
+      特に RuntimeWarning/UserWarning は librosa/numpy が音声データの NaN/Inf 等
+      を知らせるためのチャネルでもあるため、丸ごと消さない(異常検知シグナルを残す)。
     - 抑制対象のロガーは「実行時に大量の INFO/WARNING を出すことが分かっている
       もの」に限定する。matplotlib/PIL/filelock 等は本プロジェクトの主用途
       (音声処理)で頻出しないため、プロジェクト全体で黙らせない。
+    - torchaudio は主要な音声処理依存のため、ノイズが出るなら抑制対象に含める。
     - このファイルを唯一の抑制設定とし、各モジュールに散らばっていた
       filterwarnings はここに集約する。
+    - PYTHONWARNINGS 環境変数は子プロセス(DataLoader worker 等)に全カテゴリ無視
+      として伝播し、プロセス内の filterwarnings と矛盾するため設定しない。
     """
 
     # Python標準警告: FutureWarning/DeprecationWarning は抑制。
@@ -40,11 +43,12 @@ def suppress_all_warnings():
     warnings.filterwarnings("ignore", message=".*weights_only=False.*")
 
     # 実行時に大量の INFO/WARNING ログを出すノイジーロガーだけを ERROR に下げる。
-    # スコープは httpx/urllib3/huggingface_hub 系に限定し、プロジェクト全体の
-    # WARNING を握りつぶさない(レビュー指摘 #4)。
+    # torchaudio は本プロジェクトの主要音声処理依存のため含める(レビュー指摘 #6)。
+    # matplotlib/PIL/filelock 等の無関係なライブラリは含めない(レビュー指摘 #4)。
     _NOISY_LOGGERS = [
         "pyannote.audio",
         "speechbrain",
+        "torchaudio",
         "googleapiclient.discovery_cache",
         "transformers",
         "huggingface_hub",
@@ -58,7 +62,9 @@ def suppress_all_warnings():
         logging.getLogger(_name).setLevel(logging.ERROR)
 
     # 環境変数で警告を抑制
-    os.environ["PYTHONWARNINGS"] = "ignore"
+    # ※PYTHONWARNINGS は設定しない(レビュー指摘 #7):
+    #   子プロセス(DataLoader worker 等)に全カテゴリ無視として伝播し、
+    #   プロセス内の filterwarnings(異常シグナルを残す設計)と矛盾するため。
     os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
     os.environ["TRANSFORMERS_VERBOSITY"] = "error"
     os.environ["TOKENIZERS_PARALLELISM"] = "false"

@@ -1,7 +1,7 @@
 gdrive:
   credentials_file: credentials.json
   token_file: token.pickle
-  url: "https://drive.google.com/file/d/1w7o9-MnZv7thmqpqIw0XvtZ26sg4DnuV/view?usp=drive_link"
+  url: "https://drive.google.com/file/d/19w5x7dsMyrexZacxz65-wcL1AWug7tvZ/view?usp=drive_link"
   chunk_size: 100
   upload_folder_id: null  # デフォルトアップロード先フォルダID（省略時は元ファイルと同じフォルダ）
 
@@ -85,6 +85,13 @@ whisper:
       size: "1550MB"
       speed: "slow"
       accuracy: "highest"
+    Qwen/Qwen3-ASR-1.7B:
+      description: "Qwen3-ASR (最高精度・2026年ベンチマークトップ)"
+      size: "1700MB"
+      speed: "medium"
+      accuracy: "highest"
+      language: "ja"
+      engine: "qwen3-asr"
 
 speaker_diarization:
   enable: false  # 話者分離機能の有効/無効（exec.shのデフォルト動作）

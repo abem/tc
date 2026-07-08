@@ -80,6 +80,12 @@ class TranscribeLoader:
                 "diarization": True
             },
             "5": {
+                "name": "🏆 日本語 (最高精度・Qwen3-ASR)",
+                "language": "ja",
+                "model": "Qwen/Qwen3-ASR-1.7B",
+                "device": device
+            },
+            "6": {
                 "name": "⚙️  カスタム設定",
                 "custom": True
             }

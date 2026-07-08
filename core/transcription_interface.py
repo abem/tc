@@ -458,13 +458,14 @@ class Qwen3ASREngine(TranscriptionEngine):
             language = lang_map.get(self.config.language, None)
 
             duration = self._get_audio_duration(audio_path)
+            failed_chunks = 0
             if duration > self.CHUNK_THRESHOLD_SEC:
                 # 長音声: 分割して処理
                 self.logger.info(
                     f"Audio is {duration:.0f}s (>{self.CHUNK_THRESHOLD_SEC}s), "
                     f"splitting into chunks for stable processing"
                 )
-                text, detected_language = self._transcribe_long_audio(
+                text, detected_language, failed_chunks = self._transcribe_long_audio(
                     audio_path, duration, language
                 )
             else:
@@ -500,7 +501,11 @@ class Qwen3ASREngine(TranscriptionEngine):
                 processing_time=processing_time,
                 model_name=self.config.model,
                 has_speakers=False,
-                metadata={"detected_language": detected_language, "chunked": duration > self.CHUNK_THRESHOLD_SEC},
+                metadata={
+                    "detected_language": detected_language,
+                    "chunked": duration > self.CHUNK_THRESHOLD_SEC,
+                    "failed_chunks": failed_chunks,
+                },
             )
 
             self.logger.info(f"Transcription completed: {len(text)} characters")
@@ -518,9 +523,12 @@ class Qwen3ASREngine(TranscriptionEngine):
         CUBLAS_STATUS_INTERNAL_ERROR が発生するため、外部で分割する。
         分割は音声ファイルを物理的に切り出すのではなく、(np.ndarray, sr)
         タプルを渡してメモリ上で処理する。
+
+        戻り値: (結合テキスト, 検出言語コード, 失敗チャンク数)
+        チャンクが失敗した場合は結果テキストに [チャンクN失敗] プレースホルダを
+        挿入し、ユーザーが欠落に気づけるようにする。
         """
         import numpy as np
-        import soundfile as sf
         from tqdm import tqdm
 
         # 音声を16kHzモノラルでロード
@@ -532,6 +540,7 @@ class Qwen3ASREngine(TranscriptionEngine):
 
         texts = []
         detected_lang = self.config.language
+        failed_chunks = 0
 
         for i in tqdm(range(total_chunks), desc="音声文字起こし(分割)"):
             start_sample = i * chunk_samples
@@ -556,11 +565,18 @@ class Qwen3ASREngine(TranscriptionEngine):
                     if i == 0 and r.language:
                         detected_lang = self._language_name_to_code(r.language)
             except Exception as e:
-                self.logger.warning(f"Chunk {i+1}/{total_chunks} failed: {e}, skipping")
+                failed_chunks += 1
+                self.logger.warning(f"Chunk {i+1}/{total_chunks} failed: {e}, inserting placeholder")
+                # 欠落が分かるようにプレースホルダを挿入(無言欠落を防ぐ)
+                texts.append(f"[チャンク{i+1}失敗]")
                 continue
 
         text = " ".join(texts)
-        return text, detected_lang
+        if failed_chunks > 0:
+            self.logger.warning(
+                f"Long audio transcription completed with {failed_chunks}/{total_chunks} failed chunks"
+            )
+        return text, detected_lang, failed_chunks
 
     def _results_to_segments(self, result, language: str, audio_path: str) -> List[TranscriptionSegment]:
         """Qwen3-ASR の結果を TranscriptionSegment に変換。

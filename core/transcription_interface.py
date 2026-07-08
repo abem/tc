@@ -436,8 +436,14 @@ class Qwen3ASREngine(TranscriptionEngine):
                 max_new_tokens=1024,  # 長音声向けに十分確保
             )
 
+    # 長音声を分割する閾値(秒)。
+    # 実測で10分(600s)までは成功、15分(900s)で CUBLAS_STATUS_INTERNAL_ERROR が
+    # 発生することを確認(RTX 4080 SUPER / torch 2.11.0+cu130 / bfloat16)。
+    # 安全マージンを取って 9 分(540s)をチャンク上限とする。
+    CHUNK_THRESHOLD_SEC = 540
+
     def transcribe(self, audio_path: str, **kwargs) -> TranscriptionResult:
-        """Qwen3-ASR で文字起こし。"""
+        """Qwen3-ASR で文字起こし。長音声は自動的に分割して処理。"""
         self.validate_audio_file(audio_path)
 
         start_time = time.time()
@@ -450,33 +456,50 @@ class Qwen3ASREngine(TranscriptionEngine):
             lang_map = {"ja": "Japanese", "en": "English"}
             language = lang_map.get(self.config.language, None)
 
-            results = self._model.transcribe(
-                audio=str(audio_path),
-                language=language,
-                # タイムスタンプ取得には forced_aligner モデルの別途ロードが必要なため、
-                # デフォルトでは無効。forced_aligner を初期化時に渡した場合のみ有効化可能。
-                return_time_stamps=False,
-            )
+            duration = self._get_audio_duration(audio_path)
+            if duration > self.CHUNK_THRESHOLD_SEC:
+                # 長音声: 分割して処理
+                self.logger.info(
+                    f"Audio is {duration:.0f}s (>{self.CHUNK_THRESHOLD_SEC}s), "
+                    f"splitting into chunks for stable processing"
+                )
+                text, detected_language = self._transcribe_long_audio(
+                    audio_path, duration, language
+                )
+            else:
+                # 短音声: そのまま処理
+                results = self._model.transcribe(
+                    audio=str(audio_path),
+                    language=language,
+                    return_time_stamps=False,
+                )
+                if not results:
+                    raise RuntimeError("Qwen3-ASR returned no results")
+                r = results[0]
+                detected_language = self._language_name_to_code(
+                    r.language or self.config.language
+                )
+                text = r.text.strip()
 
             processing_time = self.perf_logger.end_timing(f"transcribe_{Path(audio_path).name}")
 
-            if not results:
-                raise RuntimeError("Qwen3-ASR returned no results")
-
-            r = results[0]
-            detected_language = self._language_name_to_code(r.language or self.config.language)
-            text = r.text.strip()
-            segments = self._results_to_segments(r, detected_language, audio_path)
+            # 結果を構築(segments は全体を1セグメントとして扱う)
+            segments = [TranscriptionSegment(
+                start=0.0,
+                end=duration,
+                text=text,
+                language=detected_language,
+            )]
 
             result = TranscriptionResult(
                 text=text,
                 segments=segments,
                 language=detected_language,
-                duration=self._get_audio_duration(audio_path),
+                duration=duration,
                 processing_time=processing_time,
                 model_name=self.config.model,
                 has_speakers=False,
-                metadata={"detected_language": r.language},
+                metadata={"detected_language": detected_language, "chunked": duration > self.CHUNK_THRESHOLD_SEC},
             )
 
             self.logger.info(f"Transcription completed: {len(text)} characters")
@@ -485,6 +508,58 @@ class Qwen3ASREngine(TranscriptionEngine):
         except Exception as e:
             self.logger.error(f"Transcription failed: {str(e)}")
             raise
+
+    def _transcribe_long_audio(self, audio_path: str, duration: float, language: Optional[str]):
+        """長音声を CHUNK_THRESHOLD_SEC 毎に分割して文字起こし、結果を結合する。
+
+        Qwen3-ASR の内部チャンク処理でも長音声に対応しているが、
+        RTX 4080 SUPER + torch 2.11.0+cu130 環境で15分超の音声で
+        CUBLAS_STATUS_INTERNAL_ERROR が発生するため、外部で分割する。
+        分割は音声ファイルを物理的に切り出すのではなく、(np.ndarray, sr)
+        タプルを渡してメモリ上で処理する。
+        """
+        import numpy as np
+        import soundfile as sf
+        from tqdm import tqdm
+
+        # 音声を16kHzモノラルでロード
+        import librosa
+        audio, sr = librosa.load(str(audio_path), sr=16000, mono=True)
+
+        chunk_samples = self.CHUNK_THRESHOLD_SEC * sr
+        total_chunks = int(np.ceil(len(audio) / chunk_samples))
+
+        texts = []
+        detected_lang = self.config.language
+
+        for i in tqdm(range(total_chunks), desc="音声文字起こし(分割)"):
+            start_sample = i * chunk_samples
+            end_sample = min(start_sample + chunk_samples, len(audio))
+            chunk = audio[start_sample:end_sample]
+
+            if len(chunk) < sr:  # 1秒未満の端数はスキップ
+                continue
+
+            try:
+                results = self._model.transcribe(
+                    audio=(chunk, sr),
+                    language=language,
+                    return_time_stamps=False,
+                )
+                if results:
+                    r = results[0]
+                    chunk_text = r.text.strip()
+                    if chunk_text:
+                        texts.append(chunk_text)
+                    # 最初のチャンクの検出言語を使う
+                    if i == 0 and r.language:
+                        detected_lang = self._language_name_to_code(r.language)
+            except Exception as e:
+                self.logger.warning(f"Chunk {i+1}/{total_chunks} failed: {e}, skipping")
+                continue
+
+        text = " ".join(texts)
+        return text, detected_lang
 
     def _results_to_segments(self, result, language: str, audio_path: str) -> List[TranscriptionSegment]:
         """Qwen3-ASR の結果を TranscriptionSegment に変換。

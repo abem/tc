@@ -525,7 +525,8 @@ class Qwen3ASREngine(TranscriptionEngine):
         分割は音声ファイルを物理的に切り出すのではなく、(np.ndarray, sr)
         タプルを渡してメモリ上で処理する。
 
-        各チャンクには [MM:SS] タイムスタンプを付け、文節毎に改行する。
+        各チャンクの生テキストを結合してから最後に1回だけ文節改行を適用する。
+        (チャンク毎にフォーマットすると境界の文節が分断されるため)
 
         戻り値: (結合テキスト, 検出言語コード, 失敗チャンク数)
         チャンクが失敗した場合は結果テキストに [チャンクN失敗] プレースホルダを
@@ -541,7 +542,7 @@ class Qwen3ASREngine(TranscriptionEngine):
         chunk_samples = self.CHUNK_THRESHOLD_SEC * sr
         total_chunks = int(np.ceil(len(audio) / chunk_samples))
 
-        formatted_lines = []
+        raw_texts = []
         detected_lang = self.config.language
         failed_chunks = 0
 
@@ -563,20 +564,22 @@ class Qwen3ASREngine(TranscriptionEngine):
                     r = results[0]
                     chunk_text = r.text.strip()
                     if chunk_text:
-                        # 文節改行フォーマットで追加
-                        formatted = self._format_text_with_breaks(chunk_text)
-                        formatted_lines.append(formatted)
+                        raw_texts.append(chunk_text)
                     # 最初のチャンクの検出言語を使う
                     if i == 0 and r.language:
                         detected_lang = self._language_name_to_code(r.language)
             except Exception as e:
                 failed_chunks += 1
                 self.logger.warning(f"Chunk {i+1}/{total_chunks} failed: {e}, inserting placeholder")
-                # 欠落が分かるようにプレースホルダを挿入
-                formatted_lines.append(f"[チャンク{i+1}失敗]")
+                # プレースホルダは前後で改行を強制(自然文ではないため)
+                raw_texts.append(f"\n[チャンク{i+1}失敗]\n")
                 continue
 
-        text = "\n".join(formatted_lines)
+        # 生テキストを全チャンク結合してから、最後に1回だけ文節改行を適用
+        # (チャンク毎にフォーマットすると境界の文節が分断されるため)
+        raw_text = "".join(raw_texts)
+        text = self._format_text_with_breaks(raw_text)
+
         if failed_chunks > 0:
             self.logger.warning(
                 f"Long audio transcription completed with {failed_chunks}/{total_chunks} failed chunks"

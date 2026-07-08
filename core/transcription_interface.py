@@ -413,7 +413,14 @@ class Qwen3ASREngine(TranscriptionEngine):
         return "qwen3-asr" in name or "qwen3_asr" in name
 
     def _load_model(self):
-        """Qwen3ASRModel を遅延ロード。"""
+        """Qwen3ASRModel を遅延ロード。
+
+        注意: UnifiedModelManager(共有キャッシュ/メモリ管理)を経由せず、
+        Qwen3ASRModel.from_pretrained を直接呼ぶ。qwen_asr の API が独自の
+        モデル管理を行うため model_manager に適合しない。長時間稼働プロセスで
+        複数プロファイルを切替える場合は、Qwen3 モデルのメモリが
+        memory_limit 予算に計上されないことに留意。
+        """
         if self._model is None:
             from qwen_asr import Qwen3ASRModel
             import torch
@@ -459,7 +466,7 @@ class Qwen3ASREngine(TranscriptionEngine):
             r = results[0]
             detected_language = self._language_name_to_code(r.language or self.config.language)
             text = r.text.strip()
-            segments = self._results_to_segments(r, detected_language)
+            segments = self._results_to_segments(r, detected_language, audio_path)
 
             result = TranscriptionResult(
                 text=text,
@@ -479,8 +486,13 @@ class Qwen3ASREngine(TranscriptionEngine):
             self.logger.error(f"Transcription failed: {str(e)}")
             raise
 
-    def _results_to_segments(self, result, language: str) -> List[TranscriptionSegment]:
-        """Qwen3-ASR の結果を TranscriptionSegment に変換。"""
+    def _results_to_segments(self, result, language: str, audio_path: str) -> List[TranscriptionSegment]:
+        """Qwen3-ASR の結果を TranscriptionSegment に変換。
+
+        return_time_stamps=False(デフォルト)の場合は time_stamps が None になるため、
+        フォールバックで音声全体を1セグメントとする。この際 segment.end には
+        _get_audio_duration_fallback() の固定値(600s)ではなく、実音声長を使う。
+        """
         segments = []
         if getattr(result, "time_stamps", None):
             for ts in result.time_stamps:
@@ -493,7 +505,7 @@ class Qwen3ASREngine(TranscriptionEngine):
         if not segments and result.text.strip():
             segments = [TranscriptionSegment(
                 start=0.0,
-                end=self._get_audio_duration_fallback(),
+                end=self._get_audio_duration(audio_path),
                 text=result.text.strip(),
                 language=language,
             )]

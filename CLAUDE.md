@@ -34,8 +34,8 @@
   - mainは最後の手段として、他の方法で解決できない場合のみ検討する
 
 ### 環境・インフラ関連
-- **venv-clean/ ディレクトリを削除すべからず**
-  - 本番で使用している仮想環境です
+- **.venv/ ディレクトリを削除すべからず**
+  - uv が管理する本番仮想環境です
   - 削除するとシステム全体が動作不能になります
   - 技術的負債として見えても、実際には重要なファイルの可能性があります
 
@@ -102,7 +102,7 @@
   - 古いファイルとの互換性も考慮
 
 ### 重要なディレクトリ・ファイル
-- `venv-clean/`: 本番仮想環境（削除厳禁）
+- `.venv/`: 本番仮想環境（uv 管理、削除厳禁）
 - `config/`: システム設定（変更は慎重に）
 - `core/`: 統一アーキテクチャ（新機能の基盤）
   - `core/logging.py`: 統一ロガー（`from core.logging import get_logger`）
@@ -262,15 +262,15 @@ Co-Authored-By: Claude <noreply@anthropic.com>"
 # 1. ログの確認
 git log --oneline -5
 
-# 2. 全体テスト
-source venv-clean/bin/activate && python -c "
+# 2. 全体テスト (uv 経由で実行)
+uv run python -c "
 import core
 from core.config import UnifiedConfig
 print('✓ Core system check passed')
 "
 
 # 3. 重要システムの確認
-python -c "from config import get_drive_service; print('✓ Drive service check passed')"
+uv run python -c "from config import get_drive_service; print('✓ Drive service check passed')"
 ```
 
 ---

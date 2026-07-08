@@ -1,11 +1,10 @@
 """
 Unified transcription interface.
 Consolidates all transcribe() method implementations into a single, consistent API.
-"""
 
-import warnings
-warnings.filterwarnings("ignore", category=UserWarning)
-warnings.filterwarnings("ignore", category=FutureWarning)
+警告抑制は suppress_warnings.py に一元化(各エントリポイントで import 済)。
+このモジュール内では個別の filterwarnings を持たない。
+"""
 
 from abc import ABC, abstractmethod
 from typing import Any, Dict, List, Optional, Union, Callable
@@ -261,11 +260,8 @@ class WhisperTranscriptionEngine(TranscriptionEngine):
                 inputs.attention_mask = torch.ones(inputs.input_features.shape[:2], dtype=torch.long, device=self.config.device)
 
             # Generate transcription with modern API
-            with torch.no_grad(), warnings.catch_warnings():
-                warnings.filterwarnings("ignore", category=UserWarning)
-                warnings.filterwarnings("ignore", category=FutureWarning)
-                warnings.filterwarnings("ignore", message=".*attention_mask.*")
-                warnings.filterwarnings("ignore", message=".*pad token.*")
+            # (警告抑制は suppress_warnings.py に一元化済みのため、ここでは持たない)
+            with torch.no_grad():
 
                 # Prepare generation kwargs with modern parameters
                 generation_kwargs = {

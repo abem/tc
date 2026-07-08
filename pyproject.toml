@@ -33,9 +33,10 @@ dev = [
 # テスト実行時にプロジェクトルートを import パスに含める
 # (core/, handlers/ 等のパッケージをテストから import できるようにする)
 pythonpath = ["."]
+# FutureWarning を丸ごと無視しない(レビュー指摘 #6):
+# Python 3.12 化等の移行に伴う本物の FutureWarning が CI で握りつぶされるのを防ぐため、
+# 既知のノイズだけを個別に指定する。
 filterwarnings = [
-    # Whisper/tensor unpickling 警告を無視
+    # Whisper/tensor unpickling 警告(既知のノイズ)
     "ignore:.*weights_only=False.*:FutureWarning",
-    # その他すべての FutureWarning を無視
-    "ignore::FutureWarning",
 ]

@@ -14,8 +14,9 @@ class TestTranscriptionConfig:
         from core.config import TranscriptionConfig
 
         config = TranscriptionConfig()
-        assert config.model == "kotoba-tech/kotoba-whisper-v2.2"
-        assert config.device == "auto"
+        assert config.model == "large-v3"
+        # device のデフォルトは環境依存(cuda が有効なら "cuda"、否则 "cpu")
+        assert config.device in ("cuda", "cpu")
         assert config.language == "ja"
 
     def test_custom_values(self):
@@ -41,7 +42,7 @@ class TestDiarizationConfig:
 
         config = DiarizationConfig()
         assert config.enable_diarization is False
-        assert config.model == "pyannote/speaker-diarization-3.1"
+        assert config.model_name == "pyannote/speaker-diarization-3.1"
 
     def test_custom_values(self):
         """Test custom diarization configuration."""

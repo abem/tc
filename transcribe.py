@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env -S uv run python3
 """
 Transcribe Audio - モダンなCLI音声文字起こしツール
 """
@@ -10,21 +10,8 @@ import sys
 from pathlib import Path
 from typing import Any, Dict
 
-# 警告を抑制
-import warnings
-
-# 環境変数で警告を抑制
-os.environ["TRANSFORMERS_VERBOSITY"] = "error"
-os.environ["TOKENIZERS_PARALLELISM"] = "false"
-
-# すべての警告を抑制
-warnings.filterwarnings("ignore")
-
-# ログレベルを設定
-logging.getLogger("transformers").setLevel(logging.ERROR)
-logging.getLogger("transformers.generation_utils").setLevel(logging.ERROR)
-logging.getLogger("transformers.tokenization_utils_base").setLevel(logging.ERROR)
-logging.getLogger("googleapiclient.discovery_cache").setLevel(logging.ERROR)
+# 警告抑制を統一設定(suppress_warnings.py は import 時に自動で全抑制を実行)
+import suppress_warnings  # noqa: F401
 
 # Rich UI
 from rich.console import Console

@@ -87,10 +87,10 @@ whisper:
 ### 手動モデル指定
 ```bash
 # 特定のモデルを明示的に指定
-python3 main_cli.py audio.wav --language en --model "large-v3"
+./tc audio.wav --language en --model "large-v3"
 
 # 日本語用代替モデルを指定
-python3 main_cli.py audio.wav --language ja --model "openai/whisper-large-v3"
+./tc audio.wav --language ja --model "openai/whisper-large-v3"
 ```
 
 ## 📊 パフォーマンス比較
@@ -111,67 +111,47 @@ python3 main_cli.py audio.wav --language ja --model "openai/whisper-large-v3"
 
 ## 🔧 技術実装詳細
 
-### 1. main_cli.py での実装
+> **注記:** 以下は旧 `main_cli.py` 時代の実装例です。現在は `tc` ランチャー
+> (uv run 経由) に統合されています。モデル自動選択のロジック自体は
+> `core/config.py` の `UnifiedConfig` と各ランチャー側に引き継がれています。
+
+### 1. 言語別モデル自動選択（概念）
 ```python
-# モデル自動選択（言語に応じて）
-if args.model is None:
-    try:
-        # config.yamlから言語別デフォルトモデルを取得
-        language_models = AppConfig.get('whisper', 'language_models', default={})
-        if args.language in language_models:
-            selected_model = language_models[args.language]['default']
-            logger.info(f"言語 '{args.language}' に対応するモデルを自動選択: {selected_model}")
-        else:
-            # フォールバック処理
-            selected_model = "openai/whisper-large-v3" if args.language == "en" else "kotoba-tech/kotoba-whisper-v2.2"
-    except Exception as e:
-        logger.warning(f"モデル自動選択エラー: {e}")
-        # 最終フォールバック
-        selected_model = "openai/whisper-large-v3" if args.language == "en" else "kotoba-tech/kotoba-whisper-v2.2"
+# core/config.py の UnifiedConfig 経由で config.yaml から取得
+language_models = UnifiedConfig.get('whisper', 'language_models', default={})
+if args.language in language_models:
+    selected_model = language_models[args.language]['default']
+else:
+    # フォールバック
+    selected_model = "openai/whisper-large-v3" if args.language == "en" else "kotoba-tech/kotoba-whisper-v2.2"
 ```
 
-### 2. exec.sh での統一処理
+### 2. ランチャーでの呼び出し
 ```bash
-# 統一されたmain_cli.pyを使用（言語選択が正しく動作）
-CMD="python3 main_cli.py $URL"
-CMD="$CMD --language $SELECTED_LANGUAGE"
-CMD="$CMD --device $DEVICE"
-
-if [[ "$USE_DIARIZATION" == "true" ]]; then
-  CMD="$CMD --enable-diarization"
-  if [[ -n "$MAX_SPEAKERS" ]]; then
-    CMD="$CMD --max-speakers $MAX_SPEAKERS"
-  fi
-fi
+# tc ランチャー(uv 経由)で言語・モデルを指定
+./tc "$URL" --language "$SELECTED_LANGUAGE" --device "$DEVICE"
 ```
 
 ## 🧪 テスト・検証
 
 ### 自動テストスイート
 ```bash
-# 言語別モデル選択テスト
-python3 test_language_selection.py
+# pytest でコア設定/ユーティリティの単体テストを実行
+uv run pytest -q
 
-# 英語音声テスト
-python3 -c "
-from test_with_local_file import create_test_audio, test_main_cli
-audio_file = create_test_audio()
-test_main_cli('en')  # 英語モデルでテスト
-"
-
-# 統合テスト
-python3 quick_test_exec.py
+# (言語選択の専用テストスクリプトは旧 main_cli.py 時代のもので現存しないため、
+#  上記 pytest または下記手動検証を使用)
 ```
 
 ### 手動検証例
 ```bash
 # 英語音声でのテスト
 echo "Testing English model selection..."
-./exec_local.sh test_english.wav --language en | grep "openai/whisper-large-v3"
+./tc test_english.wav --language en --no-upload | grep "openai/whisper-large-v3"
 
 # 日本語音声でのテスト  
 echo "Testing Japanese model selection..."
-./exec_local.sh test_japanese.wav --language ja | grep "kotoba-tech/kotoba-whisper-v2.2"
+./tc test_japanese.wav --language ja --no-upload | grep "kotoba-tech/kotoba-whisper-v2.2"
 ```
 
 ## 🐛 トラブルシューティング
@@ -192,14 +172,14 @@ echo "Testing Japanese model selection..."
 
 ### デバッグ方法
 ```bash
-# 詳細ログで言語選択過程を確認
-python3 main_cli.py audio.wav --language en --log-level DEBUG
+# 詳細ログで言語選択過程を確認 (tc ランチャー使用)
+./tc audio.wav --language en --no-upload 2>&1 | tee debug.log
 
-# 設定ファイル確認
-python3 -c "
-from config import AppConfig
-AppConfig.load('config/config.yaml')
-models = AppConfig.get('whisper', 'language_models')
+# 設定ファイル確認 (uv 経由)
+uv run python3 -c "
+from core.config import UnifiedConfig
+UnifiedConfig.load('config/config.yaml')
+models = UnifiedConfig.get('whisper', 'language_models')
 print(models)
 "
 ```

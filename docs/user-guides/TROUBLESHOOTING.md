@@ -22,20 +22,20 @@
 
 **解決策:**
 ```bash
-# 仮想環境が有効化されているか確認
-source venv-clean/bin/activate
+# 依存関係がインストール済みか確認 (uv 管理)
+uv run python -c "import torch; print('✓ torch OK')"
 
-# PyTorchのインストール
-pip install torch torchvision torchaudio
+# 依存関係の再インストール
+uv sync
 
-# CUDA版が必要な場合
-pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
+# ※pip で個別インストールする手順は廃止されました。
+#   依存関係は pyproject.toml/uv.lock を情報源として uv sync で管理されます。
 ```
 
 **確認方法:**
 ```bash
-python3 -c "import torch; print('PyTorch version:', torch.__version__)"
-python3 -c "import torch; print('CUDA available:', torch.cuda.is_available())"
+uv run python3 -c "import torch; print('PyTorch version:', torch.__version__)"
+uv run python3 -c "import torch; print('CUDA available:', torch.cuda.is_available())"
 ```
 
 ### エラー: `ModuleNotFoundError: No module named 'transformers'`
@@ -44,10 +44,11 @@ python3 -c "import torch; print('CUDA available:', torch.cuda.is_available())"
 
 **解決策:**
 ```bash
-pip install transformers>=4.35.0
+# uv で依存関係を再同期 (pyproject.toml/uv.lock が情報源)
+uv sync
 
-# 特定バージョンが必要な場合
-pip install transformers==4.35.0
+# ※pip での個別インストールは廃止されました。uv.lock の外で pip install すると
+#   バージョン不整合の原因になるため、pyproject.toml の依存を編集して uv sync してください。
 ```
 
 ### エラー: `Python version 3.x.x is not supported`
@@ -59,14 +60,13 @@ pip install transformers==4.35.0
 # Pythonバージョン確認
 python3 --version
 
-# Python 3.11以上が必要
+# Python 3.12以上が必要
 # Ubuntu/Debian の場合
 sudo apt update
-sudo apt install python3.11 python3.11-venv
+sudo apt install python3.12 python3.12-venv
 
-# 新しい仮想環境作成
-python3.11 -m venv venv-clean
-source venv-clean/bin/activate
+# uv で依存関係インストール (.venv を自動作成)
+uv sync
 ```
 
 ### エラー: `./tc: Permission denied`
@@ -83,18 +83,15 @@ chmod +x exec_local.sh
 ls -la exec*.sh
 ```
 
-### エラー: `./venv-clean/bin/activate: No such file or directory`
+### エラー: `.venv` の依存関係が壊れている / `ModuleNotFoundError`
 
-**原因:** 仮想環境が削除または作成されていない
+**原因:** .venv の依存関係が破損・不整合を起こしている
 
 **解決策:**
 ```bash
-# 仮想環境の再作成
-python3 -m venv venv-clean
-source venv-clean/bin/activate
-
-# 依存関係の再インストール
-pip install -r requirements-minimal.txt
+# .venv を削除して依存関係を再インストール (uv が管理)
+rm -rf .venv
+uv sync
 
 # HuggingFaceトークンの再設定
 export HUGGINGFACE_TOKEN=hf_your_token_here
@@ -148,12 +145,13 @@ memory_efficiency: true
 nvidia-smi
 nvcc --version
 
-# PyTorchのCUDAサポート確認
-python3 -c "import torch; print('CUDA available:', torch.cuda.is_available())"
+# PyTorchのCUDAサポート確認 (uv 経由)
+uv run python3 -c "import torch; print('CUDA available:', torch.cuda.is_available())"
 
-# CUDA版PyTorchの再インストール
-pip uninstall torch torchvision torchaudio
-pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
+# CUDA版PyTorchの再インストール (.venv を作り直して uv sync で復元)
+# ※torch の CUDA ビルドは uv.lock で管理されているため、pip での個別上書きは避ける。
+rm -rf .venv
+uv sync
 ```
 
 ### エラー: `RuntimeError: No CUDA GPUs are available`
@@ -288,9 +286,10 @@ export HUGGINGFACE_TOKEN=hf_your_new_token
 # モデルアクセス許可確認
 # https://huggingface.co/pyannote/speaker-diarization-3.1 で「Agree and access」
 
-# pyannote再インストール
-pip uninstall pyannote.audio
-pip install pyannote.audio
+# pyannote 再インストール (uv 経由の強制再インストール)
+# ※pyannote.audio は pyproject.toml の標準依存に含まれていないため、
+#   uv.lock を介さず uv pip install で直接インストールする。
+uv pip install pyannote.audio --force-reinstall
 ```
 
 ### エラー: `ModuleNotFoundError: No module named 'pyannote'`
@@ -299,11 +298,10 @@ pip install pyannote.audio
 
 **解決策:**
 ```bash
-# pyannote.audio インストール
-pip install pyannote.audio
-
-# 依存関係も含めてインストール
-pip install pyannote.audio[audio]
+# pyannote.audio は pyproject.toml の標準依存に含まれていないため、
+# 追加インストールが必要な場合は pyproject.toml に追記して uv sync する。
+# (一時的な確認なら uv pip install pyannote.audio も可)
+uv pip install pyannote.audio
 
 # トークン設定
 export HUGGINGFACE_TOKEN=hf_your_token
@@ -358,9 +356,9 @@ curl -I "https://www.youtube.com/watch?v=VIDEO_ID"
 # 手動ダウンロード（デバッグ用）
 youtube-dl --extract-audio --audio-format wav "YouTube_URL"
 
-# yt-dlp を使用（推奨）
-pip install yt-dlp
-yt-dlp --extract-audio --audio-format wav "YouTube_URL"
+# yt-dlp を使用（推奨・uv 経由でインストール）
+uv pip install yt-dlp
+uv run yt-dlp --extract-audio --audio-format wav "YouTube_URL"
 ```
 
 ### エラー: `Google Drive authentication failed`
@@ -527,8 +525,8 @@ EOF
 
 **解決策:**
 ```bash
-# YAML構文チェック
-python3 -c "import yaml; yaml.safe_load(open('config/config.yaml'))"
+# YAML構文チェック (uv 経由)
+uv run python3 -c "import yaml; yaml.safe_load(open('config/config.yaml'))"
 
 # インデント確認（スペース2個）
 cat -A config/config.yaml
@@ -645,8 +643,8 @@ chmod 755 logs/
 # 最大詳細ログ
 ./tc --verbose --gpu-monitor "audio.wav"
 
-# Python レベルデバッグ
-PYTHONPATH=$(pwd) python3 -v main_cli.py "audio.wav"
+# Python レベルデバッグ (uv 経由で起動)
+./tc "audio.wav" 2>&1 | tee debug.log
 
 # ログファイル確認
 tail -f logs/transcribe_*.log
@@ -661,10 +659,10 @@ journalctl -u service_name -f
 **解決策:**
 ```bash
 # Python トレースバック表示
-PYTHONPATH=$(pwd) python3 main_cli.py "audio.wav" 2>&1 | tee debug.log
+./tc "audio.wav" 2>&1 | tee debug.log
 
-# ステップバイステップ実行
-python3 -c "
+# ステップバイステップ実行 (uv 経由)
+uv run python3 -c "
 from core.config import UnifiedConfig
 UnifiedConfig.load()
 print('Config OK')
@@ -683,12 +681,9 @@ print('CUDA available:', torch.cuda.is_available())
 
 **軽度な問題の場合:**
 ```bash
-# 仮想環境リセット
-deactivate
-rm -rf venv-clean/
-python3 -m venv venv-clean
-source venv-clean/bin/activate
-pip install -r requirements-minimal.txt
+# 仮想環境リセット (uv 管理)
+rm -rf .venv
+uv sync
 
 # 設定リセット
 git checkout config/config.yaml
@@ -704,12 +699,9 @@ git stash  # 未保存の変更を退避
 git reset --hard HEAD
 git clean -fd
 
-# 仮想環境完全再作成
-rm -rf venv-clean/
-python3 -m venv venv-clean
-source venv-clean/bin/activate
-pip install --upgrade pip
-pip install -r requirements-minimal.txt
+# 仮想環境完全再作成 (uv が pyproject.toml/uv.lock から復元)
+rm -rf .venv
+uv sync
 
 # システム再起動（GPU問題の場合）
 sudo reboot
@@ -753,8 +745,8 @@ cat config/config.yaml
 環境:
 - OS: Ubuntu 20.04
 - GPU: RTX 4080 16GB
-- Python: 3.11.5
-- torch: 2.1.0+cu118
+- Python: 3.12
+- torch: 2.11.0+cu130
 
 再現手順:
 1. ./tc "15min_audio.wav" --language ja

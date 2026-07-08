@@ -213,8 +213,9 @@ CUDA_VISIBLE_DEVICES=0
 TRANSCRIBE_LOG_LEVEL=INFO
 EOF
 
-# 自動読み込み（python-dotenvが必要）
-pip install python-dotenv
+# 自動読み込み（python-dotenv は依存関係に含まれる）
+# uv sync でインストール済み。追加で入れる場合は:
+uv pip install python-dotenv
 ```
 
 ## 実行時パラメータ
@@ -468,8 +469,8 @@ print(os.path.abspath("config/config.yaml"))
 # 権限確認
 ls -la config/config.yaml
 
-# YAML構文チェック
-python -c "import yaml; yaml.safe_load(open('config/config.yaml'))"
+# YAML構文チェック (uv 経由)
+uv run python -c "import yaml; yaml.safe_load(open('config/config.yaml'))"
 ```
 
 ### 設定デバッグ

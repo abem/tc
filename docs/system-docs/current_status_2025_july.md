@@ -1,5 +1,11 @@
 # 現在のシステム状況レポート - 2025年7月版（アップデート）
 
+> **⚠️ 時点スナップショット:** この文書は **2025年7月時点** の記録です。
+> 記載の `main_cli.py` / `requirements.txt` / `venv-clean` 等はその後廃止され、
+> 現在は `tc`/`transcribe.py` ランチャー + uv (pyproject.toml/uv.lock) 構成に
+> 移行しています。最新のセットアップ手順は `CONTRIBUTING.md` /
+> `DEVELOPMENT.md` / `docs/user-guides/TUTORIAL.md` を参照してください。
+
 ## 📊 システム概要
 
 **プロジェクト名**: 音声文字起こしシステム (transcribe_audio)  

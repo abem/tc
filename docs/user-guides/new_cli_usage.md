@@ -13,8 +13,8 @@
 # ショートカット
 ./tc [URL/ファイルパス]
 
-# Pythonスクリプト直接実行
-python3 transcribe.py [URL/ファイルパス]
+# Pythonスクリプト直接実行 (uv 経由で起動)
+./transcribe.py [URL/ファイルパス]
 ```
 
 ### インタラクティブモード

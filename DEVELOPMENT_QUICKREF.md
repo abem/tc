@@ -4,15 +4,14 @@
 
 ### 環境確認
 ```bash
-# 仮想環境が有効か確認
-source venv-clean/bin/activate
-python3 -c "import torch; print('✓ torch OK')"
+# 依存関係がインストール済みか確認 (uv 管理)
+uv run python3 -c "import torch; print('✓ torch OK')"
 
 # システム動作確認  
 ./tc --help
 
 # 設定ファイル確認
-python3 -c "from core.config import UnifiedConfig; UnifiedConfig.load(); print('✓ Config OK')"
+uv run python3 -c "from core.config import UnifiedConfig; UnifiedConfig.load(); print('✓ Config OK')"
 ```
 
 ### 安全な作業フロー
@@ -35,14 +34,13 @@ core/                    # 統一アーキテクチャ（新機能はここに�
 transcriber.py          # レガシーだが重要（削除禁止）
 tc / transcribe         # 新しいメインエントリーポイント
 exec.sh                # レガシーエントリーポイント
-main_cli.py             # CLI実装
 ```
 
 ### 重要な設定
 ```
 config/config.yaml      # システム設定
 credentials.json        # Google Drive認証
-venv-clean/            # 本番仮想環境（削除禁止）
+.venv/                  # 仮想環境 (uv が管理、削除禁止)
 ```
 
 ## 🔧 よく使うコマンド
@@ -55,14 +53,14 @@ venv-clean/            # 本番仮想環境（削除禁止）
 # デバッグモード
 ./tc "URL" --verbose --device cpu
 
-# 設定確認
-python3 -c "from core.config import UnifiedConfig; UnifiedConfig.load(); print(UnifiedConfig.get('whisper'))"
+# 設定確認 (uv 経由)
+uv run python3 -c "from core.config import UnifiedConfig; UnifiedConfig.load(); print(UnifiedConfig.get('whisper'))"
 ```
 
 ### トラブルシューティング
 ```bash
 # 依存関係確認
-pip list | grep -E "(torch|transformers|google)"
+uv pip list | grep -E "(torch|transformers|google)"
 
 # ログ確認
 tail -f logs/transcribe_*.log
@@ -76,7 +74,7 @@ git checkout config/config.yaml
 ### 絶対避けるべき操作
 ```bash
 # これらは実行してはいけません
-rm -rf venv-clean/           # ❌ 本番環境削除
+rm -rf .venv/                # ❌ 仮想環境削除 (uv sync で再作成できるが作業中は避ける)
 rm credentials.json          # ❌ 認証情報削除  
 rm -rf core/                # ❌ 統一システム削除
 git push --force            # ❌ 強制プッシュ
@@ -85,7 +83,7 @@ git push --force            # ❌ 強制プッシュ
 ### 注意が必要な操作
 ```bash
 # これらは事前確認が必要です
-pip uninstall torch          # ⚠️ 依存関係確認必要
+uv pip uninstall torch       # ⚠️ 依存関係確認必要
 rm *.py.legacy              # ⚠️ 使用状況確認必要
 git merge main              # ⚠️ 競合解決準備必要
 ```
@@ -94,12 +92,8 @@ git merge main              # ⚠️ 競合解決準備必要
 
 ### ModuleNotFoundError
 ```bash
-# torch関連
-source venv-clean/bin/activate
-pip install torch transformers
-
-# google関連  
-pip install google-api-python-client google-auth
+# 依存関係が壊れた場合 (uv が pyproject.toml/uv.lock から復元)
+uv sync
 ```
 
 ### 転写品質劣化
@@ -138,10 +132,9 @@ grep -r "AppConfig" . --include="*.py" --include="*.sh"
 
 ### 重要ファイル復旧
 ```bash
-# venv-clean復旧
-python3 -m venv venv-clean
-source venv-clean/bin/activate  
-pip install torch transformers google-api-python-client
+# .venv 復旧 (uv が pyproject.toml/uv.lock から復元)
+rm -rf .venv
+uv sync
 
 # 設定ファイル復旧
 git checkout HEAD -- config/config.yaml

@@ -30,8 +30,8 @@ class YouTubeClient:
 
     def _find_yt_dlp(self) -> str:
         """Find yt-dlp executable path."""
-        # Check venv first
-        venv_path = Path("venv-clean/bin/yt-dlp")
+        # Check .venv first (uv が管理する仮想環境)
+        venv_path = Path(".venv/bin/yt-dlp")
         if venv_path.exists():
             return str(venv_path)
 

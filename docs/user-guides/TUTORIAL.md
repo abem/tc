@@ -337,8 +337,8 @@ logging:
 
 **設定確認:**
 ```bash
-# 設定値の確認
-python3 -c "from core.config import UnifiedConfig; UnifiedConfig.load(); print(UnifiedConfig.get('whisper'))"
+# 設定値の確認 (uv 経由)
+uv run python3 -c "from core.config import UnifiedConfig; UnifiedConfig.load(); print(UnifiedConfig.get('whisper'))"
 ```
 
 ### カスタム設定での実行例

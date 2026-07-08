@@ -53,8 +53,8 @@ credentials.json        # Google Drive認証
 # デバッグモード
 ./tc "URL" --verbose --device cpu
 
-# 設定確認
-python3 -c "from core.config import UnifiedConfig; UnifiedConfig.load(); print(UnifiedConfig.get('whisper'))"
+# 設定確認 (uv 経由)
+uv run python3 -c "from core.config import UnifiedConfig; UnifiedConfig.load(); print(UnifiedConfig.get('whisper'))"
 ```
 
 ### トラブルシューティング

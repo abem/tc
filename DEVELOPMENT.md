@@ -128,7 +128,7 @@ git checkout -b feature/new-awesome-feature
 ./scripts/pre_check.sh
 
 # テスト実行
-python -m pytest tests/ -v
+uv run pytest tests/ -v
 
 # コミット
 git add .
@@ -147,7 +147,7 @@ git checkout -b fix/issue-123
 # ... バグ修正 ...
 
 # リグレッションテスト
-python -m pytest tests/test_basic.py -v
+uv run pytest tests/test_basic.py -v
 
 # コミット
 git commit -m "fix: resolve issue #123 with audio processing"
@@ -213,17 +213,17 @@ disallow_untyped_defs = true
 
 ### 基本テスト
 ```bash
-# 全テスト実行
-python -m pytest tests/ -v
+# 全テスト実行 (uv 経由)
+uv run pytest tests/ -v
 
 # カバレッジ付きテスト
-python -m pytest tests/ --cov=. --cov-report=html
+uv run pytest tests/ --cov=. --cov-report=html
 
 # 特定テストのみ
-python -m pytest tests/test_basic.py::test_basic_imports -v
+uv run pytest tests/test_basic.py::test_basic_imports -v
 
 # 並列実行（高速化）
-python -m pytest tests/ -n auto
+uv run pytest tests/ -n auto
 ```
 
 ### テストカテゴリ
@@ -554,7 +554,7 @@ rm -rf .pytest_cache/ __pycache__/
 pip check
 
 # 個別テスト実行
-python -m pytest tests/test_basic.py::test_basic_imports -v -s
+uv run pytest tests/test_basic.py::test_basic_imports -v -s
 ```
 
 **Q: GPU out of memory**

@@ -35,19 +35,19 @@ torchvision==0.22.1
 すべての依存ライブラリは最新バージョンにアップデート済みです。
 
 ```bash
-# 仮想環境をアクティベート
-source venv-clean/bin/activate
+# 依存関係インストール (uv が .venv を管理)
+uv sync
 
-# インストール確認
-python -c "import pyannote.audio; print(f'pyannote.audio: {pyannote.audio.__version__}')"
-python -c "import torch; print(f'torch: {torch.__version__}')"
+# インストール確認 (uv 経由)
+uv run python -c "import pyannote.audio; print(f'pyannote.audio: {pyannote.audio.__version__}')"
+uv run python -c "import torch; print(f'torch: {torch.__version__}')"
 ```
 
 ### 1-1. テスト実行
 
 ```bash
-# 話者分離機能のテスト
-python test_speaker_diarization.py
+# 話者分離機能のテスト (uv 経由)
+uv run python test_speaker_diarization.py
 ```
 
 ### 2. HuggingFaceトークンの設定
@@ -152,11 +152,11 @@ speaker_diarization:
 ### 1. pyannote.audioが見つからない
 
 ```bash
-# インストール確認
-python -c "import pyannote.audio; print('OK')"
+# インストール確認 (uv 経由)
+uv run python -c "import pyannote.audio; print('OK')"
 
-# 再インストール
-pip install pyannote.audio --force-reinstall
+# 再インストール (uv 経由)
+uv pip install pyannote.audio --force-reinstall
 ```
 
 ### 2. HuggingFaceトークンエラー
@@ -175,8 +175,8 @@ echo $HUGGINGFACE_TOKEN
 # CPUモードで実行 (--diarization で話者分離を有効化しつつ CPU 指定)
 ./transcribe.py audio_file.wav --diarization --device cpu
 
-# CUDA確認
-python -c "import torch; print(torch.cuda.is_available())"
+# CUDA確認 (uv 経由)
+uv run python -c "import torch; print(torch.cuda.is_available())"
 ```
 
 ### 4. メモリ不足エラー

@@ -175,11 +175,11 @@ echo "Testing Japanese model selection..."
 # 詳細ログで言語選択過程を確認 (tc ランチャー使用)
 ./tc audio.wav --language en --no-upload 2>&1 | tee debug.log
 
-# 設定ファイル確認
-python3 -c "
-from config import AppConfig
-AppConfig.load('config/config.yaml')
-models = AppConfig.get('whisper', 'language_models')
+# 設定ファイル確認 (uv 経由)
+uv run python3 -c "
+from core.config import UnifiedConfig
+UnifiedConfig.load('config/config.yaml')
+models = UnifiedConfig.get('whisper', 'language_models')
 print(models)
 "
 ```

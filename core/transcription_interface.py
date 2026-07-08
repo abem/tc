@@ -481,7 +481,8 @@ class Qwen3ASREngine(TranscriptionEngine):
                 detected_language = self._language_name_to_code(
                     r.language or self.config.language
                 )
-                text = r.text.strip()
+                # 文節改行フォーマットを適用
+                text = self._format_text_with_breaks(r.text.strip())
 
             processing_time = self.perf_logger.end_timing(f"transcribe_{Path(audio_path).name}")
 
@@ -524,6 +525,9 @@ class Qwen3ASREngine(TranscriptionEngine):
         分割は音声ファイルを物理的に切り出すのではなく、(np.ndarray, sr)
         タプルを渡してメモリ上で処理する。
 
+        各チャンクの生テキストを結合してから最後に1回だけ文節改行を適用する。
+        (チャンク毎にフォーマットすると境界の文節が分断されるため)
+
         戻り値: (結合テキスト, 検出言語コード, 失敗チャンク数)
         チャンクが失敗した場合は結果テキストに [チャンクN失敗] プレースホルダを
         挿入し、ユーザーが欠落に気づけるようにする。
@@ -538,7 +542,7 @@ class Qwen3ASREngine(TranscriptionEngine):
         chunk_samples = self.CHUNK_THRESHOLD_SEC * sr
         total_chunks = int(np.ceil(len(audio) / chunk_samples))
 
-        texts = []
+        raw_texts = []
         detected_lang = self.config.language
         failed_chunks = 0
 
@@ -560,23 +564,45 @@ class Qwen3ASREngine(TranscriptionEngine):
                     r = results[0]
                     chunk_text = r.text.strip()
                     if chunk_text:
-                        texts.append(chunk_text)
+                        raw_texts.append(chunk_text)
                     # 最初のチャンクの検出言語を使う
                     if i == 0 and r.language:
                         detected_lang = self._language_name_to_code(r.language)
             except Exception as e:
                 failed_chunks += 1
                 self.logger.warning(f"Chunk {i+1}/{total_chunks} failed: {e}, inserting placeholder")
-                # 欠落が分かるようにプレースホルダを挿入(無言欠落を防ぐ)
-                texts.append(f"[チャンク{i+1}失敗]")
+                # プレースホルダは前後で改行を強制(自然文ではないため)
+                raw_texts.append(f"\n[チャンク{i+1}失敗]\n")
                 continue
 
-        text = " ".join(texts)
+        # 生テキストを全チャンク結合してから、最後に1回だけ文節改行を適用
+        # (チャンク毎にフォーマットすると境界の文節が分断されるため)
+        raw_text = "".join(raw_texts)
+        text = self._format_text_with_breaks(raw_text)
+
         if failed_chunks > 0:
             self.logger.warning(
                 f"Long audio transcription completed with {failed_chunks}/{total_chunks} failed chunks"
             )
         return text, detected_lang, failed_chunks
+
+    @staticmethod
+    def _format_text_with_breaks(text: str) -> str:
+        """テキストを文節区切りで改行する。
+
+        句点(。)・読点(、)・感嘆符(！/!)・疑問符(？/?) の後に改行を入れる。
+        タイムスタンプは付与しない(実時間の精度に確証がないため誤解を避ける)。
+        """
+        import re
+
+        # 文節区切り文字で分割(区切り文字も保持)
+        sentences = re.split(r'(?<=[。、！？!?])', text)
+        sentences = [s.strip() for s in sentences if s.strip()]
+
+        if not sentences:
+            return text.strip()
+
+        return "\n".join(sentences)
 
     def _results_to_segments(self, result, language: str, audio_path: str) -> List[TranscriptionSegment]:
         """Qwen3-ASR の結果を TranscriptionSegment に変換。

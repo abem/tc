@@ -6,7 +6,7 @@ gdrive:
   upload_folder_id: null  # デフォルトアップロード先フォルダID（省略時は元ファイルと同じフォルダ）
 
 whisper:
-  model: kotoba-tech/kotoba-whisper-v2.2
+  model: Qwen/Qwen3-ASR-1.7B
   language: ja
   chunk_size: 100
   device: cuda
@@ -30,7 +30,7 @@ whisper:
 
   # モデル履歴と利用可能モデル
   model_history:
-    current: kotoba-tech/kotoba-whisper-v2.2
+    current: Qwen/Qwen3-ASR-1.7B
     previous:
       - model: whisper-large-v3
         commit: c065e48

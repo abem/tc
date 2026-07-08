@@ -51,10 +51,8 @@ pyproject.toml / uv.lock が情報源です（requirements-*.txt 系は廃止済
 
 ```bash
 # 依存関係インストール（.venv を自動作成）
+# dev group(pytest 等)もデフォルトで含まれるため、素の uv sync で開発環境まで揃う
 uv sync
-
-# 開発用(テスト含む)は dev group を指定
-uv sync --group dev
 ```
 
 **📸 期待される画面:**

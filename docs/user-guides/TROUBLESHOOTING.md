@@ -34,8 +34,8 @@ uv sync
 
 **確認方法:**
 ```bash
-python3 -c "import torch; print('PyTorch version:', torch.__version__)"
-python3 -c "import torch; print('CUDA available:', torch.cuda.is_available())"
+uv run python3 -c "import torch; print('PyTorch version:', torch.__version__)"
+uv run python3 -c "import torch; print('CUDA available:', torch.cuda.is_available())"
 ```
 
 ### エラー: `ModuleNotFoundError: No module named 'transformers'`
@@ -44,10 +44,11 @@ python3 -c "import torch; print('CUDA available:', torch.cuda.is_available())"
 
 **解決策:**
 ```bash
-pip install transformers>=4.35.0
+# uv で依存関係を再同期 (pyproject.toml/uv.lock が情報源)
+uv sync
 
-# 特定バージョンが必要な場合
-pip install transformers==4.35.0
+# ※pip での個別インストールは廃止されました。uv.lock の外で pip install すると
+#   バージョン不整合の原因になるため、pyproject.toml の依存を編集して uv sync してください。
 ```
 
 ### エラー: `Python version 3.x.x is not supported`
@@ -144,12 +145,13 @@ memory_efficiency: true
 nvidia-smi
 nvcc --version
 
-# PyTorchのCUDAサポート確認
-python3 -c "import torch; print('CUDA available:', torch.cuda.is_available())"
+# PyTorchのCUDAサポート確認 (uv 経由)
+uv run python3 -c "import torch; print('CUDA available:', torch.cuda.is_available())"
 
-# CUDA版PyTorchの再インストール
-pip uninstall torch torchvision torchaudio
-pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
+# CUDA版PyTorchの再インストール (.venv を作り直して uv sync で復元)
+# ※torch の CUDA ビルドは uv.lock で管理されているため、pip での個別上書きは避ける。
+rm -rf .venv
+uv sync
 ```
 
 ### エラー: `RuntimeError: No CUDA GPUs are available`
@@ -284,9 +286,11 @@ export HUGGINGFACE_TOKEN=hf_your_new_token
 # モデルアクセス許可確認
 # https://huggingface.co/pyannote/speaker-diarization-3.1 で「Agree and access」
 
-# pyannote再インストール
-pip uninstall pyannote.audio
-pip install pyannote.audio
+# pyannote 再インストール (.venv を作り直して uv sync)
+# ※pyannote.audio は pyproject.toml で管理されていない場合があるため、
+#   必要に応じて pyproject.toml に追加してから uv sync してください。
+rm -rf .venv
+uv sync
 ```
 
 ### エラー: `ModuleNotFoundError: No module named 'pyannote'`
@@ -295,11 +299,10 @@ pip install pyannote.audio
 
 **解決策:**
 ```bash
-# pyannote.audio インストール
-pip install pyannote.audio
-
-# 依存関係も含めてインストール
-pip install pyannote.audio[audio]
+# pyannote.audio は pyproject.toml の標準依存に含まれていないため、
+# 追加インストールが必要な場合は pyproject.toml に追記して uv sync する。
+# (一時的な確認なら uv pip install pyannote.audio も可)
+uv pip install pyannote.audio
 
 # トークン設定
 export HUGGINGFACE_TOKEN=hf_your_token
@@ -354,9 +357,9 @@ curl -I "https://www.youtube.com/watch?v=VIDEO_ID"
 # 手動ダウンロード（デバッグ用）
 youtube-dl --extract-audio --audio-format wav "YouTube_URL"
 
-# yt-dlp を使用（推奨）
-pip install yt-dlp
-yt-dlp --extract-audio --audio-format wav "YouTube_URL"
+# yt-dlp を使用（推奨・uv 経由でインストール）
+uv pip install yt-dlp
+uv run yt-dlp --extract-audio --audio-format wav "YouTube_URL"
 ```
 
 ### エラー: `Google Drive authentication failed`
@@ -523,8 +526,8 @@ EOF
 
 **解決策:**
 ```bash
-# YAML構文チェック
-python3 -c "import yaml; yaml.safe_load(open('config/config.yaml'))"
+# YAML構文チェック (uv 経由)
+uv run python3 -c "import yaml; yaml.safe_load(open('config/config.yaml'))"
 
 # インデント確認（スペース2個）
 cat -A config/config.yaml
@@ -659,8 +662,8 @@ journalctl -u service_name -f
 # Python トレースバック表示
 ./tc "audio.wav" 2>&1 | tee debug.log
 
-# ステップバイステップ実行
-python3 -c "
+# ステップバイステップ実行 (uv 経由)
+uv run python3 -c "
 from core.config import UnifiedConfig
 UnifiedConfig.load()
 print('Config OK')

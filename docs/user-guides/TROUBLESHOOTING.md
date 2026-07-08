@@ -89,12 +89,9 @@ ls -la exec*.sh
 
 **解決策:**
 ```bash
-# 仮想環境の再作成
-python3 -m venv venv-clean
-source venv-clean/bin/activate
-
-# 依存関係の再インストール
-pip install -r requirements-minimal.txt
+# .venv を削除して依存関係を再インストール (uv が管理)
+rm -rf .venv
+uv sync
 
 # HuggingFaceトークンの再設定
 export HUGGINGFACE_TOKEN=hf_your_token_here
@@ -683,12 +680,9 @@ print('CUDA available:', torch.cuda.is_available())
 
 **軽度な問題の場合:**
 ```bash
-# 仮想環境リセット
-deactivate
-rm -rf venv-clean/
-python3 -m venv venv-clean
-source venv-clean/bin/activate
-pip install -r requirements-minimal.txt
+# 仮想環境リセット (uv 管理)
+rm -rf .venv
+uv sync
 
 # 設定リセット
 git checkout config/config.yaml
@@ -704,12 +698,9 @@ git stash  # 未保存の変更を退避
 git reset --hard HEAD
 git clean -fd
 
-# 仮想環境完全再作成
-rm -rf venv-clean/
-python3 -m venv venv-clean
-source venv-clean/bin/activate
-pip install --upgrade pip
-pip install -r requirements-minimal.txt
+# 仮想環境完全再作成 (uv が pyproject.toml/uv.lock から復元)
+rm -rf .venv
+uv sync
 
 # システム再起動（GPU問題の場合）
 sudo reboot

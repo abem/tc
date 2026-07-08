@@ -46,20 +46,20 @@ cd transcribe_audio
 
 ### ステップ3: 仮想環境セットアップ
 
+このプロジェクトは [uv](https://docs.astral.sh/uv/) で依存関係を管理しています。
+pyproject.toml / uv.lock が情報源です（requirements-*.txt 系は廃止済）。
+
 ```bash
-# 仮想環境作成
-python3 -m venv venv-clean
+# 依存関係インストール（.venv を自動作成）
+uv sync
 
-# 仮想環境有効化
-source venv-clean/bin/activate
-
-# 依存関係インストール
-pip install -r requirements-minimal.txt
+# 開発用(テスト含む)は dev group を指定
+uv sync --group dev
 ```
 
 **📸 期待される画面:**
 ```
-Successfully installed torch-2.1.0 transformers-4.35.0 ...
+Installed packages: torch, transformers, librosa, scipy ...
 ✅ インストール完了
 ```
 

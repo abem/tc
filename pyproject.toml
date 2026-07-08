@@ -24,27 +24,27 @@ dependencies = [
     "python-dotenv>=1.2.2",
 ]
 
-[project.optional-dependencies]
-# Qwen3-ASR エンジン(最高精度・2026年ベンチマークトップ)を使う場合のみインストール。
-# インストール: uv sync --extra qwen3
-#
-# 注意(transformers バージョンについて):
-#   qwen-asr は transformers<5 を要求する。uv.lock は universal resolution
-#   (全extra共通の単一バージョン集合を解決する)仕様のため、qwen3 extra を
-#   実際にインストールするかに関わらず、transformers は 4.57.x に固定される。
-#   つまり本 extra 化で「Qwen3 未使用ユーザーの transformers ダウングレードを
-#   防ぐ」ことはできない(uv の仕様上、原理的に分離不能)。
-#   extra 匁の実効果は「qwen-asr の周辺パッケージ(gradio/uvicorn/starlette 等)
-#   がデフォルトでインストールされない」点のみ。
-#   Whisper エンジンは transformers 4.57.x でも回帰なし(レビュー検証済み)。
-qwen3 = [
-    "qwen-asr>=0.0.6",
-]
-
 [dependency-groups]
 dev = [
     "pytest>=8.0.0",
 ]
+# Qwen3-ASR エンジン(最高精度・2026年ベンチマークトップ)。
+# default-groups に指定しているため uv sync / uv run(./tc) で自動インストールされる。
+#
+# 注意(transformers バージョンについて):
+#   qwen-asr は transformers<5 を要求するため、インストールすると transformers が
+#   5.x -> 4.57.x にダウングレードされる。Qwen3-ASR を使わない環境でも
+#   default-groups の仕様上インストールされるが、Whisper エンジンは
+#   transformers 4.57.x でも回帰なし(レビュー検証済み)。
+#   Qwen3-ASR を除外したい場合は uv sync --no-default-groups --group dev 等。
+qwen3 = [
+    "qwen-asr>=0.0.6",
+]
+
+[tool.uv]
+# dev と qwen3 をデフォルトでインストール。
+# これにより ./tc を実行するだけで Qwen3-ASR が使える(uv run が自動で解決)。
+default-groups = ["dev", "qwen3"]
 
 [tool.pytest.ini_options]
 # テスト実行時にプロジェクトルートを import パスに含める

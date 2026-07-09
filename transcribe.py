@@ -109,9 +109,10 @@ class TranscribeLoader:
         if language == "ja":
             model_choices = {
                 "1": "Qwen/Qwen3-ASR-1.7B (推奨・最高精度)",
-                "2": "kotoba-tech/kotoba-whisper-v2.2",
-                "3": "openai/whisper-large-v3",
-                "4": "openai/whisper-medium"
+                "2": "neosophie/Qwen3-ASR-1.7B-JA (固有名詞特化・IT系)",
+                "3": "kotoba-tech/kotoba-whisper-v2.2",
+                "4": "openai/whisper-large-v3",
+                "5": "openai/whisper-medium"
             }
         else:
             model_choices = {

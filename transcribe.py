@@ -108,15 +108,17 @@ class TranscribeLoader:
         # 言語に応じたモデル選択
         if language == "ja":
             model_choices = {
-                "1": "kotoba-tech/kotoba-whisper-v2.2 (推奨)",
-                "2": "openai/whisper-large-v3",
-                "3": "openai/whisper-medium"
+                "1": "Qwen/Qwen3-ASR-1.7B (推奨・最高精度)",
+                "2": "kotoba-tech/kotoba-whisper-v2.2",
+                "3": "openai/whisper-large-v3",
+                "4": "openai/whisper-medium"
             }
         else:
             model_choices = {
-                "1": "openai/whisper-large-v3 (推奨)",
-                "2": "openai/whisper-medium",
-                "3": "openai/whisper-base"
+                "1": "Qwen/Qwen3-ASR-1.7B (推奨・最高精度)",
+                "2": "openai/whisper-large-v3",
+                "3": "openai/whisper-medium",
+                "4": "openai/whisper-base"
             }
         
         console.print("\n利用可能なモデル:")

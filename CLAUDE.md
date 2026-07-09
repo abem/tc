@@ -130,7 +130,7 @@
 - `core/`: 統一アーキテクチャ（新機能の基盤）
   - `core/logging.py`: 統一ロガー（`from core.logging import get_logger`）
   - `core/config.py`: TranscriptionConfig, DiarizationConfig, UnifiedConfig
-  - `core/transcription_interface.py`: UnifiedTranscriber（標準文字起こし）
+  - `core/transcription_interface.py`: UnifiedTranscriber（デュアルエンジン: Qwen3ASREngine / WhisperTranscriptionEngine をモデル名で自動切替）
   - `core/utils.py`: URL検出・デバイス解決ユーティリティ
 - `handlers/`: 外部サービスハンドラー
   - `handlers/gdrive.py`: GDriveClient（Google Drive操作）
@@ -140,6 +140,9 @@
 
 ### 新CLI (transcribe.py / tc コマンド)
 - **推奨実行方法**: `./tc` コマンドでシンプル実行
+- **デフォルトモデル**: Qwen/Qwen3-ASR-1.7B（最高精度・2026年ベンチマークトップ）
+  - モデル名に `qwen3-asr` を含む場合は Qwen3ASREngine、それ以外は WhisperTranscriptionEngine が自動選択
+  - 長音声は5分単位でチャンク分割して処理（CUBLASエラー回避）
 - **自動設定読み込み**: config.yamlから自動でURL取得
 - **同一フォルダアップロード**: 元音声ファイルと同じGoogle Driveフォルダに結果保存
 - **警告抑制済み**: transformers、googleapiclient等の不要ログを抑制

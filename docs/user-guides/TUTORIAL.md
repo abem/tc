@@ -155,8 +155,8 @@ cat output/20250729_*_transcription.txt
 ```
 
 **自動モデル選択:**
-- 日本語: `kotoba-tech/kotoba-whisper-v2.2`
-- 英語: `openai/whisper-large-v3`
+- 日本語: `Qwen/Qwen3-ASR-1.7B`（デフォルト・最高精度）
+- 英語: `Qwen/Qwen3-ASR-1.7B`（デフォルト）または `openai/whisper-large-v3`
 
 ## 🎤 話者分離機能
 

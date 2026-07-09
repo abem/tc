@@ -123,6 +123,20 @@ whisper:
       size: "1550MB"
       speed: "slow"
       accuracy: "highest"
+    Qwen/Qwen3-ASR-1.7B:
+      description: "Qwen3-ASR (最高精度・2026年ベンチマークトップ)"
+      size: "1700MB"
+      speed: "medium"
+      accuracy: "highest"
+      language: "ja"
+      engine: "qwen3-asr"
+    neosophie/Qwen3-ASR-1.7B-JA:
+      description: "Qwen3-ASR JA (固有名詞特化・IT/技術ドメイン)"
+      size: "1700MB"
+      speed: "medium"
+      accuracy: "highest"
+      language: "ja"
+      engine: "qwen3-asr"
 ```
 
 ### 話者分離設定

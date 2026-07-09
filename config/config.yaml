@@ -22,7 +22,6 @@ whisper:
     ja:
       default: Qwen/Qwen3-ASR-1.7B
       alternatives:
-        - neosophie/Qwen3-ASR-1.7B-JA
         - kotoba-tech/kotoba-whisper-v2.2
         - drewschaub/whisper-large-v3-japanese-4k-steps
         - openai/whisper-large-v3
@@ -92,13 +91,6 @@ whisper:
       accuracy: "highest"
     Qwen/Qwen3-ASR-1.7B:
       description: "Qwen3-ASR (最高精度・2026年ベンチマークトップ)"
-      size: "1700MB"
-      speed: "medium"
-      accuracy: "highest"
-      language: "ja"
-      engine: "qwen3-asr"
-    neosophie/Qwen3-ASR-1.7B-JA:
-      description: "Qwen3-ASR JA (固有名詞特化・IT/技術ドメイン)"
       size: "1700MB"
       speed: "medium"
       accuracy: "highest"

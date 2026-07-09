@@ -252,13 +252,6 @@ tc/
   - 52の言語・方言に対応、長音声のチャンク分割に対応
   - `./tc` でデフォルト動作
 
-### 固有名詞特化モデル（Qwen3-ASRエンジン）
-- neosophie/Qwen3-ASR-1.7B-JA
-  - IT/技術ドメインの固有名詞認識に特化したファインチューニング版
-  - カタカナ語の英語表記化・漢数字→アラビア数字変換が向上（出典: Hugging Faceモデルカード）
-  - トレードオフ: 一般文のCERがわずかに悪化するため、IT系音声以外はデフォルトを推奨
-  - `./tc --profile 6`（カスタム設定）で選択可能
-
 ### 日本語特化モデル（Whisperエンジン）
 - kotoba-tech/kotoba-whisper-v2.2
 - drewschaub/whisper-large-v3-japanese-4k-steps

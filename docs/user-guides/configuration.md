@@ -47,12 +47,12 @@ gdrive:
   upload_folder_id: null                 # アップロード先フォルダID
 ```
 
-### Whisper音声認識設定
+### 音声認識設定
 
 ```yaml
 whisper:
   # 基本設定
-  model: kotoba-tech/kotoba-whisper-v2.2  # デフォルトモデル
+  model: Qwen/Qwen3-ASR-1.7B  # デフォルトモデル（最高精度・2026年ベンチマークトップ）
   language: ja                           # デフォルト言語
   chunk_size: 100                        # 音声分割サイズ（秒）
   device: cuda                           # 推論デバイス (cuda/cpu/auto)
@@ -65,20 +65,21 @@ whisper:
   # 言語別モデル設定
   language_models:
     ja:                                  # 日本語
-      default: kotoba-tech/kotoba-whisper-v2.2
+      default: Qwen/Qwen3-ASR-1.7B
       alternatives:
-        - drewschaub/whisper-large-v3-japanese-4k-steps
+        - kotoba-tech/kotoba-whisper-v2.2
         - openai/whisper-large-v3
     en:                                  # 英語
       default: openai/whisper-large-v3
       alternatives:
+        - Qwen/Qwen3-ASR-1.7B
         - large-v3
         - medium
         - small
   
   # モデル履歴（デバッグ用）
   model_history:
-    current: kotoba-tech/kotoba-whisper-v2.2
+    current: Qwen/Qwen3-ASR-1.7B
     previous:
       - model: whisper-large-v3
         commit: c065e48
@@ -112,7 +113,7 @@ whisper:
       speed: "slow"
       accuracy: "highest"
     kotoba-tech/kotoba-whisper-v2.2:
-      description: "日本語特化モデル（現在使用）"
+      description: "日本語特化モデル（Whisperエンジン）"
       size: "1550MB"
       speed: "medium"
       accuracy: "high"
@@ -249,7 +250,7 @@ from transcriber import WhisperTranscriber, TranscriptionConfig
 
 # 設定オブジェクトでの指定
 config = TranscriptionConfig(
-    model="kotoba-tech/kotoba-whisper-v2.2",
+    model="Qwen/Qwen3-ASR-1.7B",
     language="ja",
     device="cuda",
     chunk_size=300,
@@ -404,7 +405,7 @@ config = AppConfig.load_from_yaml(config_file)
 ```yaml
 # config/config.prod.yaml
 whisper:
-  model: kotoba-tech/kotoba-whisper-v2.2
+  model: Qwen/Qwen3-ASR-1.7B
   device: cuda
   chunk_size: 300
   

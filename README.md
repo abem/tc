@@ -1,16 +1,16 @@
 # 音声文字起こしシステム（tc） 🎙️
 
-[![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
+[![Python 3.12+](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/downloads/)
 [![UV Package Manager](https://img.shields.io/badge/package--manager-uv-orange.svg)](https://github.com/astral-sh/uv)
-[![Whisper](https://img.shields.io/badge/model-kotoba--whisper--v2.2-green.svg)](https://huggingface.co/kotoba-tech/kotoba-whisper-v2.2)
+[![Qwen3-ASR](https://img.shields.io/badge/model-Qwen3--ASR--1.7B-green.svg)](https://huggingface.co/Qwen/Qwen3-ASR-1.7B)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 ## ✨ 概要
 
 **シンプルで高精度な日本語音声文字起こしツール**
 
-- **🇯🇵 日本語特化** - kotoba-tech/kotoba-whisper-v2.2による高精度日本語文字起こし
-- **⚡ ワンコマンド実行** - `./tc`だけでconfig.yamlから設定を自動読み込み
+- **🏆 最高精度** - Qwen3-ASR-1.7Bによる2026年ベンチマークトップクラスの日本語文字起こし（デフォルト）
+- **⚡ ワンコマンド実行** - `./tc`だけでconfig.yamlから設定を自動読み込み、仮想環境も自動構築
 - **☁️ Google Drive連携** - 音声ファイルの自動ダウンロード・結果アップロード
 - **🔧 uv パッケージ管理** - 最新のPython依存関係管理ツール使用
 - **🎯 シンプル設計** - 複雑な設定不要、すぐに使える
@@ -91,7 +91,7 @@ gdrive:
   url: "https://drive.google.com/file/d/your_file_id/view"
 
 whisper:
-  model: kotoba-tech/kotoba-whisper-v2.2
+  model: Qwen/Qwen3-ASR-1.7B   # デフォルト（最高精度）
   language: ja
   device: cuda  # または cpu
 ```
@@ -129,8 +129,8 @@ whisper:
 # 出力ディレクトリを指定
 ./tc --output-dir results
 
-# モデルを変更
-./tc --model openai/whisper-large-v3
+# モデルを変更（従来のWhisperエンジンに切り替え）
+./tc --model kotoba-tech/kotoba-whisper-v2.2
 
 # デバイスを指定
 ./tc --device cpu
@@ -151,7 +151,7 @@ gdrive:
   chunk_size: 100
 
 whisper:
-  model: kotoba-tech/kotoba-whisper-v2.2
+  model: Qwen/Qwen3-ASR-1.7B   # デフォルト: 最高精度（2026年ベンチマークトップ）
   language: ja
   device: cuda
   beam_size: 5
@@ -161,13 +161,14 @@ whisper:
   # 言語別モデル設定
   language_models:
     ja:
-      default: kotoba-tech/kotoba-whisper-v2.2
+      default: Qwen/Qwen3-ASR-1.7B
       alternatives:
-        - drewschaub/whisper-large-v3-japanese-4k-steps
+        - kotoba-tech/kotoba-whisper-v2.2
         - openai/whisper-large-v3
     en:
       default: openai/whisper-large-v3
       alternatives:
+        - Qwen/Qwen3-ASR-1.7B
         - large-v3
         - medium
 
@@ -224,10 +225,10 @@ tc/
    - デフォルト値の管理
 
 2. **文字起こしエンジン** (`core/transcription_interface.py`)
-   - Whisperモデルの管理
+   - Qwen3-ASR / Whisper のデュアルエンジン（モデル名で自動切替）
    - 音声前処理
-   - チャンク分割処理
-   - タイムスタンプ付与
+   - 長音声チャンク分割処理（5分単位）
+   - 文節改行フォーマット
 
 3. **Google Drive連携** (`handlers/gdrive.py`)
    - ファイルダウンロード
@@ -246,27 +247,40 @@ tc/
 
 ## 🎯 サポートモデル
 
-### 日本語特化モデル
-- **kotoba-tech/kotoba-whisper-v2.2** (推奨)
+### 🏆 最高精度モデル（デフォルト）
+- **Qwen/Qwen3-ASR-1.7B** (推奨・2026年ベンチマーク WER 0.185)
+  - 52の言語・方言に対応、長音声のチャンク分割に対応
+  - `./tc` でデフォルト動作
+
+### 日本語特化モデル（Whisperエンジン）
+- kotoba-tech/kotoba-whisper-v2.2
 - drewschaub/whisper-large-v3-japanese-4k-steps
 
-### 多言語モデル
+### 多言語モデル（Whisperエンジン）
 - openai/whisper-large-v3
 - openai/whisper-large-v2
 - openai/whisper-medium
 - openai/whisper-small
 
+> モデル名に `qwen3-asr` を含む場合は Qwen3ASREngine、
+> それ以外は WhisperTranscriptionEngine が自動選択されます。
+
 ## 📊 出力形式
 
-### 文字起こし結果
+### 文字起こし結果（Qwen3-ASR・デフォルト）
+
+文節毎に改行された読みやすいテキスト：
 
 ```
-[00:00] やっぱりここから3秒
-[00:30] ハミルトンはセクター1最速これは速いですねここまでセクター2秒ぐらい返りますが
-[01:00] 1004秒
-[01:30] ごめん
+こんにちは。
+今日は文字起こしのテストをしています。
+それでは、
+始めましょう。
 ...
 ```
+
+> Whisperエンジン（`--model kotoba-tech/kotoba-whisper-v2.2`）を選択した場合は、
+> 30秒毎の `[MM:SS]` タイムスタンプ付き形式になります。
 
 ### メタデータ
 - 処理時間

@@ -29,6 +29,29 @@ class TestYouTubeUrlDetection:
         assert not is_youtube_url("")
 
 
+class TestTwitterUrlDetection:
+    """Tests for X(Twitter) URL detection."""
+
+    def test_is_twitter_url_valid(self):
+        """Test valid X(Twitter) status URLs."""
+        from core.utils import is_twitter_url
+
+        assert is_twitter_url("https://x.com/hanakoxbt/status/2083602828744859845/video/1")
+        assert is_twitter_url("https://x.com/hanakoxbt/status/2083602828744859845")
+        assert is_twitter_url("https://twitter.com/hanakoxbt/status/2083602828744859845")
+        assert is_twitter_url("https://www.twitter.com/hanakoxbt/status/2083602828744859845")
+
+    def test_is_twitter_url_invalid(self):
+        """Test invalid X(Twitter) URLs."""
+        from core.utils import is_twitter_url
+
+        assert not is_twitter_url("https://www.youtube.com/watch?v=dQw4w9WgXcQ")
+        assert not is_twitter_url("https://drive.google.com/file/d/123")
+        assert not is_twitter_url("https://x.com/hanakoxbt")  # ステータスIDなし
+        assert not is_twitter_url("/local/path/to/file.mp3")
+        assert not is_twitter_url("")
+
+
 class TestGoogleDriveUrlDetection:
     """Tests for Google Drive URL detection."""
 
@@ -89,6 +112,13 @@ class TestDetectInputType:
 
         result = detect_input_type("https://drive.google.com/file/d/abc123/view")
         assert result["type"] == "gdrive"
+
+    def test_detect_twitter(self):
+        """Test X(Twitter) URL detection."""
+        from core.utils import detect_input_type
+
+        result = detect_input_type("https://x.com/hanakoxbt/status/2083602828744859845/video/1")
+        assert result["type"] == "twitter"
 
     def test_detect_local_existing_file(self):
         """Test local file detection for existing file."""

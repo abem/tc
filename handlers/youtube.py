@@ -13,6 +13,7 @@ from typing import Dict, Optional, Tuple
 
 from core.logging import get_logger
 from core.utils import is_youtube_url as check_is_youtube_url
+from core.utils import is_twitter_url as check_is_twitter_url
 
 logger = get_logger(__name__)
 
@@ -53,6 +54,10 @@ class YouTubeClient:
         """Check if URL is a YouTube URL."""
         return check_is_youtube_url(url)
 
+    def is_supported_url(self, url: str) -> bool:
+        """Check if URL is a yt-dlp-backed URL supported by this client(YouTube/X)."""
+        return check_is_youtube_url(url) or check_is_twitter_url(url)
+
     def extract_video_info(self, url: str) -> Dict:
         """Get video information."""
         try:
@@ -80,17 +85,17 @@ class YouTubeClient:
         output_path: Optional[str] = None
     ) -> Tuple[str, Dict]:
         """
-        Download and extract audio from YouTube video.
+        Download and extract audio from a YouTube or X(Twitter) video.
 
         Args:
-            url: YouTube video URL
+            url: YouTube or X(Twitter) video URL
             output_path: Output file path (auto-generated if None)
 
         Returns:
             Tuple of (audio_file_path, metadata)
         """
-        if not self.is_youtube_url(url):
-            raise ValueError(f"Invalid YouTube URL: {url}")
+        if not self.is_supported_url(url):
+            raise ValueError(f"Unsupported URL (YouTube/X only): {url}")
 
         video_info = self.extract_video_info(url)
         if not video_info:

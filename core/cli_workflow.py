@@ -38,8 +38,8 @@ def resolve_input_audio(
         if on_status:
             on_status(message)
 
-    if source_type == "youtube":
-        status("YouTube URLを検出")
+    if source_type in ("youtube", "twitter"):
+        status("YouTube URLを検出" if source_type == "youtube" else "X(Twitter)動画URLを検出")
         from handlers.youtube import YouTubeClient, check_yt_dlp_installed, install_yt_dlp
 
         if ensure_yt_dlp and not check_yt_dlp_installed():
@@ -49,7 +49,7 @@ def resolve_input_audio(
         youtube_handler = YouTubeClient(output_dir=str(output_dir))
         local_audio_path, metadata = youtube_handler.download_audio(source)
         return InputResolution(
-            source_type="youtube",
+            source_type=source_type,
             original_source=source,
             local_audio_path=local_audio_path,
             is_temp_file=True,

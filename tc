@@ -55,6 +55,7 @@ def transcribe_audio(audio_path: str, config: Dict[str, Any]) -> str:
         beam_size=whisper_config.get("beam_size", 5),
         best_of=whisper_config.get("best_of", 3),
         temperature=whisper_config.get("temperature", 0.1),
+        context=whisper_config.get("context", ""),
     )
 
     logger.info(

@@ -32,6 +32,9 @@ class TranscriptionConfig:
     temperature: float = 0.0
     beam_size: int = 5
     best_of: int = 3
+    # 固有名詞・専門用語の認識ヒント文字列(Qwen3-ASRのcontext引数に相当。
+    # WhisperTranscriptionEngineは未対応/無視)。空文字がデフォルトで後方互換。
+    context: str = ""
     
     # Performance settings
     optimal_batch_size: int = 8

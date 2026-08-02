@@ -61,6 +61,7 @@ whisper:
   beam_size: 5                           # ビームサーチサイズ
   best_of: 3                            # 候補数
   temperature: 0.1                       # 生成温度
+  context: ""                            # 固有名詞・専門用語の認識ヒント文字列（下記参照）
   
   # 言語別モデル設定
   language_models:
@@ -131,6 +132,18 @@ whisper:
       language: "ja"
       engine: "qwen3-asr"
 ```
+
+#### `context`（固有名詞・専門用語のヒント）
+
+`./tc`（`Qwen/Qwen3-ASR-*`系モデル使用時のみ有効。WhisperTranscriptionEngineは本設定を使用しない）実行時に、
+人名・製品名・専門用語など誤変換しやすい語を短い文字列で渡すことで、認識精度を改善できます。
+
+```yaml
+whisper:
+  context: "GAZOO Racing, TJRチーム, スーパーGT, Qwen3-ASR"
+```
+
+空文字（デフォルト）の場合は従来どおりヒントなしで動作します（後方互換）。
 
 ### 話者分離設定
 

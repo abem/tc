@@ -60,6 +60,27 @@ def detect_input_type(source: str) -> Dict[str, str]:
     return {"type": "unknown", "source": source}
 
 
+def load_context_hints(file_path: str) -> str:
+    """固有名詞・専門用語のヒントファイルを読み込み、ASRのcontext文字列へ変換する。
+
+    書式: 1行1語彙。空行と'#'始まりの行(コメント)は無視する。
+    残った行を', '(カンマ+半角スペース)で結合して1本の文字列にする。
+
+    ファイルが存在しない・内容が空(コメントのみ含む)の場合は""を返す
+    (context未設定時と同じ後方互換動作にするため)。
+    """
+    path = Path(file_path)
+    if not path.exists():
+        return ""
+
+    hints = [
+        line.strip()
+        for line in path.read_text(encoding="utf-8").splitlines()
+        if line.strip() and not line.strip().startswith("#")
+    ]
+    return ", ".join(hints)
+
+
 def resolve_device(device: str) -> str:
     """Resolve auto device selection to cuda/cpu."""
     if device != "auto":

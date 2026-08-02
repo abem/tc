@@ -466,12 +466,13 @@ class Qwen3ASREngine(TranscriptionEngine):
                     f"splitting into chunks for stable processing"
                 )
                 text, detected_language, failed_chunks = self._transcribe_long_audio(
-                    audio_path, duration, language
+                    audio_path, duration, language, self.config.context
                 )
             else:
                 # 短音声: そのまま処理
                 results = self._model.transcribe(
                     audio=str(audio_path),
+                    context=self.config.context,
                     language=language,
                     return_time_stamps=False,
                 )
@@ -516,7 +517,7 @@ class Qwen3ASREngine(TranscriptionEngine):
             self.logger.error(f"Transcription failed: {str(e)}")
             raise
 
-    def _transcribe_long_audio(self, audio_path: str, duration: float, language: Optional[str]):
+    def _transcribe_long_audio(self, audio_path: str, duration: float, language: Optional[str], context: str = ""):
         """長音声を CHUNK_THRESHOLD_SEC 毎に分割して文字起こし、結果を結合する。
 
         Qwen3-ASR の内部チャンク処理でも長音声に対応しているが、
@@ -557,6 +558,7 @@ class Qwen3ASREngine(TranscriptionEngine):
             try:
                 results = self._model.transcribe(
                     audio=(chunk, sr),
+                    context=context,
                     language=language,
                     return_time_stamps=False,
                 )

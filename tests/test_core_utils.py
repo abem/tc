@@ -114,6 +114,64 @@ class TestDetectInputType:
         assert result["type"] == "unknown"
 
 
+class TestLoadContextHints:
+    """Tests for context hints file loading."""
+
+    def test_nonexistent_file_returns_empty(self):
+        """Test that a missing file returns empty string (backward compat)."""
+        from core.utils import load_context_hints
+
+        result = load_context_hints("/nonexistent/path/to/context_hints.txt")
+        assert result == ""
+
+    def test_empty_file_returns_empty(self):
+        """Test that an empty file returns empty string."""
+        from core.utils import load_context_hints
+        import tempfile
+        import os
+
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as f:
+            temp_path = f.name
+
+        try:
+            result = load_context_hints(temp_path)
+            assert result == ""
+        finally:
+            os.unlink(temp_path)
+
+    def test_comments_and_blank_lines_only_returns_empty(self):
+        """Test that a file with only comments/blank lines returns empty string."""
+        from core.utils import load_context_hints
+        import tempfile
+        import os
+
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False, encoding="utf-8") as f:
+            f.write("# comment line\n\n# another comment\n   \n")
+            temp_path = f.name
+
+        try:
+            result = load_context_hints(temp_path)
+            assert result == ""
+        finally:
+            os.unlink(temp_path)
+
+    def test_hints_joined_with_comma_space(self):
+        """Test that valid hint lines are joined with ', '."""
+        from core.utils import load_context_hints
+        import tempfile
+        import os
+
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False, encoding="utf-8") as f:
+            f.write("# comment\n田中太郎\n\nGAZOO Racing\n  スーパーGT  \n")
+            temp_path = f.name
+
+        try:
+            result = load_context_hints(temp_path)
+            assert result == "田中太郎, GAZOO Racing, スーパーGT"
+        finally:
+            os.unlink(temp_path)
+
+
 class TestResolveDevice:
     """Tests for device resolution."""
 

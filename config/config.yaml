@@ -13,6 +13,10 @@ whisper:
   beam_size: 5
   best_of: 3
   temperature: 0.1
+  # 固有名詞・専門用語の認識ヒントファイル(Qwen3-ASR用)。1行1語彙、#はコメント。
+  # 書式サンプル: config/context_hints.txt.sample を参照。
+  # ファイル不存在/空の場合はヒントなし(後方互換)。
+  context_file: "config/context_hints.txt"
 
   # 言語別モデル設定
   # 注意: この default/alternatives を読む core/cli_common.py:select_model() は

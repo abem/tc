@@ -27,6 +27,7 @@ from core.cli_workflow import resolve_input_audio, upload_transcription_result
 from core.config import TranscriptionConfig
 from core.logging import get_logger
 from core.transcription_interface import UnifiedTranscriber
+from core.utils import load_context_hints
 
 logger = get_logger(__name__)
 
@@ -55,6 +56,7 @@ def transcribe_audio(audio_path: str, config: Dict[str, Any]) -> str:
         beam_size=whisper_config.get("beam_size", 5),
         best_of=whisper_config.get("best_of", 3),
         temperature=whisper_config.get("temperature", 0.1),
+        context=load_context_hints(whisper_config.get("context_file", "config/context_hints.txt")),
     )
 
     logger.info(

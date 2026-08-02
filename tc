@@ -4,9 +4,8 @@
 import argparse
 import os
 import sys
-import tempfile
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict
 
 import yaml
 
@@ -23,11 +22,11 @@ sys.path.insert(0, str(PROJECT_ROOT))
 # 警告抑制を統一設定(suppress_warnings.py は import 時に自動で全抑制を実行)
 import suppress_warnings  # noqa: F401
 
-from core.cli_common import build_output_file, extract_gdrive_file_id, is_google_drive_url, resolve_device, update_whisper_config
+from core.cli_common import build_output_file, resolve_device, update_whisper_config
+from core.cli_workflow import resolve_input_audio, upload_transcription_result
 from core.config import TranscriptionConfig
 from core.logging import get_logger
 from core.transcription_interface import UnifiedTranscriber
-from handlers import GDriveClient
 
 logger = get_logger(__name__)
 
@@ -43,31 +42,6 @@ def load_config() -> Dict[str, Any]:
 
     logger.info("設定ファイルを読み込みました")
     return config
-
-
-def download_from_gdrive(url: str) -> str:
-    client = GDriveClient()
-    file_id = extract_gdrive_file_id(url)
-
-    with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as tmp_file:
-        tmp_path = tmp_file.name
-
-    logger.info(f"ファイルをダウンロード中: {file_id}")
-    client.download_file(file_id, tmp_path)
-    logger.info(f"ダウンロード完了: {tmp_path}")
-    return tmp_path
-
-
-def upload_to_gdrive(local_path: str, original_file_id: str, folder_id: Optional[str] = None) -> Optional[str]:
-    try:
-        client = GDriveClient()
-        # 優先順位: 引数で指定されたfolder_id > 元ファイルの親フォルダ
-        parent_id = folder_id if folder_id else client.get_parent_folder_id(original_file_id)
-        file_id = client.upload_file(local_path, Path(local_path).name, parent_id)
-        return client.get_file_url(file_id)
-    except Exception as error:
-        logger.error(f"アップロードエラー: {error}")
-        return None
 
 
 def transcribe_audio(audio_path: str, config: Dict[str, Any]) -> str:
@@ -112,10 +86,10 @@ def save_result(text: str, output_dir: str = "output") -> str:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="音声文字起こしツール - Google DriveのURLまたはローカルファイルを文字起こし",
+        description="音声文字起こしツール - YouTube URL・Google Drive URLまたはローカルファイルを文字起こし",
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    parser.add_argument("input", nargs="?", help="Google Drive URLまたはローカルファイルパス（省略時はconfig.yamlのURLを使用）")
+    parser.add_argument("input", nargs="?", help="YouTube URL・Google Drive URLまたはローカルファイルパス（省略時はconfig.yamlのURLを使用）")
     parser.add_argument("--output-dir", default="output", help="出力ディレクトリ（デフォルト: output）")
     parser.add_argument("--no-upload", action="store_true", help="Google Driveへのアップロードをスキップ")
     parser.add_argument("--model", help="使用するモデル（config.yamlの設定を上書き）")
@@ -136,28 +110,36 @@ def main():
         print("config.yamlにGDriveのURLが設定されていません")
         sys.exit(1)
 
-    is_gdrive_source = is_google_drive_url(input_source)
-    original_file_id = extract_gdrive_file_id(input_source) if is_gdrive_source else None
-    temp_file = None
+    try:
+        resolution = resolve_input_audio(
+            input_source, Path(args.output_dir), ensure_yt_dlp=True, on_status=print
+        )
+    except ValueError as error:
+        logger.error(str(error))
+        sys.exit(1)
+
+    audio_path = resolution.local_audio_path
+    # GDriveClient.download()はStorageBackendインターフェース経由で常に
+    # NamedTemporaryFile(delete=False)へ保存する。resolve_input_audioの
+    # is_temp_fileはgdriveでは常にFalseだが、実体は一時ファイルであるため
+    # source_type=="gdrive"も削除対象に含める（tcの従来挙動を維持）。
+    needs_cleanup = resolution.is_temp_file or resolution.source_type == "gdrive"
 
     try:
-        if is_gdrive_source:
-            audio_path = download_from_gdrive(input_source)
-            temp_file = audio_path
-        else:
-            audio_path = input_source
-            if not os.path.exists(audio_path):
-                logger.error(f"ファイルが見つかりません: {audio_path}")
-                sys.exit(1)
-
         transcribed_text = transcribe_audio(audio_path, config)
         output_path = save_result(transcribed_text, args.output_dir)
         print(f"文字起こし完了: {output_path}")
 
-        if is_gdrive_source and original_file_id and not args.no_upload:
+        if resolution.source_type in {"youtube", "gdrive"} and not args.no_upload:
             # フォルダID決定: 引数 > config.yaml > 元ファイルと同じフォルダ
             folder_id = args.folder_id or config.get("gdrive", {}).get("upload_folder_id")
-            upload_url = upload_to_gdrive(output_path, original_file_id, folder_id)
+            upload_url = upload_transcription_result(
+                source_type=resolution.source_type,
+                original_source=resolution.original_source,
+                output_file=Path(output_path),
+                metadata=resolution.metadata,
+                folder_id=folder_id,
+            )
             if upload_url:
                 print(f"アップロード完了: {upload_url}")
             else:
@@ -170,9 +152,12 @@ def main():
             print(f"... (全{len(transcribed_text)}文字)")
 
     finally:
-        if temp_file and os.path.exists(temp_file):
-            os.remove(temp_file)
-            logger.info(f"一時ファイルを削除: {temp_file}")
+        if needs_cleanup and os.path.exists(audio_path):
+            if resolution.youtube_handler:
+                resolution.youtube_handler.cleanup_temp_file(audio_path)
+            else:
+                os.remove(audio_path)
+                logger.info(f"一時ファイルを削除: {audio_path}")
 
 
 if __name__ == "__main__":

@@ -61,7 +61,7 @@ whisper:
   beam_size: 5                           # ビームサーチサイズ
   best_of: 3                            # 候補数
   temperature: 0.1                       # 生成温度
-  context: ""                            # 固有名詞・専門用語の認識ヒント文字列（下記参照）
+  context_file: "config/context_hints.txt"  # 固有名詞・専門用語の認識ヒントファイル（下記参照）
   
   # 言語別モデル設定
   language_models:
@@ -133,17 +133,36 @@ whisper:
       engine: "qwen3-asr"
 ```
 
-#### `context`（固有名詞・専門用語のヒント）
+#### `context_file`（固有名詞・専門用語のヒント）
 
 `./tc`（`Qwen/Qwen3-ASR-*`系モデル使用時のみ有効。WhisperTranscriptionEngineは本設定を使用しない）実行時に、
-人名・製品名・専門用語など誤変換しやすい語を短い文字列で渡すことで、認識精度を改善できます。
+人名・製品名・専門用語など誤変換しやすい語を専用ファイルで渡すことで、認識精度を改善できます。
 
-```yaml
-whisper:
-  context: "GAZOO Racing, TJRチーム, スーパーGT, Qwen3-ASR"
+**使い方**:
+
+```bash
+# 1. サンプルをコピーして実ファイルを作成する
+cp config/context_hints.txt.sample config/context_hints.txt
+
+# 2. 誤変換されやすい語を1行に1つずつ記載する
 ```
 
-空文字（デフォルト）の場合は従来どおりヒントなしで動作します（後方互換）。
+`config/context_hints.txt` の書式:
+
+```
+# '#'で始まる行と空行はコメント・無視される
+田中太郎
+GAZOO Racing
+スーパーGT
+```
+
+記載した語彙はすべて連結され、Qwen3-ASRへの認識ヒント文字列として渡されます。
+`config/context_hints.txt` は `.gitignore`（`*.txt`）により既定でGit管理対象外です
+（固有名詞・個人情報を誤ってコミットしないため）。`context_file` のパスは
+`whisper.context_file` で変更できます。
+
+ファイルが存在しない場合・内容が空（コメントのみ含む）の場合は、従来どおり
+ヒントなしで動作します（後方互換）。
 
 ### 話者分離設定
 

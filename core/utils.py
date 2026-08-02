@@ -24,10 +24,22 @@ GDRIVE_URL_PATTERN = re.compile(r"^https://drive\.google\.com/")
 GDRIVE_FILE_ID_PATTERN = re.compile(r"/file/d/([a-zA-Z0-9_-]+)")
 GDRIVE_OPEN_ID_PATTERN = re.compile(r"[?&]id=([a-zA-Z0-9_-]+)")
 
+TWITTER_URL_PATTERNS = [
+    r'(?:https?://)?(?:www\.)?(?:twitter\.com|x\.com)/\w+/status/\d+',
+]
+
 
 def is_youtube_url(url: str) -> bool:
     """Check if URL is a YouTube URL."""
     for pattern in YOUTUBE_URL_PATTERNS:
+        if re.match(pattern, url):
+            return True
+    return False
+
+
+def is_twitter_url(url: str) -> bool:
+    """Check if URL is an X(旧Twitter) status(動画投稿)URL."""
+    for pattern in TWITTER_URL_PATTERNS:
         if re.match(pattern, url):
             return True
     return False
@@ -50,9 +62,11 @@ def extract_gdrive_file_id(source: str) -> Optional[str]:
 
 
 def detect_input_type(source: str) -> Dict[str, str]:
-    """Detect whether source is YouTube URL, Google Drive URL, or local file."""
+    """Detect whether source is YouTube URL, X(Twitter) URL, Google Drive URL, or local file."""
     if is_youtube_url(source):
         return {"type": "youtube", "source": source}
+    if is_twitter_url(source):
+        return {"type": "twitter", "source": source}
     if is_google_drive_url(source):
         return {"type": "gdrive", "source": source}
     if Path(source).exists():

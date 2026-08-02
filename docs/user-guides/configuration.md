@@ -260,7 +260,7 @@ uv pip install python-dotenv
 
 ## 実行時パラメータ
 
-### exec.sh / exec_local.sh パラメータ
+### tc パラメータ
 
 ```bash
 # 基本パラメータ

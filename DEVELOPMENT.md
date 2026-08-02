@@ -53,50 +53,70 @@ export HUGGINGFACE_TOKEN=hf_your_token_here
 
 ## 🏗️ プロジェクト構造
 
+> ⚠️ 本セクションは以前 `patterns/`(Factory/Strategy/Observer等のOOPパターン実装)を
+> 前提に書かれていたが、`patterns/` は大規模リファクタリング(コミット b5f20f8)で
+> 削除済み。現在の実装(core/・handlers/構成、モデル名パターンマッチによる
+> エンジン自動選択)に合わせて是正した。
+
 ### コアモジュール
 ```
-transcribe_audio/
-├── tc                           # メインエントリーポイント(uv run 経由)
-├── transcribe.py                # 代替エントリーポイント(uv run 経由)
-├── transcriber.py              # 音声認識コア（WhisperTranscriber）
-├── speaker_diarization.py      # 話者分離（SpeakerDiarizer）
-├── exceptions.py               # 統合例外処理
-├── config.py                   # 設定管理
-├── logger.py                   # ログ設定
-├── utils.py                    # ユーティリティ関数
-├── file_utils.py              # ファイル操作
-├── gdrive_handler.py          # Google Drive API
-├── youtube_handler.py         # YouTube処理
-└── youtube_gdrive_handler.py  # YouTube+Drive統合
+tc/
+├── tc                          # メインCLIコマンド(uv run 経由)
+├── transcribe.py               # インタラクティブ版CLI(uv run 経由)
+├── config/
+│   └── config.yaml            # 設定ファイル
+├── core/                      # コア機能(統一アーキテクチャ)
+│   ├── config.py              # TranscriptionConfig/DiarizationConfig/UnifiedConfig
+│   ├── logging.py             # 統一ロガー
+│   ├── transcription_interface.py  # UnifiedTranscriber・Qwen3ASREngine・WhisperTranscriptionEngine
+│   ├── model_manager.py       # モデルキャッシュ管理
+│   ├── cli_common.py          # CLI共通ヘルパー
+│   ├── cli_workflow.py        # 入力解決(resolve_input_audio)・アップロードフロー
+│   └── utils.py               # URL検出(YouTube/X/GDrive)・デバイス解決・context_hints読込
+├── handlers/                  # 外部サービスハンドラー
+│   ├── gdrive.py              # GDriveClient
+│   └── youtube.py             # YouTubeClient(yt-dlp経由。YouTube/X両対応)
+├── tests/                     # テストファイル
+├── output/                    # 出力ファイル
+├── logs/                      # ログファイル
+├── .env                       # 環境変数
+└── credentials.json           # Google Drive認証
 ```
 
-### 設計パターン実装
+### エンジン自動選択の仕組み(旧patterns/の代替)
+
+`patterns/` のFactory/Strategyパターンは削除され、エンジン選択はモデル名の
+パターンマッチのみで行われるシンプルな実装に置き換わっている:
+
+```python
+# core/transcription_interface.py (UnifiedTranscriber.__init__)
+if Qwen3ASREngine.is_qwen3_model(transcription_config.model):
+    self.transcription_engine = Qwen3ASREngine(transcription_config)
+else:
+    self.transcription_engine = WhisperTranscriptionEngine(transcription_config)
 ```
-patterns/
-├── __init__.py                 # パッケージ初期化
-├── factories.py                # Abstract Factory Pattern
-├── strategies.py               # Strategy Pattern  
-├── commands.py                 # Command Pattern
-├── observers.py                # Observer Pattern
-├── dependency_injection.py     # Dependency Injection
-├── refactored_components.py    # リファクタリングされたコンポーネント
-├── utilities.py                # パターン用ユーティリティ
-└── README.md                   # パターン詳細ドキュメント
-```
+
+言語(`whisper.language`)は `Qwen3ASREngine.lang_map` で `Qwen3-ASR` の言語指定へ
+変換されるのみで、モデル切替とは無関係(詳細は `docs/user-guides/language_support_guide.md`)。
 
 ### テスト・品質管理
 ```
 tests/
-├── test_basic.py               # 基本機能テスト
-├── test_integration.py         # 統合テスト
-└── test_patterns.py.todo       # パターンテスト（今後実装）
+├── test_core_config.py
+├── test_core_logging.py
+├── test_core_utils.py
+├── test_e2e_dry_run.py
+├── test_handlers_gdrive.py
+└── test_handlers_youtube.py
 
 .github/workflows/
-├── ci.yml                      # CI/CDパイプライン
-└── pre-commit.yml              # プリコミット品質チェック
+├── ci.yml.disabled            # CI/CDパイプライン(現在無効化)
+├── minimal-test.yml
+├── pre-commit.yml             # プリコミット品質チェック
+└── simple-test.yml
 
-pyproject.toml                  # プロジェクト設定・品質管理
-pytest.ini                     # pytest設定
+pyproject.toml                 # プロジェクト設定・依存関係・pytest設定([tool.pytest.ini_options])
+uv.lock                        # 依存関係ロックファイル
 ```
 
 ### 設定・ドキュメント
@@ -105,13 +125,20 @@ config/
 └── config.yaml                 # システム設定
 
 docs/
-├── current_status_2025_july.md # 現在の状況
-├── optimization_features.md    # 最適化機能
-└── archive/                    # 古いドキュメント
+├── user-guides/                # 利用者向けガイド(TUTORIAL/TROUBLESHOOTING/configuration等)
+├── system-docs/                # 時点スナップショット(system_overview_2025.md等)
+├── developer-guides/
+├── historical-records/         # 過去の経緯・是正記録
+├── feature/
+├── kaizen/
+└── obsolete/
 
 scripts/
-├── pre_check.sh               # 品質チェックスクリプト
-└── simple_gpu_monitor.sh      # GPU監視
+├── pre_check.sh                # 品質チェックスクリプト
+├── gpu_monitor.py              # GPU監視
+├── simple_gpu_monitor.sh       # GPU監視(簡易版)
+├── e2e_local.sh                # E2Eテスト(ローカル実行)
+└── cleanup_transcriptions.sh   # 出力クリーンアップ
 ```
 
 ## 🔄 開発フロー
@@ -269,67 +296,36 @@ def test_with_mock(mock_dependency):
 
 ## 🏗️ OOP設計パターン
 
-### Factory Pattern
-```python
-# patterns/factories.py
-from patterns import create_japanese_transcriber
+> ⚠️ 以前ここに記載していたFactory/Strategy/Command/Observerパターン(`patterns/`
+> モジュール)は削除済み。現在の実装は以下のシンプルな構成のみ。
 
-# 言語固有のトランスクライバー作成
-transcriber = create_japanese_transcriber(
-    quality='high_quality',
-    device='cuda'
-)
+### Strategy相当: TranscriptionEngine(抽象基底クラス)
+
+`core/transcription_interface.py` の `TranscriptionEngine(ABC)` を
+`Qwen3ASREngine`・`WhisperTranscriptionEngine` が実装する、素朴な継承ベースの
+Strategyパターン。`patterns/strategies.py` のような専用レジストリ・登録機構は無い。
+
+```python
+class TranscriptionEngine(ABC):
+    """Abstract base class for all transcription engines."""
+
+    @abstractmethod
+    def transcribe(self, audio_path: str, **kwargs) -> TranscriptionResult: ...
+
+    @abstractmethod
+    def get_engine_name(self) -> str: ...
 ```
 
-### Strategy Pattern
-```python
-# patterns/strategies.py
-from patterns.strategies import StrategyRegistry
+### Factory相当: エンジン選択ロジック
 
-# GPU最適化戦略の取得
-batch_strategy = StrategyRegistry.get_batch_strategy(
-    'gpu', 
-    rtx_4080_optimized=True
-)
+専用のFactoryクラスは無く、`UnifiedTranscriber.__init__`(前掲「エンジン自動選択の
+仕組み」参照)がモデル名を見て `if/else` で直接インスタンス化する。
 
-# タイムスタンプ戦略の切り替え
-timestamp_strategy = StrategyRegistry.get_timestamp_strategy(
-    'milliseconds'
-)
-```
+### Command Pattern / Observer Pattern
 
-### Command Pattern
-```python
-# patterns/commands.py
-from patterns import AudioProcessingPipeline, CommandInvoker
-
-# コマンドパターンでの処理実行
-context = AudioProcessingContext(
-    input_path='audio.wav',
-    language='ja',
-    enable_diarization=True
-)
-
-pipeline = AudioProcessingPipeline()
-invoker = CommandInvoker()
-result = invoker.execute(pipeline, context)
-```
-
-### Observer Pattern
-```python
-# patterns/observers.py
-from patterns import setup_standard_monitoring
-
-# 進捗監視セットアップ
-observable_transcriber, observers = setup_standard_monitoring(transcriber)
-
-# カスタムオブザーバー追加
-class CustomObserver:
-    def update(self, event_type, data):
-        print(f"Event: {event_type}, Data: {data}")
-
-observable_transcriber.add_observer(CustomObserver())
-```
+`AudioProcessingPipeline`・`CommandInvoker`・`setup_standard_monitoring` 等は
+削除済みで、現在の実装に対応物は無い。進捗表示は `progress_callback`
+（`tc`）や `Console.print`（`transcribe.py`）を直接呼ぶ単純なコールバック方式。
 
 ## 🐛 デバッグ方法
 
@@ -383,7 +379,7 @@ def problematic_function():
 
 ### GPU最適化
 ```python
-# transcriber.py
+# core/config.py の TranscriptionConfig
 config = TranscriptionConfig(
     device='cuda',
     optimal_batch_size=8,  # RTX 4080向け
@@ -422,80 +418,64 @@ uv run python -m memory_profiler tc
 
 ## 🛠️ 新機能開発ガイド
 
-### 1. 新しいTranscription戦略追加
+> ⚠️ 以前ここに記載していた例(`patterns/strategies.py`・`patterns/factories.py`・
+> `patterns/observers.py`・`BatchSizeStrategy`・`LanguageAwareModelSelector`・
+> `WhisperTranscriber`・`Observer`等)はいずれも削除済みモジュール/クラスを
+> 前提にしていた。現在の実装(core/transcription_interface.py)に即して是正した。
+
+### 1. 新しいTranscriptionEngine追加
+
 ```python
-# patterns/strategies.py に追加
+# core/transcription_interface.py に追加
 
-class NewOptimizationStrategy(BatchSizeStrategy):
-    def calculate_batch_size(self, audio_length: int) -> int:
-        # 新しい計算ロジック
-        return optimized_batch_size
+class MyCustomEngine(TranscriptionEngine):
+    def get_engine_name(self) -> str:
+        return "my-custom-engine"
 
-# StrategyRegistryに登録
-StrategyRegistry.register_batch_strategy(
-    'new_optimization', 
-    NewOptimizationStrategy
-)
+    def transcribe(self, audio_path: str, **kwargs) -> TranscriptionResult:
+        ...
+
+# UnifiedTranscriber.__init__ のモデル名判定にも分岐を追加する
+# (現状は Qwen3ASREngine.is_qwen3_model() の if/else のみ)
 ```
 
 ### 2. 新しい言語サポート追加
-```python
-# patterns/factories.py に追加
 
-def create_chinese_transcriber(quality: str = 'balanced'):
-    """中国語特化トランスクライバー作成"""
-    selector = LanguageAwareModelSelector()
-    model = selector.select_model('zh', quality)
-    
-    config = TranscriptionConfig(
-        model=model,
-        language='zh'
-    )
-    return WhisperTranscriber(config)
+言語ごとに専用のトランスクライバーを作るのではなく、`whisper.language` の値を
+`Qwen3ASREngine.lang_map`(`core/transcription_interface.py`)に追加するだけでよい:
+
+```python
+lang_map = {"ja": "Japanese", "en": "English", "zh": "Chinese"}  # 追加例
 ```
 
-### 3. カスタムObserver実装
-```python
-# patterns/observers.py に追加
+WhisperTranscriptionEngine 側は `config.language` をそのまま渡すため変換不要
+（対応言語はモデル自体の対応範囲に依存する）。
 
-class DatabaseLogger(Observer):
-    """データベースログ記録Observer"""
-    
-    def update(self, event_type: str, data: Dict[str, Any]):
-        if event_type == 'transcription_complete':
-            self.save_to_database(data)
-    
-    def save_to_database(self, data):
-        # DB保存ロジック
-        pass
-```
+### 3. 進捗表示・ログのカスタマイズ
+
+専用のObserver登録機構は無い。`tc` は `transcribe_audio()` 内で
+`progress_callback` を直接渡し、`transcribe.py` は `rich.console.Console.print`
+を直接呼ぶ単純なコールバック方式。カスタムしたい場合はこの呼び出し箇所を
+直接編集する。
 
 ## 🔧 設定カスタマイズ
 
 ### config/config.yaml編集
 ```yaml
 whisper:
-  model: "your-custom-model"
+  model: "your-custom-model"    # 使用するモデル(モデル名でエンジンが自動選択される)
   language: "ja"
   device: "cuda"
-  
-  # カスタム言語モデル追加
-  language_models:
-    zh:  # 中国語追加例
-      default: "openai/whisper-large-v3"
-      alternatives:
-        - "custom-chinese-model"
+  context_file: "config/context_hints.txt"  # 固有名詞・専門用語のヒント(Qwen3-ASR用)
 
 speaker_diarization:
   enable: true
   model: "pyannote/speaker-diarization-3.1"
-  max_speakers: 5  # デフォルト話者数変更
-
-# 新しい設定セクション追加
-custom_features:
-  enable_experimental: false
-  new_algorithm: "v2"
+  max_speakers: 5  # デフォルト話者数変更(transcribe.py 経由でのみ有効。tc は話者分離非対応)
 ```
+
+> `whisper.language_models` セクションは現在dead code(どこからも参照されない)。
+> 削除はしていないが、ここに項目を追加しても動作には影響しない。
 
 ## 📚 APIドキュメント生成
 
@@ -519,17 +499,13 @@ def transcribe_audio(self, audio_path: str, **kwargs) -> Dict[str, Any]:
             - speakers (List): 話者情報（話者分離時）
     
     Raises:
-        AudioProcessingError: 音声処理エラー
-        ValidationError: 入力検証エラー
+        RuntimeError: 音声処理エラー
+        ValueError: 入力検証エラー
     
     Example:
-        >>> transcriber = WhisperTranscriber(config)
-        >>> result = transcriber.transcribe_audio(
-        ...     'audio.wav', 
-        ...     language='ja',
-        ...     enable_diarization=True
-        ... )
-        >>> print(result['text'])
+        >>> transcriber = UnifiedTranscriber(transcription_config)
+        >>> result = transcriber.transcribe('audio.wav')
+        >>> print(result.text)
     """
     pass
 ```

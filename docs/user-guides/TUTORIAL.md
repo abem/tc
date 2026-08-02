@@ -97,13 +97,32 @@ echo $HUGGINGFACE_TOKEN
 
 **📸 期待される画面:**
 ```
-使用方法: ./tc [オプション] [音声ファイル/URL]
+usage: tc [-h] [--output-dir OUTPUT_DIR] [--no-upload] [--model MODEL]
+          [--language LANGUAGE] [--device {cuda,cpu,auto}]
+          [--folder-id FOLDER_ID]
+          [input]
 
-オプション:
-  --language, -l           言語設定 (ja: 日本語, en: 英語)
-  --enable-diarization     話者分離機能を有効化
-  ...
+音声文字起こしツール - YouTube URL・Google Drive URLまたはローカルファイルを文字起こし
+
+positional arguments:
+  input                 YouTube URL・Google Drive URLまたはローカルファイルパス
+                        （省略時はconfig.yamlのURLを使用）
+
+options:
+  -h, --help            show this help message and exit
+  --output-dir OUTPUT_DIR
+                        出力ディレクトリ（デフォルト: output）
+  --no-upload           Google Driveへのアップロードをスキップ
+  --model MODEL         使用するモデル（config.yamlの設定を上書き）
+  --language LANGUAGE   言語コード（config.yamlの設定を上書き）
+  --device {cuda,cpu,auto}
+                        使用するデバイス（config.yamlの設定を上書き）
+  --folder-id FOLDER_ID
+                        アップロード先Google DriveフォルダID（省略時は元ファイルと同じフォルダ）
 ```
+
+> `./tc` は話者分離オプションを持たない。話者分離が必要な場合は下記
+> 「話者分離機能」セクションの `transcribe.py -d` を使う。
 
 ## 🎯 基本的な使い方
 
@@ -121,7 +140,7 @@ ls -la *.wav
 2. **基本的な文字起こし実行**
 ```bash
 # 日本語音声の文字起こし
-./exec_local.sh audio_sample.wav --language ja
+./tc audio_sample.wav --language ja
 ```
 
 3. **実行中の画面表示**
@@ -151,7 +170,7 @@ cat output/20250729_*_transcription.txt
 
 ```bash
 # 英語音声の文字起こし
-./exec_local.sh english_audio.wav --language en --device cuda
+./tc english_audio.wav --language en --device cuda
 ```
 
 **自動モデル選択:**
@@ -170,16 +189,22 @@ cat output/20250729_*_transcription.txt
 # 例: meeting.wav
 ```
 
-2. **話者分離付き文字起こし**
+> **注**: `./tc` は話者分離に対応していない。話者分離は `transcribe.py`
+> （インタラクティブ版CLI）の機能。
+
+2. **話者分離付き文字起こし（最大話者数は自動検出）**
 ```bash
-# 話者分離機能を有効化
-./exec_local.sh meeting.wav --language ja --enable-diarization
+# -d / --diarization で話者分離を有効化(プロファイル1のデフォルト設定+話者分離)
+./transcribe.py meeting.wav --language ja -d
 ```
 
-3. **最大話者数を指定**
+3. **最大話者数を指定したい場合**
 ```bash
-# 最大3人の話者を想定
-./exec_local.sh meeting.wav --language ja --enable-diarization --max-speakers 3
+# --profile 6 (カスタム設定)を選ぶと対話式で話者分離の有無・最大話者数を尋ねられる
+# (--max-speakers という直接指定できるCLI引数は存在しない)
+./transcribe.py meeting.wav --profile 6
+# → 話者分離を有効にしますか？ [y/n]: y
+# → 最大話者数 (空欄で自動): 3
 ```
 
 4. **実行中の画面表示**
@@ -222,12 +247,11 @@ cat output/20250729_*_transcription.txt
 ```
 
 3. **YouTube + 話者分離**
+
+`./tc` は話者分離に対応していないため、話者分離が必要な場合は `transcribe.py` を使う:
 ```bash
-# 複数話者のYouTube動画処理
-./tc "https://www.youtube.com/watch?v=example123" \
-    --language ja \
-    --enable-diarization \
-    --max-speakers 2
+# 複数話者のYouTube動画処理(対話式で話者分離・最大話者数を指定)
+./transcribe.py "https://www.youtube.com/watch?v=example123" --language ja --profile 6
 ```
 
 4. **実行中の画面表示**
@@ -347,11 +371,12 @@ uv run python3 -c "from core.config import UnifiedConfig; UnifiedConfig.load(); 
 # CPUを強制使用
 ./tc --device cpu "audio.wav"
 
-# 詳細ログ表示
-./tc --verbose "audio.wav"
+# 詳細ログ表示(./tc に --verbose フラグは無いため tee でログを保存)
+./tc "audio.wav" 2>&1 | tee debug.log
 
-# GPU監視付き実行
-./tc --gpu-monitor "audio.wav"
+# GPU監視(別ターミナルで scripts/gpu_monitor.py を並行実行)
+uv run python3 scripts/gpu_monitor.py &
+./tc "audio.wav"
 ```
 
 ## 🔧 よく使う操作パターン
@@ -362,7 +387,7 @@ uv run python3 -c "from core.config import UnifiedConfig; UnifiedConfig.load(); 
 # 複数ファイルの一括処理
 for file in audio_files/*.wav; do
     echo "処理中: $file"
-    ./exec_local.sh "$file" --language ja
+    ./tc "$file" --language ja
 done
 ```
 
@@ -430,7 +455,7 @@ Cannot access model pyannote/speaker-diarization-3.1
 
 # 解決策: トークン再設定
 export HUGGINGFACE_TOKEN=hf_your_new_token
-./tc --enable-diarization "audio.wav"
+./transcribe.py "audio.wav" -d
 ```
 
 **問題3: 音声ファイルが認識されない**
@@ -457,8 +482,8 @@ echo "https://www.youtube.com/watch?v=VIDEO_ID"
 ### デバッグ方法
 
 ```bash
-# 詳細ログで実行
-./tc --verbose "audio.wav"
+# 詳細ログで実行(./tc に --verbose フラグは無いため tee でログを保存)
+./tc "audio.wav" 2>&1 | tee debug.log
 
 # ログファイル確認
 tail -f logs/transcribe_*.log
@@ -470,32 +495,29 @@ top         # CPU/メモリ使用状況
 
 ## 🎯 実践的な使用例
 
-### 例1: 会議録音の処理
+### 例1: 会議録音の処理(話者分離あり)
 
 ```bash
-# 1時間の会議録音（4人の参加者）
-./exec_local.sh meeting_2025-07-29.wav \
-    --language ja \
-    --enable-diarization \
-    --max-speakers 4 \
-    --verbose
+# 1時間の会議録音（4人の参加者）。話者分離は transcribe.py のみ対応。
+# --profile 6 で対話式に「話者分離を有効にしますか？」「最大話者数」を指定する
+./transcribe.py meeting_2025-07-29.wav --language ja --profile 6
 ```
 
 ### 例2: 講演動画の処理
 
 ```bash
-# YouTubeの講演動画
+# YouTubeの講演動画(GPU使用状況を見たい場合は別ターミナルで
+# uv run python3 scripts/gpu_monitor.py を並行実行する)
 ./tc "https://youtube.com/watch?v=lecture123" \
     --language ja \
-    --device cuda \
-    --gpu-monitor
+    --device cuda
 ```
 
 ### 例3: 英語プレゼンテーションの処理
 
 ```bash
 # 英語のプレゼンテーション音声
-./exec_local.sh presentation_en.wav \
+./tc presentation_en.wav \
     --language en \
     --device cuda
 ```

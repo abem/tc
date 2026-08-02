@@ -76,11 +76,11 @@ uv sync
 **解決策:**
 ```bash
 # 実行権限を付与
-chmod +x exec.sh
-chmod +x exec_local.sh
+chmod +x tc
+chmod +x transcribe.py
 
 # 確認
-ls -la exec*.sh
+ls -la tc transcribe.py
 ```
 
 ### エラー: `.venv` の依存関係が壊れている / `ModuleNotFoundError`
@@ -233,8 +233,8 @@ ffmpeg -i long_audio.wav -t 1800 -c copy part1.wav
 ffmpeg -i long_audio.wav -ss 1800 -t 1800 -c copy part2.wav
 
 # 各部分を個別処理
-./exec_local.sh part1.wav --language ja
-./exec_local.sh part2.wav --language ja
+./tc part1.wav --language ja
+./tc part2.wav --language ja
 ```
 
 ### エラー: `Unable to load audio file`
@@ -266,7 +266,7 @@ ffprobe -v quiet -select_streams a:0 -show_entries stream=sample_rate audio.wav
 ffmpeg -i audio.wav -ar 16000 audio_16khz.wav
 
 # 変換後処理
-./exec_local.sh audio_16khz.wav --language ja
+./tc audio_16khz.wav --language ja
 ```
 
 ## 🎤 話者分離関連
@@ -480,7 +480,7 @@ ffprobe -show_format -show_streams audio.wav
 
 # 無音除去なしで処理
 ffmpeg -i audio.wav -c copy no_processing.wav
-./exec_local.sh no_processing.wav
+./tc no_processing.wav
 
 # チャンクサイズ調整
 # config.yamlで chunk_length: 30 に設定

@@ -13,6 +13,7 @@ whisper:
   beam_size: 5
   best_of: 3
   temperature: 0.1
+  context: ""  # 固有名詞・専門用語の認識ヒント文字列(Qwen3-ASR用。空文字=未使用)
 
   # 言語別モデル設定
   # 注意: この default/alternatives を読む core/cli_common.py:select_model() は

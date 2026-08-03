@@ -9,6 +9,7 @@ Consolidates all transcribe() method implementations into a single, consistent A
 from abc import ABC, abstractmethod
 from typing import Any, Dict, List, Optional, Union, Callable
 from dataclasses import dataclass
+from types import SimpleNamespace
 import time
 from pathlib import Path
 import torch
@@ -402,6 +403,8 @@ class Qwen3ASREngine(TranscriptionEngine):
     def __init__(self, config: TranscriptionConfig):
         super().__init__(config)
         self._model = None
+        self._aligner = None
+        self._aligner_unavailable = False
 
     def get_engine_name(self) -> str:
         return f"qwen3-asr-{self.config.model}"
@@ -453,6 +456,119 @@ class Qwen3ASREngine(TranscriptionEngine):
     REPETITION_PENALTY = 1.3
     NO_REPEAT_NGRAM_SIZE = 4
 
+    # タイムスタンプ付与(config.include_timestamps=True時のみ使用)。
+    # qwen_asr同梱のQwen3ForcedAligner(コードは同梱済みだがモデル重みは別
+    # チェックポイントで初回利用時に追加ダウンロードが必要)を、メインASR
+    # モデルとは独立に単独ロード・呼び出しする(2段構成: ASR実行→音声+ASR
+    # テキストをアライナーに渡してforced alignmentで単語/文字単位の時刻を得る)。
+    # 実測(RTX 4080 SUPER): ASRモデル(bf16)ロード後 約11.3GB、アライナー追加
+    # ロード後 約12.5GB/16.4GB(追加約1.2GB)。
+    FORCED_ALIGNER_MODEL = "Qwen/Qwen3-ForcedAligner-0.6B"
+
+    def _load_aligner(self) -> bool:
+        """ForcedAligner を遅延ロードする。成功した場合True、失敗した場合False
+        を返し以後は再試行しない(config.include_timestamps=True時のみ呼ばれる、
+        失敗時はタイムスタンプなしの通常出力にフォールバックする設計)。
+        """
+        if self._aligner is not None:
+            return True
+        if self._aligner_unavailable:
+            return False
+
+        try:
+            from qwen_asr.inference.qwen3_forced_aligner import Qwen3ForcedAligner
+            import torch
+
+            device = self.config.device
+            device_map = f"{device}:0" if device.startswith("cuda") else device
+
+            self._aligner = Qwen3ForcedAligner.from_pretrained(
+                self.FORCED_ALIGNER_MODEL,
+                dtype=torch.bfloat16 if device.startswith("cuda") else torch.float32,
+                device_map=device_map,
+            )
+            return True
+        except Exception as e:
+            self.logger.warning(
+                f"ForcedAlignerのロードに失敗しました。タイムスタンプなしで続行します: {e}"
+            )
+            self._aligner_unavailable = True
+            return False
+
+    @staticmethod
+    def _core_char_count(text: str) -> int:
+        """句読点等を除いた実質文字数。ForcedAlignerは句読点を除去した実質
+        文字/単語単位でトークン化するため、フラグメントとアライナー出力の
+        対応付け(_match_fragments_to_alignment)の消費量算出に使う。
+        """
+        import unicodedata
+
+        count = 0
+        for ch in text:
+            if ch == "'":
+                count += 1
+                continue
+            category = unicodedata.category(ch)
+            if category.startswith("L") or category.startswith("N"):
+                count += 1
+        return count
+
+    @staticmethod
+    def _match_fragments_to_alignment(fragments, align_items):
+        """文節フラグメント列(_format_text_with_breaksと同じ区切り)を
+        ForcedAlignerの出力アイテム列に近似的に対応付け、各フラグメントの
+        (start_time, end_time)のリストを返す。
+
+        ForcedAlignerは句読点を除いた実質文字/単語単位でトークン化するため、
+        各フラグメントの実質文字数ぶんアイテムを順に消費し、先頭アイテムの
+        start_timeと消費末尾アイテムのend_timeを区間として採用する。厳密な
+        1対1対応の保証はない近似処理(音声位置の目安として十分な精度)。
+        """
+        results = []
+        idx = 0
+        n = len(align_items)
+        for frag in fragments:
+            target = Qwen3ASREngine._core_char_count(frag)
+            if target == 0 or idx >= n:
+                prev_end = results[-1][1] if results else 0.0
+                results.append((prev_end, prev_end))
+                continue
+            start_idx = idx
+            consumed = 0
+            while idx < n and consumed < target:
+                consumed += len(align_items[idx].text)
+                idx += 1
+            end_idx = max(idx - 1, start_idx)
+            results.append((align_items[start_idx].start_time, align_items[end_idx].end_time))
+        return results
+
+    def _align_chunk(self, audio, text: str, language: Optional[str], offset_sec: float):
+        """1チャンク(または短音声全体)の音声+ASRテキストをForcedAlignerに渡し、
+        時刻オフセット(チャンク開始秒)を加算したアイテムリストを返す。
+        audioはファイルパス(str)または(np.ndarray, sr)タプルのいずれか
+        (Qwen3ForcedAligner.align()と同じ入力形式)。失敗時は空リスト
+        (呼び出し側はタイムスタンプなしとして扱う)。
+        """
+        if not text.strip():
+            return []
+        if not self._load_aligner():
+            return []
+        try:
+            results = self._aligner.align(audio=audio, text=text, language=language)
+            if not results:
+                return []
+            items = []
+            for it in results[0].items:
+                items.append(SimpleNamespace(
+                    text=it.text,
+                    start_time=it.start_time + offset_sec,
+                    end_time=it.end_time + offset_sec,
+                ))
+            return items
+        except Exception as e:
+            self.logger.warning(f"ForcedAlignerの実行に失敗しました(このチャンクはタイムスタンプなし): {e}")
+            return []
+
     # 長音声を分割する閾値(秒)。
     # 実測で10分(600s)までは成功、15分(900s)で CUBLAS_STATUS_INTERNAL_ERROR が
     # 発生することを確認(RTX 4080 SUPER / torch 2.11.0+cu130 / bfloat16)。
@@ -477,13 +593,14 @@ class Qwen3ASREngine(TranscriptionEngine):
             duration = self._get_audio_duration(audio_path)
             failed_chunks = 0
             repeated_chunks = 0
+            align_items: List[Any] = []
             if duration > self.CHUNK_THRESHOLD_SEC:
                 # 長音声: 分割して処理
                 self.logger.info(
                     f"Audio is {duration:.0f}s (>{self.CHUNK_THRESHOLD_SEC}s), "
                     f"splitting into chunks for stable processing"
                 )
-                text, detected_language, failed_chunks, repeated_chunks = self._transcribe_long_audio(
+                text, detected_language, failed_chunks, repeated_chunks, align_items = self._transcribe_long_audio(
                     audio_path, duration, language, self.config.context
                 )
             else:
@@ -500,18 +617,34 @@ class Qwen3ASREngine(TranscriptionEngine):
                 detected_language = self._language_name_to_code(
                     r.language or self.config.language
                 )
+                raw_text = r.text.strip()
                 # 文節改行フォーマットを適用
-                text = self._format_text_with_breaks(r.text.strip())
+                text = self._format_text_with_breaks(raw_text)
+
+                if self.config.include_timestamps:
+                    align_items = self._align_chunk(str(audio_path), raw_text, language, offset_sec=0.0)
 
             processing_time = self.perf_logger.end_timing(f"transcribe_{Path(audio_path).name}")
 
-            # 結果を構築(segments は全体を1セグメントとして扱う)
-            segments = [TranscriptionSegment(
-                start=0.0,
-                end=duration,
-                text=text,
-                language=detected_language,
-            )]
+            # 結果を構築: タイムスタンプが取得できた場合は文節単位の複数セグメント、
+            # そうでない場合(config.include_timestamps=False、またはアライナー
+            # ロード/実行失敗によるフォールバック)は従来どおり全体を1セグメントとする。
+            timestamps_included = False
+            fragments = [line for line in text.split("\n") if line.strip()]
+            if self.config.include_timestamps and align_items and fragments:
+                boundaries = self._match_fragments_to_alignment(fragments, align_items)
+                segments = [
+                    TranscriptionSegment(start=start, end=end, text=frag, language=detected_language)
+                    for frag, (start, end) in zip(fragments, boundaries)
+                ]
+                timestamps_included = True
+            else:
+                segments = [TranscriptionSegment(
+                    start=0.0,
+                    end=duration,
+                    text=text,
+                    language=detected_language,
+                )]
 
             result = TranscriptionResult(
                 text=text,
@@ -526,6 +659,7 @@ class Qwen3ASREngine(TranscriptionEngine):
                     "chunked": duration > self.CHUNK_THRESHOLD_SEC,
                     "failed_chunks": failed_chunks,
                     "repeated_chunks": repeated_chunks,
+                    "timestamps_included": timestamps_included,
                 },
             )
 
@@ -548,7 +682,8 @@ class Qwen3ASREngine(TranscriptionEngine):
         各チャンクの生テキストを結合してから最後に1回だけ文節改行を適用する。
         (チャンク毎にフォーマットすると境界の文節が分断されるため)
 
-        戻り値: (結合テキスト, 検出言語コード, 失敗チャンク数, 反復検出チャンク数)
+        戻り値: (結合テキスト, 検出言語コード, 失敗チャンク数, 反復検出チャンク数,
+        アライメントアイテムのリスト[config.include_timestamps=False時は空リスト])
         チャンクが失敗した場合は結果テキストに [チャンクN失敗] プレースホルダを
         挿入し、ユーザーが欠落に気づけるようにする。反復ループを検出した
         チャンクは1回だけ再試行し、再試行後も反復する場合は
@@ -568,6 +703,7 @@ class Qwen3ASREngine(TranscriptionEngine):
         detected_lang = self.config.language
         failed_chunks = 0
         repeated_chunks = 0
+        align_items_all: List[Any] = []
 
         for i in tqdm(range(total_chunks), desc="音声文字起こし(分割)"):
             start_sample = i * chunk_samples
@@ -618,6 +754,11 @@ class Qwen3ASREngine(TranscriptionEngine):
 
                     if chunk_text:
                         raw_texts.append(chunk_text)
+                        if self.config.include_timestamps and not chunk_text.startswith("\n[チャンク"):
+                            offset_sec = start_sample / sr
+                            align_items_all.extend(
+                                self._align_chunk((chunk, sr), chunk_text, language, offset_sec)
+                            )
                     # 最初のチャンクの検出言語を使う
                     if i == 0 and r.language:
                         detected_lang = self._language_name_to_code(r.language)
@@ -648,7 +789,7 @@ class Qwen3ASREngine(TranscriptionEngine):
                 f"Long audio transcription completed with {repeated_chunks}/{total_chunks} chunks "
                 f"triggering repetition-loop detection"
             )
-        return text, detected_lang, failed_chunks, repeated_chunks
+        return text, detected_lang, failed_chunks, repeated_chunks, align_items_all
 
     @staticmethod
     def _detect_repetition(text: str, max_cycle: int = 40, min_repeats: int = 3) -> bool:

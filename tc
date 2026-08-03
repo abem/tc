@@ -26,7 +26,7 @@ from core.cli_common import build_output_file, resolve_device, update_whisper_co
 from core.cli_workflow import resolve_input_audio, upload_transcription_result
 from core.config import TranscriptionConfig
 from core.logging import get_logger
-from core.transcription_interface import UnifiedTranscriber
+from core.transcription_interface import TranscriptionResult, UnifiedTranscriber
 from core.utils import load_context_hints
 
 logger = get_logger(__name__)
@@ -45,7 +45,7 @@ def load_config() -> Dict[str, Any]:
     return config
 
 
-def transcribe_audio(audio_path: str, config: Dict[str, Any]) -> str:
+def transcribe_audio(audio_path: str, config: Dict[str, Any]) -> TranscriptionResult:
     whisper_config = config.get("whisper", {})
     device = resolve_device(whisper_config.get("device", "cuda"))
 
@@ -57,6 +57,7 @@ def transcribe_audio(audio_path: str, config: Dict[str, Any]) -> str:
         best_of=whisper_config.get("best_of", 3),
         temperature=whisper_config.get("temperature", 0.1),
         context=load_context_hints(whisper_config.get("context_file", "config/context_hints.txt")),
+        include_timestamps=whisper_config.get("include_timestamps", False),
     )
 
     logger.info(
@@ -74,14 +75,39 @@ def transcribe_audio(audio_path: str, config: Dict[str, Any]) -> str:
     if failed:
         print(f"⚠️  警告: {failed}個のチャンクが失敗し、該当区間に[チャンクN失敗]プレースホルダが挿入されました")
 
+    # 反復ループ検出があれば警告表示(該当区間は再試行後も反復のため破棄)
+    repeated = (result.metadata or {}).get("repeated_chunks", 0)
+    if repeated:
+        print(f"⚠️  警告: {repeated}個のチャンクで反復ループを検出しました(再試行後に解消しなかった区間は[チャンクN反復検出のため破棄]プレースホルダが挿入されています)")
+
     logger.info(f"文字起こし完了: {len(result.text)}文字")
-    return result.text
+    return result
 
 
-def save_result(text: str, output_dir: str = "output") -> str:
+def _format_mmss(seconds: float) -> str:
+    total = max(0, int(seconds))
+    return f"{total // 60:02d}:{total % 60:02d}"
+
+
+def save_result(result: TranscriptionResult, output_dir: str = "output") -> str:
+    """文字起こし結果をテキストファイルに保存する。
+
+    result.metadata["timestamps_included"]がTrueの場合(config.include_timestamps=True
+    かつForcedAlignerによる整合に成功した場合)、segments各要素の先頭に[MM:SS]を
+    付与する。それ以外(タイムスタンプ未使用/失敗時のフォールバック)は従来どおり
+    result.textをそのまま書き出し、既存の出力形式を維持する。
+    """
     output_path = build_output_file(Path(output_dir))
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    output_path.write_text(text, encoding="utf-8")
+
+    timestamps_included = bool((result.metadata or {}).get("timestamps_included", False))
+    if timestamps_included and result.segments:
+        lines = [f"[{_format_mmss(seg.start)}] {seg.text}" for seg in result.segments]
+        content = "\n".join(lines)
+    else:
+        content = result.text
+
+    output_path.write_text(content, encoding="utf-8")
     logger.info(f"結果を保存: {output_path}")
     return str(output_path)
 
@@ -143,8 +169,9 @@ def main():
         return
 
     try:
-        transcribed_text = transcribe_audio(audio_path, config)
-        output_path = save_result(transcribed_text, args.output_dir)
+        result = transcribe_audio(audio_path, config)
+        transcribed_text = result.text
+        output_path = save_result(result, args.output_dir)
         print(f"文字起こし完了: {output_path}")
 
         if resolution.source_type in {"youtube", "gdrive"} and not args.no_upload:

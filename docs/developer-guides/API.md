@@ -103,23 +103,23 @@ transcriber = UnifiedTranscriber(config)
 
 #### メソッド
 
-##### `load_model() -> None`
+##### `transcribe(audio_path: str, **kwargs) -> TranscriptionResult`
 
-Whisperモデルをロードします。
+音声ファイルを文字起こしします。モデルのロードは初回呼び出し時に内部で
+遅延実行されるため、事前に明示的なロード呼び出しは不要です。
 
 ```python
-transcriber.load_model()
+result = transcriber.transcribe("audio.wav")
+print(result.text)
 ```
-
-##### `transcribe_audio(audio_path: str) -> str`
-
-音声ファイルを文字起こしします。
 
 **パラメータ:**
 - `audio_path` (str): 音声ファイルのパス
 
 **戻り値:**
-- `str`: 文字起こしされたテキスト
+- `TranscriptionResult`: `text`（文字起こし全文）・`segments`（区間ごとの
+  `TranscriptionSegment`のリスト）・`language`・`duration`・`metadata`等を
+  持つデータクラス
 
 ### SpeakerDiarizer
 

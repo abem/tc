@@ -27,13 +27,11 @@ uv run python3 -c "from core.config import UnifiedConfig; UnifiedConfig.load(); 
 ```
 core/                    # 統一アーキテクチャ（新機能はここに）
 ├── config.py           # UnifiedConfig（設定統一）
-├── logging_config.py   # 統一ログシステム
+├── logging.py          # 統一ログシステム
 ├── model_manager.py    # モデル管理
 └── transcription_interface.py  # 転写インターフェース
 
-transcriber.py          # レガシーだが重要（削除禁止）
-tc / transcribe         # 新しいメインエントリーポイント
-exec.sh                # レガシーエントリーポイント
+tc / transcribe         # メインエントリーポイント（./transcribe.py への薄いラッパー）
 ```
 
 ### 重要な設定

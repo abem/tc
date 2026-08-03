@@ -32,6 +32,25 @@ class TestTranscriptionConfig:
         assert config.device == "cuda"
         assert config.language == "en"
 
+    def test_language_none_means_auto_detect(self):
+        """language=None(自動言語判定、2026-08-03)を受け付けることを確認。"""
+        from core.config import TranscriptionConfig
+
+        config = TranscriptionConfig(language=None)
+        assert config.language is None
+
+    def test_config_yaml_default_language_is_auto(self):
+        """config/config.yamlのwhisper.language既定値がnull(自動判定)であること
+        (実態確認: 誤ってja固定へ戻す変更が入っていないかの回帰防止)。"""
+        import yaml
+        from pathlib import Path
+
+        config_path = Path(__file__).resolve().parents[1] / "config" / "config.yaml"
+        with open(config_path, encoding="utf-8") as f:
+            data = yaml.safe_load(f)
+
+        assert data["whisper"]["language"] is None
+
 
 class TestDiarizationConfig:
     """Tests for DiarizationConfig."""

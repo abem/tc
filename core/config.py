@@ -23,7 +23,12 @@ class TranscriptionConfig:
     
     # Core model settings
     model: str = "large-v3"
-    language: str = "ja"
+    # None(またはconfig.yaml上のnull)は自動言語判定を意味する(2026-08-03)。
+    # Qwen3ASREngineのlang_map.get(self.config.language, None)は未知の値/None
+    # いずれでもNoneへ解決されqwen_asrへlanguage=Noneとして渡る(自動判定)。
+    # WhisperTranscriptionEngineもgenerate()へそのまま渡す(HF Whisperの
+    # 標準的な自動判定サポートに委ねる)。既定値自体は後方互換のため"ja"のまま。
+    language: Optional[str] = "ja"
     device: str = field(default_factory=lambda: "cuda" if _cuda_is_available() else "cpu")
     compute_type: str = "float16"
     

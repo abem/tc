@@ -238,7 +238,7 @@ class TestChunkJoinWhitespace:
         fake_audio = np.zeros(2 * engine.CHUNK_THRESHOLD_SEC * sr, dtype=np.float32)
 
         with patch("librosa.load", return_value=(fake_audio, sr)):
-            text, lang, failed_chunks, repeated_chunks = engine._transcribe_long_audio(
+            text, lang, failed_chunks, repeated_chunks, align_items = engine._transcribe_long_audio(
                 "dummy.wav", duration=2 * engine.CHUNK_THRESHOLD_SEC, language="English", context=""
             )
         return text
@@ -270,7 +270,7 @@ class TestChunkJoinWhitespace:
         fake_audio = np.zeros(2 * engine.CHUNK_THRESHOLD_SEC * sr, dtype=np.float32)
 
         with patch("librosa.load", return_value=(fake_audio, sr)):
-            text, lang, failed_chunks, repeated_chunks = engine._transcribe_long_audio(
+            text, lang, failed_chunks, repeated_chunks, align_items = engine._transcribe_long_audio(
                 "dummy.wav", duration=2 * engine.CHUNK_THRESHOLD_SEC, language="Japanese", context=""
             )
 

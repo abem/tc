@@ -5,8 +5,6 @@ import struct
 import math
 from pathlib import Path
 
-import pytest
-
 
 def _ensure_sample_wav(path: Path) -> None:
     if path.exists():
@@ -29,17 +27,14 @@ def _ensure_sample_wav(path: Path) -> None:
             wf.writeframes(struct.pack("<h", value))
 
 
-@pytest.mark.skip(
-    reason=(
-        "main_cli.py はリファクタリングで削除され tc/transcribe.py に統合された。"
-        "かつ --dry-run オプションも現ランチャーには存在しないため、"
-        "このテストは実態と乖離している。"
-        "TODO: tc/transcribe.py 起動を検証する E2E テストを別PRで再実装する"
-        "(本PRの import suppress_warnings 追加・import 順序変更がランチャー起動を"
-        "壊していないかを検知できるようにするため)。"
-    )
-)
 def test_e2e_dry_run(tmp_path: Path) -> None:
+    """tc(現行の推奨エントリポイント)の起動確認をGPU/ネットワーク無しで行う。
+
+    ローカルwavファイルを渡すことで、resolve_input_audio()が
+    ネットワーク呼び出し無しに即時解決される経路(core/cli_workflow.py:70-79)
+    のみを通り、--dry-runにより実際の文字起こし(モデルロード)前に終了する。
+    import順序変更等でランチャー起動自体が壊れていないかを検知する目的。
+    """
     root = Path(__file__).resolve().parents[1]
     sample_wav = root / "samples" / "e2e_sample.wav"
     _ensure_sample_wav(sample_wav)
@@ -49,12 +44,8 @@ def test_e2e_dry_run(tmp_path: Path) -> None:
 
     cmd = [
         sys.executable,
-        str(root / "main_cli.py"),
+        str(root / "tc"),
         str(sample_wav),
-        "--language",
-        "ja",
-        "--model",
-        "kotoba-tech/kotoba-whisper-v2.2",
         "--device",
         "cpu",
         "--output-dir",
@@ -62,6 +53,6 @@ def test_e2e_dry_run(tmp_path: Path) -> None:
         "--dry-run",
     ]
 
-    result = subprocess.run(cmd, capture_output=True, text=True, check=False)
+    result = subprocess.run(cmd, capture_output=True, text=True, check=False, timeout=60)
     assert result.returncode == 0, result.stderr
     assert "ドライラン" in result.stdout

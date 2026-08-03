@@ -186,6 +186,11 @@ class TranscribeLoader:
             if failed:
                 console.print(f"⚠️  警告: {failed}個のチャンクが失敗し、該当区間に[チャンクN失敗]プレースホルダが挿入されました")
 
+            # 反復ループ検出があれば警告表示(該当区間は再試行後も反復のため破棄)
+            repeated = (result.metadata or {}).get("repeated_chunks", 0)
+            if repeated:
+                console.print(f"⚠️  警告: {repeated}個のチャンクで反復ループを検出しました(再試行後に解消しなかった区間は[チャンクN反復検出のため破棄]プレースホルダが挿入されています)")
+
             # 結果保存
             self.save_results(result, resolution, settings, folder_id=folder_id)
             

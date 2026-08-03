@@ -53,7 +53,7 @@ gdrive:
 whisper:
   # 基本設定
   model: Qwen/Qwen3-ASR-1.7B  # デフォルトモデル（最高精度・2026年ベンチマークトップ）
-  language: ja                           # デフォルト言語
+  language: null                         # 既定は自動言語判定。ja/en等を指定すると強制
   chunk_size: 100                        # 音声分割サイズ（秒）
   device: cuda                           # 推論デバイス (cuda/cpu/auto)
   
@@ -264,7 +264,7 @@ uv pip install python-dotenv
 
 ```bash
 # 基本パラメータ
-./tc --language ja                 # 言語設定
+./tc --language ja                 # 言語を強制指定（省略時は自動判定、2026-08-03〜）
 ./tc --device cuda                 # デバイス設定
 ./tc --verbose                     # 詳細ログ出力
 

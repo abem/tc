@@ -7,7 +7,10 @@ gdrive:
 
 whisper:
   model: Qwen/Qwen3-ASR-1.7B
-  language: ja
+  # 既定は自動言語判定(null)。明示的にja/en等を指定すると強制される。
+  # 2026-08-03: 従来language: ja固定だったため、英語主体音声にja強制が
+  # 適用され誤変換・内容縮退が実機で複数回観測されたため自動判定に変更。
+  language: null
   chunk_size: 100
   device: cuda
   beam_size: 5

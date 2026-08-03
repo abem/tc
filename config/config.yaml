@@ -17,6 +17,11 @@ whisper:
   # 書式サンプル: config/context_hints.txt.sample を参照。
   # ファイル不存在/空の場合はヒントなし(後方互換)。
   context_file: "config/context_hints.txt"
+  # タイムスタンプ付与(Qwen3-ASR専用、オプトイン)。trueにするとForcedAligner
+  # (Qwen/Qwen3-ForcedAligner-0.6B、初回利用時に追加ダウンロード・GPUメモリ
+  # 約1.2GB追加)を読み込み、出力テキストの各行頭に[MM:SS]を付与する。
+  # 既定はfalse(既存の出力形式を維持)。
+  include_timestamps: false
 
   # 言語別モデル設定
   # 注意: この default/alternatives を読む core/cli_common.py:select_model() は

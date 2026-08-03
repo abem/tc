@@ -85,7 +85,7 @@ class TestChunkRetryFallback:
         fake_audio = np.zeros(engine.CHUNK_THRESHOLD_SEC * sr, dtype=np.float32)
 
         with patch("librosa.load", return_value=(fake_audio, sr)):
-            text, lang, failed_chunks, repeated_chunks = engine._transcribe_long_audio(
+            text, lang, failed_chunks, repeated_chunks, align_items = engine._transcribe_long_audio(
                 "dummy.wav", duration=engine.CHUNK_THRESHOLD_SEC, language="Japanese", context=""
             )
         return engine, text, lang, failed_chunks, repeated_chunks

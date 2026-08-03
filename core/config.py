@@ -53,7 +53,10 @@ class TranscriptionConfig:
     
     # Output formatting
     max_line_length: int = 80
-    include_timestamps: bool = True
+    # タイムスタンプ付与(bugfix 2026-08-03でQwen3ASREngineに実配線するまでは
+    # どこからも参照されないdeadフィールドだった)。ForcedAligner追加ロードを
+    # 伴うオプトイン機能のため、既存の出力形式を壊さないようデフォルトFalse。
+    include_timestamps: bool = False
     timestamp_format: str = "elapsed"  # elapsed/absolute/relative
     
     # UI and progress

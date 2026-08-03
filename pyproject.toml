@@ -52,6 +52,11 @@ default-groups = ["dev", "qwen3"]
 # テスト実行時にプロジェクトルートを import パスに含める
 # (core/, handlers/ 等のパッケージをテストから import できるようにする)
 pythonpath = ["."]
+# 探索範囲をtests/に限定する(2026-08-03)。testpaths未指定だとbackup/配下に
+# 作業規律(改変前バックアップ義務)で退避したtest_*.pyの過去スナップショットまで
+# 収集され、API変更後は古いバックアップがそのまま失敗する(スケジュール変更の
+# 都度、無関係な失敗としてノイズになる)。
+testpaths = ["tests"]
 # FutureWarning を丸ごと無視しない(レビュー指摘 #6):
 # Python 3.12 化等の移行に伴う本物の FutureWarning が CI で握りつぶされるのを防ぐため、
 # 既知のノイズだけを個別に指定する。

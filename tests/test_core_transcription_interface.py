@@ -213,3 +213,67 @@ class TestGenerationConfigWiring:
         # (generation_config側からの継承経路であることの確認)
         assert "repetition_penalty" not in observed_generation_config_at_call["kwargs"]
         assert "no_repeat_ngram_size" not in observed_generation_config_at_call["kwargs"]
+
+
+class TestChunkJoinWhitespace:
+    """チャンク境界の無区切り結合バグ(bugfix 2026-08-03)への回帰テスト。
+
+    実障害: 実際の該当音声(chunk index 6/7、境界1800s/2100s/2400s)を
+    _transcribe_long_audio()と同一の切り方で個別に実機ASR実行したところ、
+    chunk6が"...Nicolai Tangen"で終わり、chunk7が"a way for the government..."
+    から始まっており、""での無区切り結合により観測どおりの
+    "Nicolai Tangena way for the government..."という誤変換が実機で再現した
+    (原因確定済み)。本テストはその実測データをフィクスチャ化して検証する。
+    """
+
+    def _run_two_chunks(self, chunk_texts):
+        engine = _make_engine()
+        engine._model = MagicMock()
+        engine._model.transcribe.side_effect = [
+            [SimpleNamespace(text=t, language="English")] for t in chunk_texts
+        ]
+
+        sr = 16000
+        # 2チャンク分(600s)の音声を模擬。
+        fake_audio = np.zeros(2 * engine.CHUNK_THRESHOLD_SEC * sr, dtype=np.float32)
+
+        with patch("librosa.load", return_value=(fake_audio, sr)):
+            text, lang, failed_chunks, repeated_chunks = engine._transcribe_long_audio(
+                "dummy.wav", duration=2 * engine.CHUNK_THRESHOLD_SEC, language="English", context=""
+            )
+        return text
+
+    def test_word_at_chunk_boundary_not_glued(self):
+        """実測データ(chunk6末尾/chunk7先頭)そのままで単語結合が解消されること。"""
+        chunk6_tail = (
+            "You know one of the speakers in this class is Nicolai Tangen"
+        )
+        chunk7_head = (
+            "a way for the government to redistribute income from taxpayers."
+        )
+        text = self._run_two_chunks([chunk6_tail, chunk7_head])
+
+        assert "Tangena way" not in text
+        assert "Nicolai Tangen a way for the government" in text
+
+    def test_failed_chunk_placeholder_still_renders(self):
+        """境界結合の是正(space join化)後も、失敗チャンクのプレースホルダ表示に
+        回帰が無いこと(条件2: 既存の反復検出・プレースホルダ処理との非干渉確認)。"""
+        engine = _make_engine()
+        engine._model = MagicMock()
+        engine._model.transcribe.side_effect = [
+            [SimpleNamespace(text="最初のチャンクです。", language="Japanese")],
+            RuntimeError("simulated chunk failure"),
+        ]
+
+        sr = 16000
+        fake_audio = np.zeros(2 * engine.CHUNK_THRESHOLD_SEC * sr, dtype=np.float32)
+
+        with patch("librosa.load", return_value=(fake_audio, sr)):
+            text, lang, failed_chunks, repeated_chunks = engine._transcribe_long_audio(
+                "dummy.wav", duration=2 * engine.CHUNK_THRESHOLD_SEC, language="Japanese", context=""
+            )
+
+        assert failed_chunks == 1
+        assert "[チャンク2失敗]" in text
+        assert "最初のチャンクです。" in text

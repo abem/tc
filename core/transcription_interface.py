@@ -436,6 +436,23 @@ class Qwen3ASREngine(TranscriptionEngine):
                 max_new_tokens=1024,  # 長音声向けに十分確保
             )
 
+            # 反復ループ対策(bugfix 2026-08-03): 同一文/単語が数十回異常反復し
+            # チャンクが意味的に破壊される事象への予防策。qwen_asr の公開API
+            # (from_pretrained/transcribe)には反復抑制パラメータの設定経路が
+            # 無いため、ロード済みHFモデル(Qwen3ASRModel.model、公開属性)の
+            # generation_config を直接設定する。transformers の generate() は
+            # 明示指定しない生成パラメータを generation_config から補うため、
+            # ここで一度設定すれば以降の全 generate() 呼び出しに反映される。
+            self._model.model.generation_config.repetition_penalty = self.REPETITION_PENALTY
+            self._model.model.generation_config.no_repeat_ngram_size = self.NO_REPEAT_NGRAM_SIZE
+
+    # 反復抑制パラメータの既定値。repetition_penalty > 1.0 で同一トークン列の
+    # 再選択確率を下げ、no_repeat_ngram_size > 0 で同一N-gramの再生成を禁止する。
+    # 値は一般的な過剰抑制回避レンジ(HF標準の目安)を採用(実測チューニングは
+    # 別途フォローアップ課題)。
+    REPETITION_PENALTY = 1.3
+    NO_REPEAT_NGRAM_SIZE = 4
+
     # 長音声を分割する閾値(秒)。
     # 実測で10分(600s)までは成功、15分(900s)で CUBLAS_STATUS_INTERNAL_ERROR が
     # 発生することを確認(RTX 4080 SUPER / torch 2.11.0+cu130 / bfloat16)。
@@ -459,13 +476,14 @@ class Qwen3ASREngine(TranscriptionEngine):
 
             duration = self._get_audio_duration(audio_path)
             failed_chunks = 0
+            repeated_chunks = 0
             if duration > self.CHUNK_THRESHOLD_SEC:
                 # 長音声: 分割して処理
                 self.logger.info(
                     f"Audio is {duration:.0f}s (>{self.CHUNK_THRESHOLD_SEC}s), "
                     f"splitting into chunks for stable processing"
                 )
-                text, detected_language, failed_chunks = self._transcribe_long_audio(
+                text, detected_language, failed_chunks, repeated_chunks = self._transcribe_long_audio(
                     audio_path, duration, language, self.config.context
                 )
             else:
@@ -507,6 +525,7 @@ class Qwen3ASREngine(TranscriptionEngine):
                     "detected_language": detected_language,
                     "chunked": duration > self.CHUNK_THRESHOLD_SEC,
                     "failed_chunks": failed_chunks,
+                    "repeated_chunks": repeated_chunks,
                 },
             )
 
@@ -529,9 +548,11 @@ class Qwen3ASREngine(TranscriptionEngine):
         各チャンクの生テキストを結合してから最後に1回だけ文節改行を適用する。
         (チャンク毎にフォーマットすると境界の文節が分断されるため)
 
-        戻り値: (結合テキスト, 検出言語コード, 失敗チャンク数)
+        戻り値: (結合テキスト, 検出言語コード, 失敗チャンク数, 反復検出チャンク数)
         チャンクが失敗した場合は結果テキストに [チャンクN失敗] プレースホルダを
-        挿入し、ユーザーが欠落に気づけるようにする。
+        挿入し、ユーザーが欠落に気づけるようにする。反復ループを検出した
+        チャンクは1回だけ再試行し、再試行後も反復する場合は
+        [チャンクN反復検出のため破棄] プレースホルダを挿入する。
         """
         import numpy as np
         from tqdm import tqdm
@@ -546,6 +567,7 @@ class Qwen3ASREngine(TranscriptionEngine):
         raw_texts = []
         detected_lang = self.config.language
         failed_chunks = 0
+        repeated_chunks = 0
 
         for i in tqdm(range(total_chunks), desc="音声文字起こし(分割)"):
             start_sample = i * chunk_samples
@@ -555,6 +577,7 @@ class Qwen3ASREngine(TranscriptionEngine):
             if len(chunk) < sr:  # 1秒未満の端数はスキップ
                 continue
 
+            chunk_start_time = time.time()
             try:
                 results = self._model.transcribe(
                     audio=(chunk, sr),
@@ -565,11 +588,45 @@ class Qwen3ASREngine(TranscriptionEngine):
                 if results:
                     r = results[0]
                     chunk_text = r.text.strip()
+
+                    # 反復ループ検出(bugfix 2026-08-03): 同一文/単語がチャンク末尾まで
+                    # 異常反復し意味的に破壊される事象への事後対策。予防策
+                    # (generation_config、_load_model参照)を適用済みでも反復に
+                    # 至った場合の安全網として、1回だけ同一チャンクを再試行する。
+                    if chunk_text and self._detect_repetition(chunk_text):
+                        repeated_chunks += 1
+                        self.logger.warning(
+                            f"Chunk {i+1}/{total_chunks}: repetition loop detected "
+                            f"({len(chunk_text)} chars), retrying once"
+                        )
+                        retry_results = self._model.transcribe(
+                            audio=(chunk, sr),
+                            context=context,
+                            language=language,
+                            return_time_stamps=False,
+                        )
+                        retry_text = retry_results[0].text.strip() if retry_results else ""
+                        if retry_text and not self._detect_repetition(retry_text):
+                            self.logger.info(f"Chunk {i+1}/{total_chunks}: retry succeeded")
+                            r = retry_results[0]
+                            chunk_text = retry_text
+                        else:
+                            self.logger.warning(
+                                f"Chunk {i+1}/{total_chunks}: retry still repetitive, discarding chunk"
+                            )
+                            chunk_text = f"\n[チャンク{i+1}反復検出のため破棄]\n"
+
                     if chunk_text:
                         raw_texts.append(chunk_text)
                     # 最初のチャンクの検出言語を使う
                     if i == 0 and r.language:
                         detected_lang = self._language_name_to_code(r.language)
+
+                chunk_elapsed = time.time() - chunk_start_time
+                self.logger.info(
+                    f"Chunk {i+1}/{total_chunks} done in {chunk_elapsed:.1f}s "
+                    f"(lang={detected_lang})"
+                )
             except Exception as e:
                 failed_chunks += 1
                 self.logger.warning(f"Chunk {i+1}/{total_chunks} failed: {e}, inserting placeholder")
@@ -586,7 +643,43 @@ class Qwen3ASREngine(TranscriptionEngine):
             self.logger.warning(
                 f"Long audio transcription completed with {failed_chunks}/{total_chunks} failed chunks"
             )
-        return text, detected_lang, failed_chunks
+        if repeated_chunks > 0:
+            self.logger.warning(
+                f"Long audio transcription completed with {repeated_chunks}/{total_chunks} chunks "
+                f"triggering repetition-loop detection"
+            )
+        return text, detected_lang, failed_chunks, repeated_chunks
+
+    @staticmethod
+    def _detect_repetition(text: str, max_cycle: int = 40, min_repeats: int = 3) -> bool:
+        """句読点区切りの文節列に、同一の文節シーケンス(長さ1〜max_cycle)が
+        min_repeats回以上連続して繰り返される箇所がないかを検出する。
+
+        ASRの反復ループ(実障害: 「アジェンツは、ツールコールの高品質と正確さを
+        必要とするため...」という1文が単語単位の改行を伴い70回以上連続反復)を
+        検知するための軽量ヒューリスティック。正規表現の後方参照
+        (`(.+)\\1{2,}`)はバックトラック爆発のリスクがあるため使わず、
+        文節リストに対する固定長スライド窓比較で実装する。
+        """
+        import re
+
+        fragments = [s for s in re.split(r'(?<=[。、！？!?])', text) if s.strip()]
+        n = len(fragments)
+        if n < min_repeats:
+            return False
+
+        for cycle in range(1, max_cycle + 1):
+            window_span = cycle * min_repeats
+            if n < window_span:
+                break
+            for i in range(0, n - window_span + 1):
+                unit = fragments[i:i + cycle]
+                if all(
+                    fragments[i + k * cycle:i + (k + 1) * cycle] == unit
+                    for k in range(1, min_repeats)
+                ):
+                    return True
+        return False
 
     @staticmethod
     def _format_text_with_breaks(text: str) -> str:

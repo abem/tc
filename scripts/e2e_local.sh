@@ -45,7 +45,6 @@ fi
 
 MODE="${E2E_MODE:-dry-run}"
 
-# main_cli.py はリファクタリングで削除され tc/transcribe.py に統合済。
 # tc ランチャーは uv 経由で起動する(shebang 参照)。
 TC="${ROOT_DIR}/tc"
 
@@ -54,9 +53,6 @@ if [[ "${MODE}" == "full" ]]; then
   exec "${TC}" "${SAMPLE_WAV}" --no-upload --device cpu
 fi
 
-# dry-run モード: 現ランチャー(tc/transcribe.py)は --dry-run をサポートしないため
-# 実行不能。E2E テストの再実装は別PRで行う(tests/test_e2e_dry_run.py の skip理由参照)。
-echo "[e2e_local] dry-run モードは現在サポートされていません。" >&2
-echo "[e2e_local] main_cli.py が削除され --dry-run オプションが現ランチャーに存在しません。" >&2
-echo "[e2e_local] full モード(E2E_MODE=full)を使うか、tests/test_e2e_dry_run.py の再実装をお待ちください。" >&2
-exit 1
+# dry-run モード: tc の --dry-run オプション(設定読み込み・入力解決までを
+# 行い実際の文字起こしは行わない)を使い、GPU/ネットワーク無しで起動確認する。
+exec "${TC}" "${SAMPLE_WAV}" --device cpu --dry-run

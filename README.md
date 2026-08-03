@@ -90,7 +90,7 @@ gdrive:
 
 whisper:
   model: Qwen/Qwen3-ASR-1.7B   # デフォルト（最高精度）
-  language: ja
+  language: null                # 既定は自動判定（ja/en等を指定すると強制）
   device: cuda  # または cpu
 ```
 
@@ -150,7 +150,7 @@ gdrive:
 
 whisper:
   model: Qwen/Qwen3-ASR-1.7B   # デフォルト: 最高精度（2026年ベンチマークトップ）
-  language: ja
+  language: null                # 既定は自動判定（ja/en等を指定すると強制）
   device: cuda
   beam_size: 5
   best_of: 3
@@ -383,22 +383,9 @@ E2E_MODE=full ./scripts/e2e_local.sh
 uv run pytest tests/test_e2e_dry_run.py -v
 ```
 
-> **注記:** このテストは現在 skip 中です。`main_cli.py` がリファクタリングで
-> 削除され `tc`/`transcribe.py` に統合された際、`--dry-run` オプションが現ランチャーに
-> 継承されなかったため、テストが実態と乖離しています。E2E テストの再実装は別PRで
-> 計画中です（詳細は `tests/test_e2e_dry_run.py` の skip 理由を参照）。
-> 代わりに `./scripts/e2e_local.sh` (dry-run モードで未対応である旨を明示) または
-> `E2E_MODE=full ./scripts/e2e_local.sh` (実変換) を使ってください。
-
-### デバッグツール
-
-```bash
-# Hugging Faceトークンテスト
-uv run python test_hf_token.py
-
-# kotoba-whisperモデル詳細確認
-uv run python debug_kotoba.py
-```
+このテストは `tc` に `--dry-run` オプションを実装したことで復旧済みです。
+ローカルの音声ファイルのみを使い、GPU/ネットワークを一切使用せずに
+ランチャー起動確認（設定読み込み・入力解決）を行います。
 
 ### 依存関係管理
 

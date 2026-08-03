@@ -27,10 +27,8 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 git clone <repository-url>
 cd tc
 
-# 必要なパッケージのインストール
-uv pip install google-api-python-client google-auth google-auth-httplib2 google-auth-oauthlib
-uv pip install scipy librosa soundfile
-uv pip install transformers torch torchaudio
+# 依存関係のインストール(pyproject.tomlのdefault-groupsでdev/qwen3含め自動解決)
+uv sync
 
 # Hugging Faceトークンの設定
 echo "HUGGINGFACE_TOKEN=hf_your_token_here" > .env
@@ -329,8 +327,8 @@ tc/
 
 **解決策**: このエラーはv2025.11.21で修正済み（`librosa`に切り替え）
 ```bash
-# 念のため必要なパッケージを再インストール
-uv pip install librosa soundfile scipy
+# 念のため依存関係を再同期(pyproject.toml/uv.lockが情報源)
+uv sync
 ```
 
 #### 4. CUDA out of memory
@@ -349,8 +347,8 @@ cat .env
 
 #### 6. ModuleNotFoundError: No module named 'googleapiclient'
 ```bash
-# Google API関連パッケージのインストール
-uv pip install google-api-python-client google-auth google-auth-httplib2 google-auth-oauthlib
+# 依存関係を再同期(pyproject.toml/uv.lockが情報源)
+uv sync
 ```
 
 ### ログ確認

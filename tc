@@ -98,6 +98,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--language", help="言語コード（config.yamlの設定を上書き）")
     parser.add_argument("--device", choices=["cuda", "cpu", "auto"], help="使用するデバイス（config.yamlの設定を上書き）")
     parser.add_argument("--folder-id", help="アップロード先Google DriveフォルダID（省略時は元ファイルと同じフォルダ）")
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="設定読み込み・入力解決までを行い、実際の文字起こしは行わずに終了する（起動確認用）",
+    )
     return parser
 
 
@@ -126,6 +131,16 @@ def main():
     # is_temp_fileはgdriveでは常にFalseだが、実体は一時ファイルであるため
     # source_type=="gdrive"も削除対象に含める（tcの従来挙動を維持）。
     needs_cleanup = resolution.is_temp_file or resolution.source_type == "gdrive"
+
+    if args.dry_run:
+        print(f"ドライラン: 起動確認OK (input={audio_path})")
+        if needs_cleanup and os.path.exists(audio_path):
+            if resolution.youtube_handler:
+                resolution.youtube_handler.cleanup_temp_file(audio_path)
+            else:
+                os.remove(audio_path)
+                logger.info(f"一時ファイルを削除: {audio_path}")
+        return
 
     try:
         transcribed_text = transcribe_audio(audio_path, config)

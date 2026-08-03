@@ -777,7 +777,16 @@ class Qwen3ASREngine(TranscriptionEngine):
 
         # 生テキストを全チャンク結合してから、最後に1回だけ文節改行を適用
         # (チャンク毎にフォーマットすると境界の文節が分断されるため)
-        raw_text = "".join(raw_texts)
+        #
+        # bugfix(2026-08-03): チャンク境界がちょうど単語直後(句読点・空白を
+        # 伴わない位置)で切れた場合、""での無区切り結合だと前チャンク末尾の
+        # 単語と次チャンク先頭の単語が結合してしまう(実機再現・原因確定済み:
+        # 実例「Nicolai Tangen」+「a way for...」→「Tangena way for...」)。
+        # 半角スペース区切りに変更して単語結合を防止する。日本語文節(句読点
+        # 終わり)の場合はスペースが1つ挟まるだけで、_format_text_with_breaks
+        # 側でstrip()されるため表示上の影響はない。プレースホルダ
+        # ([チャンクN失敗]等)前後の改行とも共存可能(実害なし)。
+        raw_text = " ".join(raw_texts)
         text = self._format_text_with_breaks(raw_text)
 
         if failed_chunks > 0:

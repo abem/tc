@@ -23,7 +23,7 @@ from core.cli_common import (
     detect_input_type,
     resolve_device,
 )
-from core.cli_workflow import resolve_input_audio, upload_transcription_result
+from core.cli_workflow import record_transcription_history, resolve_input_audio, upload_transcription_result
 from core.config import UnifiedConfig, TranscriptionConfig, DiarizationConfig
 from core.transcription_interface import UnifiedTranscriber
 
@@ -161,10 +161,13 @@ class TranscribeLoader:
                 console.print("ダウンロード完了")
 
             # 文字起こし設定
+            # device解決結果をsettingsへ書き戻す(save_results()経由でrecord_transcription_history()に
+            # 渡る際、未解決の"auto"のまま記録されるのを防ぐため。査sa指摘是正)。
+            settings["device"] = resolve_device(settings["device"])
             transcription_config = TranscriptionConfig(
                 model=settings["model"],
                 language=settings["language"],
-                device=resolve_device(settings["device"]),
+                device=settings["device"],
                 show_progress=True  # 元のプログレスバーを使用
             )
 
@@ -215,6 +218,8 @@ class TranscribeLoader:
         console.print("文字起こし完了")
         console.print(f"ローカル保存先: {output_file}")
 
+        full_url: Optional[str] = None
+
         # Google Driveアップロード
         try:
             if resolution.source_type in {"youtube", "gdrive"}:
@@ -231,9 +236,21 @@ class TranscribeLoader:
                     console.print(f"{full_url}")
                 else:
                     console.print("Google Driveアップロードに失敗")
-                
+
         except Exception as e:
             console.print(f"Google Driveアップロードエラー: {e}")
+
+        # 変換履歴の記録(失敗しても文字起こし処理そのものは失敗として扱わない)
+        try:
+            record_transcription_history(
+                result=result,
+                resolution=resolution,
+                output_file=output_file,
+                settings=settings,
+                gdrive_url=full_url,
+            )
+        except Exception as e:
+            console.print(f"変換履歴の記録に失敗しました: {e}")
     
     def run(self):
         """メイン実行"""

@@ -4,11 +4,16 @@ Shared workflow helpers for CLI entry points.
 
 from __future__ import annotations
 
+import sqlite3
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
-from typing import Any, Callable, Dict, Optional
+from typing import TYPE_CHECKING, Any, Callable, Dict, Optional
 
 from core.cli_common import detect_input_type, upload_text_to_gdrive_sibling
+
+if TYPE_CHECKING:
+    from core.transcription_interface import TranscriptionResult
 
 StatusCallback = Callable[[str], None]
 
@@ -120,3 +125,100 @@ def upload_transcription_result(
         return upload_text_to_gdrive_sibling(output_file, original_source, override_folder_id=folder_id)
 
     return None
+
+
+# 変換履歴DB(設計書: 作から計への設計書_変換履歴DB設計_20260806.md §3 DDL準拠)
+_HISTORY_DDL = """
+CREATE TABLE IF NOT EXISTS transcription_history (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    processed_at TEXT NOT NULL,
+    source_type TEXT NOT NULL,
+    source_original TEXT NOT NULL,
+    source_title TEXT,
+    model_name TEXT NOT NULL,
+    device TEXT NOT NULL,
+    language TEXT,
+    diarization_enabled INTEGER NOT NULL DEFAULT 0,
+    include_timestamps INTEGER NOT NULL DEFAULT 0,
+    context_hints_used INTEGER NOT NULL DEFAULT 0,
+    char_count INTEGER NOT NULL,
+    duration_sec REAL,
+    processing_time_sec REAL NOT NULL,
+    failed_chunks INTEGER NOT NULL DEFAULT 0,
+    repeated_chunks INTEGER NOT NULL DEFAULT 0,
+    result_text TEXT NOT NULL,
+    output_text_path TEXT NOT NULL,
+    gdrive_url TEXT,
+    notes TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_history_processed_at ON transcription_history(processed_at);
+CREATE INDEX IF NOT EXISTS idx_history_source_type ON transcription_history(source_type);
+"""
+
+DEFAULT_HISTORY_DB_PATH = Path("output/history.db")
+
+
+def ensure_history_table(conn: sqlite3.Connection) -> None:
+    """`transcription_history` テーブル(未作成時は自動作成)。DDLは設計書§3準拠。"""
+    conn.executescript(_HISTORY_DDL)
+
+
+def record_transcription_history(
+    *,
+    result: "TranscriptionResult",
+    resolution: InputResolution,
+    output_file: Path,
+    settings: Dict[str, Any],
+    gdrive_url: Optional[str] = None,
+    db_path: Path = DEFAULT_HISTORY_DB_PATH,
+) -> None:
+    """変換履歴をSQLiteへ記録する(設計書§5-2準拠)。
+
+    `UnifiedTranscriber.transcribe()` は変更しないため、音源種別・出力ファイルパス・
+    アップロードURLは呼び出し元(各CLIエントリポイントの保存処理)から受け取る。
+    呼び出し元は本関数を独立した try/except で囲み、失敗を既存ワークフローへ
+    伝播させないこと(設計書§6、既存CLIワークフローへの無影響要件)。
+    """
+    metadata = result.metadata or {}
+    source_title = resolution.metadata.get("title") if resolution.metadata else None
+    context_hints_used = bool(settings.get("context") or "")
+
+    db_path.parent.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(str(db_path))
+    try:
+        ensure_history_table(conn)
+        conn.execute(
+            """
+            INSERT INTO transcription_history (
+                processed_at, source_type, source_original, source_title,
+                model_name, device, language, diarization_enabled,
+                include_timestamps, context_hints_used, char_count,
+                duration_sec, processing_time_sec, failed_chunks,
+                repeated_chunks, result_text, output_text_path, gdrive_url, notes
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                datetime.now().isoformat(timespec="seconds"),
+                resolution.source_type,
+                resolution.original_source,
+                source_title,
+                result.model_name,
+                settings.get("device") or "",
+                result.language,
+                1 if settings.get("diarization") else 0,
+                1 if settings.get("include_timestamps") else 0,
+                1 if context_hints_used else 0,
+                len(result.text),
+                result.duration,
+                result.processing_time,
+                metadata.get("failed_chunks", 0),
+                metadata.get("repeated_chunks", 0),
+                result.text,
+                str(output_file),
+                gdrive_url,
+                None,
+            ),
+        )
+        conn.commit()
+    finally:
+        conn.close()

@@ -5,7 +5,7 @@ import argparse
 import os
 import sys
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 import yaml
 
@@ -23,7 +23,7 @@ sys.path.insert(0, str(PROJECT_ROOT))
 import suppress_warnings  # noqa: F401
 
 from core.cli_common import build_output_file, resolve_device, update_whisper_config
-from core.cli_workflow import resolve_input_audio, upload_transcription_result
+from core.cli_workflow import record_transcription_history, resolve_input_audio, upload_transcription_result
 from core.config import TranscriptionConfig
 from core.logging import get_logger
 from core.transcription_interface import TranscriptionResult, UnifiedTranscriber
@@ -171,6 +171,7 @@ def main():
     try:
         result = transcribe_audio(audio_path, config)
         transcribed_text = result.text
+        upload_url: Optional[str] = None
         output_path = save_result(result, args.output_dir)
         print(f"文字起こし完了: {output_path}")
 
@@ -188,6 +189,25 @@ def main():
                 print(f"アップロード完了: {upload_url}")
             else:
                 print("アップロードに失敗しました")
+
+        # 変換履歴の記録(失敗しても文字起こし処理そのものは失敗として扱わない)
+        try:
+            whisper_config = config.get("whisper", {})
+            history_settings = {
+                "device": resolve_device(whisper_config.get("device", "cuda")),
+                "context": load_context_hints(whisper_config.get("context_file", "config/context_hints.txt")),
+                "diarization": False,
+                "include_timestamps": whisper_config.get("include_timestamps", False),
+            }
+            record_transcription_history(
+                result=result,
+                resolution=resolution,
+                output_file=Path(output_path),
+                settings=history_settings,
+                gdrive_url=upload_url,
+            )
+        except Exception as e:
+            print(f"変換履歴の記録に失敗しました: {e}")
 
         preview = transcribed_text[:500]
         print("\n文字起こし結果（最初の500文字）:")

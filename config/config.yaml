@@ -1,7 +1,7 @@
 gdrive:
   credentials_file: credentials.json
   token_file: token.pickle
-  url: "https://drive.google.com/file/d/19OT5RdY5As-8bALfxKeh2lNjB8ZPyOoP/view?usp=drive_link"
+  url: "https://x.com/dkare1009/status/2084315861498949871/video/1"
   chunk_size: 100
   upload_folder_id: null  # デフォルトアップロード先フォルダID（省略時は元ファイルと同じフォルダ）
 
@@ -25,24 +25,6 @@ whisper:
   # 約1.2GB追加)を読み込み、出力テキストの各行頭に[MM:SS]を付与する。
   # 既定はfalse(既存の出力形式を維持)。
   include_timestamps: false
-
-  # 言語別モデル設定
-  # 注意: この default/alternatives を読む core/cli_common.py:select_model() は
-  # 現在どこからも呼ばれていない(dead code)。実際のモデルは whisper.model を参照。
-  # だが将来の混乱を避けるため、default を実際のデフォルト(whisper.model)と一致させる。
-  language_models:
-    ja:
-      default: Qwen/Qwen3-ASR-1.7B
-      alternatives:
-        - kotoba-tech/kotoba-whisper-v2.2
-        - drewschaub/whisper-large-v3-japanese-4k-steps
-        - openai/whisper-large-v3
-    en:
-      default: openai/whisper-large-v3
-      alternatives:
-        - large-v3
-        - medium
-        - small
 
   # モデル履歴と利用可能モデル
   model_history:

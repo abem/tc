@@ -26,6 +26,7 @@ from core.cli_common import (
 from core.cli_workflow import record_transcription_history, resolve_input_audio, upload_transcription_result
 from core.config import UnifiedConfig, TranscriptionConfig, DiarizationConfig
 from core.transcription_interface import UnifiedTranscriber
+from core.utils import load_context_hints
 
 console = Console(width=200, soft_wrap=True)
 
@@ -168,6 +169,9 @@ class TranscribeLoader:
                 model=settings["model"],
                 language=settings["language"],
                 device=settings["device"],
+                context=load_context_hints(
+                    UnifiedConfig.get("whisper", "context_file", default="config/context_hints.txt")
+                ),
                 show_progress=True  # 元のプログレスバーを使用
             )
 

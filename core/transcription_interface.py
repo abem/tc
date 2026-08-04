@@ -714,10 +714,16 @@ class Qwen3ASREngine(TranscriptionEngine):
                 continue
 
             chunk_start_time = time.time()
+            # 幻覚リスク是正(bugfix 2026-08-05、tc-ops #439): contextを全チャンク一律で注入すると、
+            # 無音・不明瞭なチャンク冒頭でヒント語彙が「発話された」と誤認される幻覚の原因になる
+            # (config/context_hints.txt.sample参照)。最初のチャンクのみに限定して注入し、
+            # 2チャンク目以降は空文字にすることで、当該チャンクでの幻覚混入を構造的に防止する
+            # (副作用: 2チャンク目以降で固有名詞ヒントの効果は失われる。既知のトレードオフとして採用)。
+            chunk_context = context if i == 0 else ""
             try:
                 results = self._model.transcribe(
                     audio=(chunk, sr),
-                    context=context,
+                    context=chunk_context,
                     language=language,
                     return_time_stamps=False,
                 )
@@ -737,7 +743,7 @@ class Qwen3ASREngine(TranscriptionEngine):
                         )
                         retry_results = self._model.transcribe(
                             audio=(chunk, sr),
-                            context=context,
+                            context=chunk_context,
                             language=language,
                             return_time_stamps=False,
                         )

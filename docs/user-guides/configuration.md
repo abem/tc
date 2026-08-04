@@ -63,21 +63,6 @@ whisper:
   temperature: 0.1                       # 生成温度
   context_file: "config/context_hints.txt"  # 固有名詞・専門用語の認識ヒントファイル（下記参照）
   
-  # 言語別モデル設定
-  language_models:
-    ja:                                  # 日本語
-      default: Qwen/Qwen3-ASR-1.7B
-      alternatives:
-        - kotoba-tech/kotoba-whisper-v2.2
-        - openai/whisper-large-v3
-    en:                                  # 英語
-      default: openai/whisper-large-v3
-      alternatives:
-        - Qwen/Qwen3-ASR-1.7B
-        - large-v3
-        - medium
-        - small
-  
   # モデル履歴（デバッグ用）
   model_history:
     current: Qwen/Qwen3-ASR-1.7B

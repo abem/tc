@@ -156,22 +156,6 @@ whisper:
   best_of: 3
   temperature: 0.1
 
-  # 言語別モデル設定(注: このセクションを読むコードは現在どこからも呼ばれていない
-  # dead code。実際に使われるモデルは常に上記の whisper.model。詳細は
-  # docs/user-guides/language_support_guide.md 参照)
-  language_models:
-    ja:
-      default: Qwen/Qwen3-ASR-1.7B
-      alternatives:
-        - kotoba-tech/kotoba-whisper-v2.2
-        - openai/whisper-large-v3
-    en:
-      default: openai/whisper-large-v3
-      alternatives:
-        - Qwen/Qwen3-ASR-1.7B
-        - large-v3
-        - medium
-
 speaker_diarization:
   enable: false
   model: "pyannote/speaker-diarization-3.1"

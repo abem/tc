@@ -12,6 +12,7 @@ Phase2最小構成(URL入力→文字起こし→履歴表示)。設計書:
 
 from __future__ import annotations
 
+import os
 import sqlite3
 from pathlib import Path
 from typing import Any, Dict, Optional
@@ -165,6 +166,22 @@ def _start_job(form_values: Dict[str, Any], settings_values: Dict[str, Any], con
     st.session_state["job_saved"] = False
 
 
+def _cleanup_temp_file(resolution: InputResolution) -> None:
+    """ダウンロードした一時音声ファイルを削除する(成功・失敗いずれの経路でも呼び出す)。
+    ローカルアップロードファイルは削除しない(tc/transcribe.pyの既存挙動と整合)。"""
+    needs_cleanup = resolution.is_temp_file or resolution.source_type == "gdrive"
+    if not needs_cleanup:
+        return
+    try:
+        if os.path.exists(resolution.local_audio_path):
+            if resolution.youtube_handler:
+                resolution.youtube_handler.cleanup_temp_file(resolution.local_audio_path)
+            else:
+                os.remove(resolution.local_audio_path)
+    except Exception as e:
+        st.warning(f"一時ファイルの削除に失敗しました: {e}")
+
+
 def _save_and_record(job: TranscriptionJob, resolution: InputResolution, settings_values: Dict[str, Any]) -> None:
     """完了したジョブの結果を保存し、変換履歴を記録する(設計書§5-2の統合パターンをWebUI側でも踏襲)。"""
     result = job.result
@@ -196,6 +213,8 @@ def _save_and_record(job: TranscriptionJob, resolution: InputResolution, setting
     except Exception as e:
         st.warning(f"変換履歴の記録に失敗しました: {e}")
 
+    _cleanup_temp_file(resolution)
+
     st.session_state["job_output_file"] = str(output_file)
     st.session_state["job_gdrive_url"] = gdrive_url
     st.session_state["job_saved"] = True
@@ -222,6 +241,9 @@ def _render_progress_and_result() -> None:
 
     if job.error is not None:
         st.error(f"文字起こしに失敗しました: {job.error}")
+        failed_resolution = st.session_state.get("job_resolution")
+        if failed_resolution is not None:
+            _cleanup_temp_file(failed_resolution)
         return
 
     resolution = st.session_state["job_resolution"]

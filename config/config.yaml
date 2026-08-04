@@ -1,7 +1,7 @@
 gdrive:
   credentials_file: credentials.json
   token_file: token.pickle
-  url: "https://x.com/dkare1009/status/2084315861498949871/video/1"
+  url: "https://drive.google.com/file/d/19OT5RdY5As-8bALfxKeh2lNjB8ZPyOoP/view?usp=drive_link"
   chunk_size: 100
   upload_folder_id: null  # デフォルトアップロード先フォルダID（省略時は元ファイルと同じフォルダ）
 

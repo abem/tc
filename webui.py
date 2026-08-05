@@ -17,6 +17,7 @@ import sqlite3
 import threading
 import time
 import uuid
+from datetime import date, timedelta
 from pathlib import Path
 from typing import Any, Callable, Dict, Optional
 
@@ -410,6 +411,73 @@ def _render_queue_and_result() -> None:
                     st.error(f"文字起こしに失敗しました: {item.error_message}")
 
 
+def _count_history_before(conn: sqlite3.Connection, cutoff_date: date) -> int:
+    """`processed_at`が`cutoff_date`より前(境界日当日は含まない)の変換履歴件数を返す
+    (WebUI履歴削除機能)。既存の日付絞り込み(`date(processed_at) >= date(?)`等)と同じ
+    パターン(SQLiteの`date()`関数で日付部分のみ比較、値自体はPython側で計算)を踏襲する。"""
+    row = conn.execute(
+        "SELECT COUNT(*) FROM transcription_history WHERE date(processed_at) < date(?)",
+        (cutoff_date.isoformat(),),
+    ).fetchone()
+    return row[0] if row else 0
+
+
+def _delete_history_before(conn: sqlite3.Connection, cutoff_date: date) -> int:
+    """`processed_at`が`cutoff_date`より前の変換履歴を削除し、実際の削除件数を返す。
+    `output/`配下のファイル実体・Google Drive上のファイルは削除しない(要件どおり、DB行のみ)。"""
+    cursor = conn.execute(
+        "DELETE FROM transcription_history WHERE date(processed_at) < date(?)",
+        (cutoff_date.isoformat(),),
+    )
+    conn.commit()
+    return cursor.rowcount
+
+
+def _render_history_cleanup_section() -> None:
+    """変換履歴の一括削除(古い履歴、DB行のみ)。即座に無警告で削除しない、
+    「①対象件数を確認」→「②件数付きで削除実行」の2段階UX(誤操作防止)。
+
+    `st.session_state["history_cleanup_confirm"]`に確認時のN日・cutoff_date・件数を保持し、
+    削除実行時も同じcutoff_dateを使う(確認件数と削除件数のズレ防止)。Nの値を確認後に変更した
+    場合は確認状態を無効化する(古いNのまま削除されるのを防ぐ)。
+    """
+    with st.expander("古い履歴の一括削除", expanded=False):
+        n_days = st.number_input(
+            "N日より前の履歴を削除", min_value=1, value=30, step=1, key="history_cleanup_n_days"
+        )
+        if st.button("① 対象件数を確認", key="history_cleanup_check"):
+            cutoff = date.today() - timedelta(days=int(n_days))
+            conn = sqlite3.connect(str(DEFAULT_HISTORY_DB_PATH))
+            try:
+                count = _count_history_before(conn, cutoff)
+            finally:
+                conn.close()
+            st.session_state["history_cleanup_confirm"] = {
+                "cutoff_date": cutoff,
+                "n_days": int(n_days),
+                "count": count,
+            }
+
+        confirm = st.session_state.get("history_cleanup_confirm")
+        if confirm is not None and confirm["n_days"] == int(n_days):
+            if confirm["count"] > 0:
+                st.write(
+                    f"{confirm['cutoff_date'].isoformat()} より前の履歴が{confirm['count']}件あります"
+                    "(削除対象はデータベースの記録のみで、output/配下のファイルやGoogle Drive上の"
+                    "ファイルは削除されません)。"
+                )
+                if st.button(f"② {confirm['count']}件を削除する", key="history_cleanup_execute"):
+                    conn = sqlite3.connect(str(DEFAULT_HISTORY_DB_PATH))
+                    try:
+                        deleted = _delete_history_before(conn, confirm["cutoff_date"])
+                    finally:
+                        conn.close()
+                    st.session_state.pop("history_cleanup_confirm", None)
+                    st.success(f"{deleted}件の履歴を削除しました。")
+            else:
+                st.caption("削除対象の履歴はありません。")
+
+
 def _render_history_tab() -> None:
     """履歴一覧画面(設計書§3-5)。"""
     st.subheader("変換履歴")
@@ -422,6 +490,8 @@ def _render_history_tab() -> None:
         date_from = st.date_input("開始日", value=None, key="history_date_from")
     with col2:
         date_to = st.date_input("終了日", value=None, key="history_date_to")
+
+    _render_history_cleanup_section()
 
     conn = sqlite3.connect(str(DEFAULT_HISTORY_DB_PATH))
     conn.row_factory = sqlite3.Row
@@ -463,7 +533,7 @@ def _render_history_tab() -> None:
 
 def main() -> None:
     _load_config()
-    st.title("Transcribe Audio WebUI (プロトタイプ)")
+    st.title("Transcribe Audio WebUI")
 
     tab_transcribe, tab_history = st.tabs(["文字起こし", "履歴"])
 

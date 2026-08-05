@@ -15,9 +15,13 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional
 
+from core.logging import get_logger
+
 if TYPE_CHECKING:
     from core.cli_workflow import InputResolution
     from core.transcription_interface import TranscriptionResult, TranscriptionSegment, UnifiedTranscriber
+
+logger = get_logger(__name__)
 
 
 class TranscriptionJob:
@@ -106,6 +110,7 @@ class TranscriptionJobQueue:
         item = QueueItem(label=label, resolution=resolution, settings=dict(settings), item_id=self._next_id)
         self._next_id += 1
         self.items.append(item)
+        logger.info("状態遷移 item_id=%s (新規)->QUEUED label=%s", item.item_id, label)
         return item
 
     @property
@@ -130,19 +135,23 @@ class TranscriptionJobQueue:
         `QueueItem` を受け取り `TranscriptionJob` を返す呼び出し可能オブジェクト
         (本番では `start_transcription_job()` をラップしたもの、テストではモック)。
         """
-        if self.current is not None:
-            return None
+        current_item = self.current
         pending = self.queued
+        logger.info("dispatch_next呼び出し current_item_id=%s queued_count=%d", current_item.item_id if current_item is not None else None, len(pending))
+        if current_item is not None:
+            return None
         if not pending:
             return None
         item = pending[0]
         item.job = starter(item)
         item.state = QueueItemState.PROCESSING
         item.started_at = time.time()
+        logger.info("状態遷移 item_id=%s QUEUED->PROCESSING label=%s", item.item_id, item.label)
         return item
 
     def mark_done(self, item: QueueItem, *, output_file: Optional[str], gdrive_url: Optional[str]) -> None:
         """処理中項目を完了(`DONE`)へ遷移する。"""
+        logger.info("状態遷移 item_id=%s PROCESSING->DONE output_file=%s", item.item_id, output_file)
         item.state = QueueItemState.DONE
         item.output_file = output_file
         item.gdrive_url = gdrive_url
@@ -150,6 +159,7 @@ class TranscriptionJobQueue:
 
     def mark_failed(self, item: QueueItem, *, error_message: str) -> None:
         """処理中項目を失敗(`FAILED`)へ遷移する。後続の`QUEUED`項目の起動は妨げない。"""
+        logger.info("状態遷移 item_id=%s PROCESSING->FAILED error=%s", item.item_id, error_message)
         item.state = QueueItemState.FAILED
         item.error_message = error_message
         item.finished_at = time.time()

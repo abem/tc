@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import os
 import sqlite3
+import time
 import uuid
 from pathlib import Path
 from typing import Any, Dict, Optional
@@ -32,6 +33,7 @@ from core.cli_workflow import (
     upload_transcription_result,
 )
 from core.config import DiarizationConfig, SystemConfig, TranscriptionConfig, UnifiedConfig
+from core.logging import get_logger
 from core.transcription_interface import UnifiedTranscriber
 from core.webui_workflow import (
     QueueItem,
@@ -44,6 +46,8 @@ from core.webui_workflow import (
 )
 
 st.set_page_config(page_title="Transcribe Audio WebUI", layout="wide")
+
+logger = get_logger(__name__)
 
 
 def _load_config() -> None:
@@ -124,11 +128,23 @@ def _resolve_input(form_values: Dict[str, Any], download_dir: Path) -> Optional[
     """`download_dir` は投入(enqueue)ごとに一意なディレクトリを渡すこと。YouTube/X経路は
     `resolve_input_audio()`の既存の`output_dir`引数をそのまま使ってダウンロード先を分離し、
     同一URLを複数回投入した際のファイルパス衝突(tc-ops #440是正・不具合2)を防ぐ
-    (`core/cli_workflow.py`・`handlers/youtube.py`は無変更)。"""
+    (`core/cli_workflow.py`・`handlers/youtube.py`は無変更)。
+
+    診断ログ(tc-ops #440是正2・査sa差し戻し対応): `resolve_input_audio()`が通常の`Exception`
+    (yt-dlpのダウンロード失敗等、`handlers/youtube.py` L184-186で`raise`される)で失敗した場合と、
+    Streamlitの`RerunException`(`BaseException`派生、この`except Exception`では捕捉されない)で
+    スクリプトが中断される場合を切り分けるため、token(`download_dir.name`)付きでログしてから
+    re-raiseする。前者ならこのログが出た上で呼び出し元に伝播する。後者ならこのログ自体が
+    出力されない(=中断ポイントが`resolve_input_audio()`内部のより深い箇所であることの証跡)。
+    """
     if form_values["source_url"]:
-        return resolve_input_audio(
-            form_values["source_url"], download_dir, ensure_yt_dlp=True, on_status=st.write
-        )
+        try:
+            return resolve_input_audio(
+                form_values["source_url"], download_dir, ensure_yt_dlp=True, on_status=st.write
+            )
+        except Exception as e:
+            logger.error("resolve_input_audio失敗(通常のException) token=%s error=%s", download_dir.name, e)
+            raise
     if form_values["uploaded_file"] is not None:
         upload_dir = Path("output/uploads")
         upload_dir.mkdir(parents=True, exist_ok=True)
@@ -172,10 +188,26 @@ def _enqueue_job(form_values: Dict[str, Any], settings_values: Dict[str, Any], c
 
     投入(enqueue)ごとに一意な`download_dir`を発行してから解決する(不具合2是正)。
     `st.spinner`で解決処理(ダウンロード等)中であることを示す(不具合1是正)。
+
+    診断ログ(tc-ops #440是正2): `token`をenqueue試行の識別子として使い、`_resolve_input()`
+    完了・`_get_queue().enqueue()`到達それぞれの時点でログを出す。中断(例: Streamlitの
+    RerunExceptionによるスクリプト再実行)が発生した場合、その時点より後のログが出力されない
+    ことが、原因追跡の証跡になる(意図的にtry/finallyで揃えていない)。
     """
-    download_dir = Path("output") / "queue_downloads" / uuid.uuid4().hex[:8]
+    token = uuid.uuid4().hex[:8]
+    logger.info(
+        "enqueue試行開始 token=%s source_url=%s uploaded_file=%s",
+        token,
+        form_values.get("source_url") or "(none)",
+        form_values["uploaded_file"].name if form_values.get("uploaded_file") is not None else "(none)",
+    )
+    download_dir = Path("output") / "queue_downloads" / token
     with st.spinner("入力を解決しています(ダウンロード等)..."):
+        logger.info("_resolve_input開始 token=%s", token)
+        t0 = time.time()
         resolution = _resolve_input(form_values, download_dir)
+        logger.info("_resolve_input完了 token=%s elapsed=%.2fs", token, time.time() - t0)
+    logger.info("spinnerブロック脱出 token=%s", token)
     if resolution is None:
         st.error("URLを入力するか、ファイルをアップロードしてください。")
         return
@@ -189,7 +221,8 @@ def _enqueue_job(form_values: Dict[str, Any], settings_values: Dict[str, Any], c
     label = form_values["source_url"] or (
         form_values["uploaded_file"].name if form_values["uploaded_file"] is not None else resolution.original_source
     )
-    _get_queue().enqueue(label=label, resolution=resolution, settings=job_settings)
+    item = _get_queue().enqueue(label=label, resolution=resolution, settings=job_settings)
+    logger.info("enqueue完了 token=%s item_id=%s", token, item.item_id)
 
 
 def _dispatch_next_job(job_queue: TranscriptionJobQueue) -> None:

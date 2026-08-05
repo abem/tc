@@ -137,6 +137,29 @@ whisper:
 ./tc --help
 ```
 
+### WebUI（Streamlitプロトタイプ）
+
+CLI（`./tc`）に加えて、ブラウザから操作できるWebUI（Streamlitプロトタイプ）も利用できます。
+
+**起動方法**:
+
+```bash
+uv run streamlit run webui.py --server.headless true --server.port 8501
+```
+
+systemdによる常駐化・自動起動を含む内部構成の詳細は
+[`docs/system-docs/webui_architecture.md`](docs/system-docs/webui_architecture.md) を参照してください。
+
+**機能概要**:
+
+- **文字起こしタブ**: YouTube / Google DriveのURL入力、またはローカルファイルのアップロードから
+  文字起こしを実行できます。モデル・デバイス・言語の選択、話者分離、タイムスタンプ付与
+  （ForcedAligner使用）、認識ヒント（固有名詞・専門用語のヒント指定）に対応しています。
+- **ジョブキュー**: 複数の入力を投入すると、現在の処理完了後に自動で次の処理を開始します
+  （同時並列実行は行わず、逐次処理のみ対応）。待機件数・処理中の対象・完了済み一覧をUI上で
+  確認できます。
+- **履歴タブ**: 過去の変換履歴を日付で絞り込んで閲覧できます。
+
 ## 🔧 設定
 
 ### config/config.yaml

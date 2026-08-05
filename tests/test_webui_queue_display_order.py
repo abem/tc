@@ -19,7 +19,7 @@ from core.webui_workflow import QueueItemState, TranscriptionJobQueue
 
 
 def _settings():
-    return {"model": "Qwen/Qwen3-ASR-1.7B", "device": "cpu", "diarization": False, "include_timestamps": False}
+    return {"model": "Qwen/Qwen3-ASR-1.7B", "device": "cpu", "include_timestamps": False}
 
 
 class TestFormatTime:

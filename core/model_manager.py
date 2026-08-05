@@ -25,7 +25,7 @@ class ModelCacheEntry:
     access_count: int
     memory_usage_mb: float
     load_time: float
-    model_type: str  # 'whisper', 'diarization', etc.
+    model_type: str  # 'whisper', etc.
 
 
 class ModelLoader(ABC):
@@ -78,28 +78,6 @@ class WhisperModelLoader(ModelLoader):
         return "whisper"
 
 
-class DiarizationModelLoader(ModelLoader):
-    """Loader for diarization models."""
-    
-    def load_model(self, model_name: str, device: str, **kwargs) -> Any:
-        """Load a diarization model."""
-        try:
-            from pyannote.audio import Pipeline
-            pipeline = Pipeline.from_pretrained(model_name)
-            if device != "cpu":
-                pipeline = pipeline.to(torch.device(device))
-            return pipeline
-        except ImportError:
-            raise ImportError("pyannote.audio is required for diarization models")
-    
-    def estimate_memory_usage(self, model: Any) -> float:
-        """Estimate diarization model memory usage."""
-        return 500.0  # Default estimate for diarization models
-    
-    def get_model_type(self) -> str:
-        return "diarization"
-
-
 class UnifiedModelManager:
     """Centralized model management system."""
     
@@ -127,7 +105,6 @@ class UnifiedModelManager:
     def _register_default_loaders(self) -> None:
         """Register default model loaders."""
         self._loaders["whisper"] = WhisperModelLoader()
-        self._loaders["diarization"] = DiarizationModelLoader()
     
     def register_loader(self, model_type: str, loader: ModelLoader) -> None:
         """Register a custom model loader."""

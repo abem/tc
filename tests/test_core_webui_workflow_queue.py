@@ -17,7 +17,7 @@ def _resolution(name: str):
 
 
 def _settings():
-    return {"model": "Qwen/Qwen3-ASR-1.7B", "device": "cpu", "diarization": False, "include_timestamps": False}
+    return {"model": "Qwen/Qwen3-ASR-1.7B", "device": "cpu", "include_timestamps": False}
 
 
 def _starter_returning(job: TranscriptionJob):

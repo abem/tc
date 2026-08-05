@@ -15,7 +15,7 @@ import suppress_warnings  # noqa: F401
 
 # Rich UI
 from rich.console import Console
-from rich.prompt import Prompt, Confirm
+from rich.prompt import Prompt
 
 # プロジェクトモジュール
 from core.cli_common import (
@@ -24,7 +24,7 @@ from core.cli_common import (
     resolve_device,
 )
 from core.cli_workflow import record_transcription_history, resolve_input_audio, upload_transcription_result
-from core.config import UnifiedConfig, TranscriptionConfig, DiarizationConfig
+from core.config import UnifiedConfig, TranscriptionConfig
 from core.transcription_interface import UnifiedTranscriber
 from core.utils import load_context_hints
 
@@ -60,25 +60,11 @@ class TranscribeLoader:
                 "model": "kotoba-tech/kotoba-whisper-v2.2",
                 "device": device
             },
-            "2": {
-                "name": "🇯🇵 日本語 (高精度・話者分離)",
-                "language": "ja",
-                "model": "kotoba-tech/kotoba-whisper-v2.2",
-                "device": device,
-                "diarization": True
-            },
             "3": {
                 "name": "🇺🇸 English (Fast)",
                 "language": "en",
                 "model": "openai/whisper-large-v3",
                 "device": device
-            },
-            "4": {
-                "name": "🇺🇸 English (High Quality + Diarization)",
-                "language": "en",
-                "model": "openai/whisper-large-v3",
-                "device": device,
-                "diarization": True
             },
             "5": {
                 "name": "🏆 日本語 (最高精度・Qwen3-ASR)",
@@ -130,20 +116,13 @@ class TranscribeLoader:
         model = model_choices[model_choice].split(" ")[0]
         
         device = Prompt.ask("デバイス", choices=["auto", "cuda", "cpu"], default="auto")
-        diarization = Confirm.ask("話者分離を有効にしますか？", default=False)
-        
+
         settings = {
             "language": language,
             "model": model,
             "device": device,
-            "diarization": diarization
         }
-        
-        if diarization:
-            max_speakers = Prompt.ask("最大話者数 (空欄で自動)", default="")
-            if max_speakers:
-                settings["max_speakers"] = int(max_speakers)
-        
+
         return settings
     
     def process_with_progress(self, input_info: Dict[str, Any], settings: Dict[str, Any], folder_id=None):
@@ -175,16 +154,9 @@ class TranscribeLoader:
                 show_progress=True  # 元のプログレスバーを使用
             )
 
-            diarization_config = None
-            if settings.get("diarization"):
-                diarization_config = DiarizationConfig(
-                    enable_diarization=True,
-                    max_speakers=settings.get("max_speakers")
-                )
-
             # 文字起こし実行
             console.print("音声文字起こし実行中...")
-            transcriber = UnifiedTranscriber(transcription_config, diarization_config)
+            transcriber = UnifiedTranscriber(transcription_config)
 
             result = transcriber.transcribe(resolution.local_audio_path)
 
@@ -211,7 +183,7 @@ class TranscribeLoader:
     
     def save_results(self, result, resolution, settings, folder_id=None):
         """結果保存"""
-        output_file = build_output_file(Path("output"), diarization_enabled=settings.get("diarization", False))
+        output_file = build_output_file(Path("output"))
 
         output_file.parent.mkdir(parents=True, exist_ok=True)
 
@@ -273,7 +245,6 @@ class TranscribeLoader:
         parser.add_argument("input", nargs="?", help="音声ファイル、YouTube URL、またはGoogle Drive URL")
         parser.add_argument("--profile", "-p", help="プロファイル番号を直接指定")
         parser.add_argument("--language", "-l", choices=["ja", "en"], help="言語")
-        parser.add_argument("--diarization", "-d", action="store_true", help="話者分離を有効化")
         parser.add_argument("--folder-id", help="アップロード先Google DriveフォルダID（省略時は元ファイルと同じフォルダ）")
         
         args = parser.parse_args()
@@ -317,9 +288,8 @@ class TranscribeLoader:
         # 引数で上書き
         if args.language:
             settings["language"] = args.language
-        if args.diarization:
-            settings["diarization"] = True
-        
+
+
         # 設定表示（確認なし）
         console.print(f"日本語音声文字起こしを開始 (デバイス: {settings['device']})")
 

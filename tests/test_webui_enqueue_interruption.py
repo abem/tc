@@ -35,7 +35,6 @@ def _settings():
         "model": "Qwen/Qwen3-ASR-1.7B",
         "device": "auto",
         "language": None,
-        "diarization": False,
         "include_timestamps": False,
     }
 

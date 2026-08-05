@@ -18,7 +18,7 @@ import traceback
 from pathlib import Path
 import torch
 
-from core.config import TranscriptionConfig, DiarizationConfig
+from core.config import TranscriptionConfig
 from core.logging import UnifiedLogger, PerformanceLogger
 from core.model_manager import get_global_model_manager
 
@@ -923,178 +923,81 @@ class Qwen3ASREngine(TranscriptionEngine):
 class UnifiedTranscriber:
     """Unified transcription interface that handles all transcription types."""
     
-    def __init__(self, 
-                 transcription_config: TranscriptionConfig,
-                 diarization_config: Optional[DiarizationConfig] = None):
+    def __init__(self,
+                 transcription_config: TranscriptionConfig):
         self.transcription_config = transcription_config
-        self.diarization_config = diarization_config
-        
+
         self.logger = UnifiedLogger.get_logger(self.__class__.__name__)
         self.perf_logger = PerformanceLogger(self.__class__.__name__)
-        
+
         # Initialize engines
         # モデル名でエンジンを切替(Qwen3-ASR 系は専用エンジン、それ以外は Whisper)
         if Qwen3ASREngine.is_qwen3_model(transcription_config.model):
             self.transcription_engine = Qwen3ASREngine(transcription_config)
         else:
             self.transcription_engine = WhisperTranscriptionEngine(transcription_config)
-        self.diarization_engine = None
-        
-        if diarization_config and diarization_config.enable_diarization:
-            self._initialize_diarization()
-    
-    def _initialize_diarization(self):
-        """Initialize speaker diarization if enabled."""
-        try:
-            from core.diarization_engine import DiarizationEngine
-            self.diarization_engine = DiarizationEngine(self.diarization_config)
-        except ImportError:
-            self.logger.warning("Diarization dependencies not available")
-    
-    def transcribe(self, 
-                   audio_path: str, 
-                   enable_diarization: Optional[bool] = None,
+
+    def transcribe(self,
+                   audio_path: str,
                    progress_callback: Optional[Callable] = None,
                    **kwargs) -> TranscriptionResult:
         """
         Unified transcription method that handles all processing types.
-        
+
         Args:
             audio_path: Path to audio file
-            enable_diarization: Override diarization setting
             progress_callback: Optional callback for progress updates
             **kwargs: Additional arguments passed to engines
-            
+
         Returns:
             TranscriptionResult with comprehensive metadata
         """
-        
+
         self.logger.info(f"Starting transcription: {audio_path}")
         overall_start = time.time()
-        
-        # Determine if diarization should be used
-        use_diarization = (
-            enable_diarization if enable_diarization is not None
-            else (self.diarization_config and self.diarization_config.enable_diarization)
-        )
-        
+
         try:
-            if use_diarization and self.diarization_engine:
-                # Transcription with speaker diarization
-                result = self._transcribe_with_speakers(audio_path, progress_callback, **kwargs)
-            else:
-                # Standard transcription
-                result = self._transcribe_standard(audio_path, progress_callback, **kwargs)
-            
+            result = self._transcribe_standard(audio_path, progress_callback, **kwargs)
+
             total_time = time.time() - overall_start
             result.processing_time = total_time
-            
+
             self.logger.info(f"Transcription completed in {total_time:.2f}s")
             self.perf_logger.log_metric("total_processing_time", total_time, "seconds")
-            
+
             return result
-            
+
         except Exception as e:
             self.logger.error(f"Transcription failed: {str(e)}")
             raise
-    
-    def _transcribe_standard(self, 
-                           audio_path: str, 
+
+    def _transcribe_standard(self,
+                           audio_path: str,
                            progress_callback: Optional[Callable],
                            **kwargs) -> TranscriptionResult:
-        """Perform standard transcription without speaker diarization."""
+        """Perform standard transcription."""
         if progress_callback:
             progress_callback("Starting transcription...")
-        
+
         result = self.transcription_engine.transcribe(audio_path, **kwargs)
-        
+
         if progress_callback:
             progress_callback("Transcription completed")
-        
+
         return result
-    
-    def _transcribe_with_speakers(self, 
-                                audio_path: str, 
-                                progress_callback: Optional[Callable],
-                                **kwargs) -> TranscriptionResult:
-        """Perform transcription with speaker diarization."""
-        if progress_callback:
-            progress_callback("Starting diarization...")
-        
-        # Perform diarization first
-        speaker_segments = self.diarization_engine.diarize(audio_path)
-        
-        if progress_callback:
-            progress_callback("Diarization completed, starting transcription...")
-        
-        # Transcribe each speaker segment
-        all_segments = []
-        full_text_parts = []
-        
-        for speaker_seg in speaker_segments:
-            # Extract audio segment for this speaker
-            segment_audio_path = self._extract_audio_segment(
-                audio_path, speaker_seg.start, speaker_seg.end
-            )
-            
-            # Transcribe segment
-            segment_result = self.transcription_engine.transcribe(segment_audio_path)
-            
-            # Add speaker information
-            for seg in segment_result.segments:
-                seg.speaker = speaker_seg.speaker
-                seg.start += speaker_seg.start  # Adjust timing
-                seg.end += speaker_seg.start
-                all_segments.append(seg)
-                full_text_parts.append(f"[{seg.speaker}] {seg.text}")
-        
-        if progress_callback:
-            progress_callback("Transcription with speakers completed")
-        
-        # Create unified result
-        result = TranscriptionResult(
-            text="\n".join(full_text_parts),
-            segments=sorted(all_segments, key=lambda x: x.start),
-            language=self.transcription_config.language,
-            duration=self._get_audio_duration(audio_path),
-            processing_time=0.0,  # Will be set by caller
-            model_name=self.transcription_config.model,
-            has_speakers=True
-        )
-        
-        return result
-    
-    def _extract_audio_segment(self, audio_path: str, start: float, end: float) -> str:
-        """Extract audio segment for speaker-specific transcription."""
-        # This would typically use ffmpeg or similar
-        # For now, return original path (implementation needed)
-        return audio_path
-    
-    def _get_audio_duration(self, audio_path: str) -> float:
-        """Get audio file duration."""
-        import soundfile as sf
-        audio, sr = sf.read(audio_path)
-        return len(audio) / sr
-    
+
     def get_stats(self) -> Dict[str, Any]:
         """Get transcription system statistics."""
-        stats = {
+        return {
             "transcription_engine": self.transcription_engine.get_engine_name(),
-            "diarization_enabled": self.diarization_engine is not None,
             "model_cache_stats": self.transcription_engine.model_manager.get_cache_stats()
         }
-        
-        if self.diarization_engine:
-            stats["diarization_engine"] = "pyannote"
-        
-        return stats
 
 
 # Factory functions for backward compatibility
-def create_transcriber(config: TranscriptionConfig, 
-                      diarization_config: Optional[DiarizationConfig] = None) -> UnifiedTranscriber:
+def create_transcriber(config: TranscriptionConfig) -> UnifiedTranscriber:
     """Create a unified transcriber with the specified configuration."""
-    return UnifiedTranscriber(config, diarization_config)
+    return UnifiedTranscriber(config)
 
 
 def create_japanese_transcriber(quality: str = "high") -> UnifiedTranscriber:

@@ -44,11 +44,10 @@ def update_whisper_config(base_config: Dict[str, Any], **overrides: Optional[str
     return merged
 
 
-def build_output_file(output_dir: Path, diarization_enabled: bool = False) -> Path:
+def build_output_file(output_dir: Path) -> Path:
     """Build a timestamped output file path."""
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    suffix = "_with_speakers" if diarization_enabled else ""
-    return output_dir / f"{timestamp}_transcription{suffix}.txt"
+    return output_dir / f"{timestamp}_transcription.txt"
 
 
 def upload_text_to_gdrive_sibling(file_path: Path, original_audio_source: str, override_folder_id: Optional[str] = None) -> Optional[str]:

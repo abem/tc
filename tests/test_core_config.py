@@ -52,29 +52,6 @@ class TestTranscriptionConfig:
         assert data["whisper"]["language"] is None
 
 
-class TestDiarizationConfig:
-    """Tests for DiarizationConfig."""
-
-    def test_default_values(self):
-        """Test default diarization configuration."""
-        from core.config import DiarizationConfig
-
-        config = DiarizationConfig()
-        assert config.enable_diarization is False
-        assert config.model_name == "pyannote/speaker-diarization-3.1"
-
-    def test_custom_values(self):
-        """Test custom diarization configuration."""
-        from core.config import DiarizationConfig
-
-        config = DiarizationConfig(
-            enable_diarization=True,
-            max_speakers=4
-        )
-        assert config.enable_diarization is True
-        assert config.max_speakers == 4
-
-
 class TestUnifiedConfig:
     """Tests for UnifiedConfig."""
 

@@ -6,7 +6,6 @@ and transcription interfaces into a single, consistent API.
 
 from .config import (
     TranscriptionConfig,
-    DiarizationConfig,
     SystemConfig,
     UnifiedConfig
 )
@@ -62,7 +61,6 @@ __version__ = "2025.07.29-unified"
 __all__ = [
     # Config
     "TranscriptionConfig",
-    "DiarizationConfig",
     "SystemConfig",
     "UnifiedConfig",
 

@@ -91,21 +91,6 @@ whisper:
       language: "ja"
       engine: "qwen3-asr"
 
-speaker_diarization:
-  enable: false  # 話者分離機能の有効/無効（exec.shのデフォルト動作）
-  model: "pyannote/speaker-diarization-3.1"
-  min_speakers: null  # 最小話者数（自動検出）
-  max_speakers: null  # 最大話者数（自動検出）
-  device: "auto"  # auto/cuda/cpu
-  
-  # 出力設定
-  output_format:
-    show_speaker_labels: true  # 話者ラベル表示
-    speaker_label_format: "話者{num}"  # 話者ラベル形式
-    include_confidence: false  # 信頼度表示
-    merge_short_segments: true  # 短い区間をマージ
-    min_segment_duration: 0.5  # 最小区間長（秒）
-
 logging:
   level: INFO
   format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"

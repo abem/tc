@@ -205,7 +205,7 @@ def record_transcription_history(
                 result.model_name,
                 settings.get("device") or "",
                 result.language,
-                1 if settings.get("diarization") else 0,
+                1 if settings.get("diarization", False) else 0,
                 1 if settings.get("include_timestamps") else 0,
                 1 if context_hints_used else 0,
                 len(result.text),

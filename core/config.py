@@ -119,29 +119,6 @@ class TranscriptionConfig:
 
 
 @dataclass
-class DiarizationConfig:
-    """Configuration for speaker diarization."""
-    
-    enable_diarization: bool = False
-    max_speakers: int = 10
-    min_speakers: int = 1
-    clustering_threshold: float = 0.7
-    
-    # Model settings
-    model_name: str = "pyannote/speaker-diarization-3.1"
-    device: str = field(default_factory=lambda: "cuda" if _cuda_is_available() else "cpu")
-    
-    # Processing settings
-    chunk_length_s: float = 30.0
-    overlap_length_s: float = 5.0
-    
-    @classmethod
-    def create_default(cls) -> 'DiarizationConfig':
-        """Create default diarization configuration."""
-        return cls(enable_diarization=True)
-
-
-@dataclass
 class SystemConfig:
     """System-wide configuration settings."""
     
@@ -170,27 +147,22 @@ class UnifiedConfig:
     """Master configuration containing all subsystem configs."""
     
     transcription: TranscriptionConfig = field(default_factory=TranscriptionConfig)
-    diarization: DiarizationConfig = field(default_factory=DiarizationConfig)
     system: SystemConfig = field(default_factory=SystemConfig)
-    
+
     @classmethod
     def create_for_use_case(cls, use_case: str) -> 'UnifiedConfig':
         """Create configuration optimized for specific use case."""
         config = cls()
-        
+
         if use_case == "japanese_high_quality":
             config.transcription = TranscriptionConfig.for_language("ja", "high")
-            config.diarization.enable_diarization = True
-            
+
         elif use_case == "english_fast":
             config.transcription = TranscriptionConfig.for_language("en", "fast")
-            config.diarization.enable_diarization = False
-            
+
         elif use_case == "multi_speaker_meeting":
             config.transcription = TranscriptionConfig.for_language("ja", "high")
-            config.diarization = DiarizationConfig.create_default()
-            config.diarization.max_speakers = 20
-            
+
         elif use_case == "gpu_optimized":
             config.transcription = TranscriptionConfig.for_device("cuda")
             config.transcription.performance_monitoring = True
@@ -223,20 +195,17 @@ class UnifiedConfig:
         """Convert to dictionary for serialization."""
         return {
             "transcription": self.transcription.__dict__,
-            "diarization": self.diarization.__dict__,
             "system": self.system.__dict__
         }
-    
+
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> 'UnifiedConfig':
         """Create from dictionary."""
         config = cls()
-        
+
         if "transcription" in data:
             config.transcription = TranscriptionConfig(**data["transcription"])
-        if "diarization" in data:
-            config.diarization = DiarizationConfig(**data["diarization"])
         if "system" in data:
             config.system = SystemConfig(**data["system"])
-            
+
         return config

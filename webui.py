@@ -34,7 +34,7 @@ from core.cli_workflow import (
     resolve_input_audio,
     upload_transcription_result,
 )
-from core.config import DiarizationConfig, SystemConfig, TranscriptionConfig, UnifiedConfig
+from core.config import SystemConfig, TranscriptionConfig, UnifiedConfig
 from core.logging import get_logger
 from core.transcription_interface import UnifiedTranscriber
 from core.webui_workflow import (
@@ -116,7 +116,6 @@ def _render_settings_panel() -> Dict[str, Any]:
     with col3:
         language_choice = st.selectbox("言語", options=["自動判定", "ja", "en"], index=0)
 
-    diarization = st.checkbox("話者分離を有効化", value=False)
     include_timestamps = st.checkbox(
         "タイムスタンプ付与(ForcedAligner使用、GPUメモリ約1.2GB追加)",
         value=False,
@@ -125,7 +124,6 @@ def _render_settings_panel() -> Dict[str, Any]:
         "model": model,
         "device": device_choice,
         "language": None if language_choice == "自動判定" else language_choice,
-        "diarization": diarization,
         "include_timestamps": include_timestamps,
     }
 
@@ -205,8 +203,7 @@ def _start_job_from_item(item: QueueItem) -> TranscriptionJob:
         include_timestamps=settings["include_timestamps"],
         context=settings["context"],
     )
-    diarization_config = DiarizationConfig(enable_diarization=True) if settings["diarization"] else None
-    transcriber = UnifiedTranscriber(transcription_config, diarization_config)
+    transcriber = UnifiedTranscriber(transcription_config)
     return start_transcription_job(transcriber, item.resolution.local_audio_path)
 
 
@@ -316,7 +313,7 @@ def _save_and_record(
     キューに存在するため、単一の共有キーに書くと後続ジョブに上書きされる)。
     """
     result = job.result
-    output_file = build_output_file(Path("output"), diarization_enabled=settings_values["diarization"])
+    output_file = build_output_file(Path("output"))
     output_file.parent.mkdir(parents=True, exist_ok=True)
     with open(output_file, "w", encoding="utf-8") as f:
         f.write(result.text)

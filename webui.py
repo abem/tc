@@ -61,6 +61,28 @@ def _load_config() -> None:
         st.session_state["config_loaded"] = True
 
 
+@st.cache_resource
+def _warmup_qwen_asr() -> bool:
+    """WebUIプロセス起動時にqwen_asrパッケージのimportを一度だけ先行実行する
+    (tc-ops #441関連の暫定緩和策)。モデル重み本体のロードは行わない(import文のみ)。
+    st.cache_resourceによりプロセス単位でキャッシュされ、複数セッションから呼ばれても
+    1回のみ実行される。importに失敗してもWebUI起動自体は継続する(警告ログのみ)。
+
+    位置づけの注意: 本関数はStreamlitの最初のセッション接続(スクリプト初回exec)時に実行される。
+    Streamlitの実行モデル上「HTTPリクエストを一切受けていない状態でコードを実行する」ことは
+    できないため、「サーバー起動から完全に独立した事前実行」は担保しない。担保するのは
+    「ページロード時点で実行され、ユーザーが実際に文字起こしを投入する操作より確実に先行する」
+    ことである(tc-ops #441の根本原因調査(是正実装は別途)とは独立した対症療法)。
+    """
+    try:
+        import qwen_asr  # noqa: F401
+        logger.info("qwen_asrウォームアップ成功")
+        return True
+    except Exception as e:
+        logger.warning("qwen_asrウォームアップ失敗(起動は継続): %s", e)
+        return False
+
+
 def _render_input_form() -> Dict[str, Any]:
     """入力フォーム(設計書§3-1)。"""
     st.subheader("入力")
@@ -533,6 +555,7 @@ def _render_history_tab() -> None:
 
 def main() -> None:
     _load_config()
+    _warmup_qwen_asr()
     st.title("Transcribe Audio WebUI")
 
     tab_transcribe, tab_history = st.tabs(["文字起こし", "履歴"])

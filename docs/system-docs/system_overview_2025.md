@@ -141,9 +141,6 @@ python3 quick_test_exec.py
 # 話者分離テスト
 python3 test_with_local_file.py
 
-# HuggingFace設定確認
-python3 setup_huggingface.py
-
 # 長時間音声処理状況確認
 python3 quick_exec.py
 ```
@@ -177,9 +174,6 @@ python3 quick_exec.py
 
 #### 2. 話者分離機能が動作しない
 ```bash
-# HuggingFaceトークン設定確認
-python3 setup_huggingface.py
-
 # モデルアクセス許可確認
 # https://huggingface.co/pyannote/speaker-diarization-3.1
 ```

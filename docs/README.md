@@ -7,7 +7,6 @@ Essential documentation for end users:
 - **[🔧 Configuration](user-guides/configuration.md)** - System configuration reference
 - **[🆘 Troubleshooting](user-guides/TROUBLESHOOTING.md)** - Problem resolution guide
 - **[🌐 Language Support](user-guides/language_support_guide.md)** - Multi-language setup
-- **[🎤 Speaker Diarization](user-guides/speaker_diarization_setup.md)** - Speaker separation features
 - **[💻 Modern CLI Usage](user-guides/new_cli_usage.md)** - New tc command guide
 - **[⚡ Optimization Features](user-guides/optimization_features.md)** - Performance optimization
 

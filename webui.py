@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import os
 import sqlite3
+import uuid
 from pathlib import Path
 from typing import Any, Dict, Optional
 
@@ -119,10 +120,14 @@ def _render_context_hints_panel() -> str:
     return context_value
 
 
-def _resolve_input(form_values: Dict[str, Any]) -> Optional[InputResolution]:
+def _resolve_input(form_values: Dict[str, Any], download_dir: Path) -> Optional[InputResolution]:
+    """`download_dir` は投入(enqueue)ごとに一意なディレクトリを渡すこと。YouTube/X経路は
+    `resolve_input_audio()`の既存の`output_dir`引数をそのまま使ってダウンロード先を分離し、
+    同一URLを複数回投入した際のファイルパス衝突(tc-ops #440是正・不具合2)を防ぐ
+    (`core/cli_workflow.py`・`handlers/youtube.py`は無変更)。"""
     if form_values["source_url"]:
         return resolve_input_audio(
-            form_values["source_url"], Path("output"), ensure_yt_dlp=True, on_status=st.write
+            form_values["source_url"], download_dir, ensure_yt_dlp=True, on_status=st.write
         )
     if form_values["uploaded_file"] is not None:
         upload_dir = Path("output/uploads")
@@ -163,8 +168,14 @@ def _start_job_from_item(item: QueueItem) -> TranscriptionJob:
 
 
 def _enqueue_job(form_values: Dict[str, Any], settings_values: Dict[str, Any], context_value: str) -> None:
-    """入力を解決しキューへ追加する(現行ジョブが処理中でも追加投入できる。要件4-2-1)。"""
-    resolution = _resolve_input(form_values)
+    """入力を解決しキューへ追加する(現行ジョブが処理中でも追加投入できる。要件4-2-1)。
+
+    投入(enqueue)ごとに一意な`download_dir`を発行してから解決する(不具合2是正)。
+    `st.spinner`で解決処理(ダウンロード等)中であることを示す(不具合1是正)。
+    """
+    download_dir = Path("output") / "queue_downloads" / uuid.uuid4().hex[:8]
+    with st.spinner("入力を解決しています(ダウンロード等)..."):
+        resolution = _resolve_input(form_values, download_dir)
     if resolution is None:
         st.error("URLを入力するか、ファイルをアップロードしてください。")
         return

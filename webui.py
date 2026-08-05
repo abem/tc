@@ -17,9 +17,9 @@ import sqlite3
 import threading
 import time
 import uuid
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from pathlib import Path
-from typing import Any, Callable, Dict, Optional
+from typing import Any, Callable, Dict, List, Optional
 
 import streamlit as st
 
@@ -349,6 +349,34 @@ def _save_and_record(
     return str(output_file), gdrive_url
 
 
+def _format_time(epoch: Optional[float]) -> str:
+    """UNIXタイムスタンプを`HH:MM:SS`形式の文字列に変換する(未設定時は`-`)。"""
+    if epoch is None:
+        return "-"
+    return datetime.fromtimestamp(epoch).strftime("%H:%M:%S")
+
+
+def _format_finished_item_label(item: QueueItem) -> str:
+    """完了済み一覧の見出し文言を組み立てる(WebUIキュー表示順・識別性改善)。
+
+    `item_id`(投入順の連番)と確定時刻を見出しに含めることで、同一ラベル(同一URL等)の複数項目が
+    画面上で区別できない問題(識別不能問題)と、なぜこの並び順なのかが読み取れない問題
+    (表示順問題)の両方を改善する。"""
+    status_label = "完了" if item.state is QueueItemState.DONE else "失敗"
+    return f"[{status_label}] #{item.item_id} {item.label} (確定 {_format_time(item.finished_at)})"
+
+
+def _sorted_finished_items(job_queue: TranscriptionJobQueue) -> List[QueueItem]:
+    """完了済み一覧を確定時刻(`finished_at`)の降順(真の新しい順)でソートする
+    (WebUIキュー表示順改善)。
+
+    是正前は投入`item_id`の降順(`list(reversed(job_queue.finished))`)で表示しており、
+    「投入は後だが確定は先」の項目と「投入は先だが確定は後」の項目が混在すると、実際に
+    最後に確定した結果が一番上に来るとは限らなかった(tc-ops #440是正3以降の網羅調査で確認)。
+    """
+    return sorted(job_queue.finished, key=lambda item: item.finished_at or 0, reverse=True)
+
+
 def _render_result_detail(item: QueueItem) -> None:
     """完了項目1件分の結果プレビュー(旧`_render_progress_and_result`の結果表示部分を踏襲)。"""
     result = item.job.result if item.job is not None else None
@@ -421,12 +449,15 @@ def _render_queue_and_result() -> None:
             st.text("\n".join(current.log[-10:]))
         st.info("処理中です...")
 
-    finished = list(reversed(job_queue.finished))
+    finished = _sorted_finished_items(job_queue)
     if finished:
         st.subheader("完了済み一覧")
         for item in finished:
-            status_label = "完了" if item.state is QueueItemState.DONE else "失敗"
-            with st.expander(f"[{status_label}] {item.label}"):
+            with st.expander(_format_finished_item_label(item)):
+                st.caption(
+                    f"投入順: {item.item_id}件目 / 投入時刻: {_format_time(item.submitted_at)} / "
+                    f"確定時刻: {_format_time(item.finished_at)}"
+                )
                 if item.state is QueueItemState.DONE:
                     _render_result_detail(item)
                 else:

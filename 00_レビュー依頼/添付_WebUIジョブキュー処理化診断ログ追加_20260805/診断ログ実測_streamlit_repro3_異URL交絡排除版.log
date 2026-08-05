@@ -1,0 +1,54 @@
+
+Collecting usage statistics. To deactivate, set browser.gatherUsageStats to false.
+
+2026-08-05 11:00:33.344 Uvicorn server started on :::8501
+
+  You can now view your Streamlit app in your browser.
+
+  Local URL: http://localhost:8501
+  Network URL: http://172.30.62.225:8501
+  External URL: http://138.64.112.153:8501
+
+  Detected WSL. Using poll-based file watching for better compatibility. To force watchdog, set server.fileWatcherType = "watchdog".
+2026-08-05 11:00:34,683 - core - INFO - Core unified modules initialized (v2025.07.29-unified)
+2026-08-05 11:00:34,900 - core.webui_workflow - INFO - dispatch_next呼び出し current_item_id=None queued_count=0
+2026-08-05 11:00:36,938 - core.webui_workflow - INFO - dispatch_next呼び出し current_item_id=None queued_count=0
+2026-08-05 11:00:37,978 - core.webui_workflow - INFO - dispatch_next呼び出し current_item_id=None queued_count=0
+2026-08-05 11:00:38,997 - core.webui_workflow - INFO - dispatch_next呼び出し current_item_id=None queued_count=0
+2026-08-05 11:00:39,996 - core.webui_workflow - INFO - dispatch_next呼び出し current_item_id=None queued_count=0
+2026-08-05 11:00:40,067 - core.webui_workflow - INFO - dispatch_next呼び出し current_item_id=None queued_count=0
+2026-08-05 11:00:40,718 - __main__ - INFO - enqueue試行開始 token=310d0427 source_url=https://www.youtube.com/watch?v=dQw4w9WgXcQ uploaded_file=(none)
+2026-08-05 11:00:40,720 - __main__ - INFO - _resolve_input開始 token=310d0427
+2026-08-05 11:00:41,023 - core.webui_workflow - INFO - dispatch_next呼び出し current_item_id=None queued_count=0
+2026-08-05 11:00:41,286 - __main__ - INFO - enqueue試行開始 token=17834a3b source_url=https://www.youtube.com/watch?v=jNQXAC9IVRw uploaded_file=(none)
+2026-08-05 11:00:41,287 - __main__ - INFO - _resolve_input開始 token=17834a3b
+2026-08-05 11:00:42,050 - core.webui_workflow - INFO - dispatch_next呼び出し current_item_id=None queued_count=0
+2026-08-05 11:00:42,352 - handlers.youtube - INFO - Video title: Rick Astley - Never Gonna Give You Up (Official Video) (4K Remaster)
+2026-08-05 11:00:42,352 - handlers.youtube - INFO - Video duration: 213s
+2026-08-05 11:00:42,352 - handlers.youtube - INFO - Starting audio extraction: https://www.youtube.com/watch?v=dQw4w9WgXcQ
+2026-08-05 11:00:42,731 - handlers.youtube - INFO - Video title: Me at the zoo
+2026-08-05 11:00:42,731 - handlers.youtube - INFO - Video duration: 19s
+2026-08-05 11:00:42,731 - handlers.youtube - INFO - Starting audio extraction: https://www.youtube.com/watch?v=jNQXAC9IVRw
+[download]   0.0% of    3.27MiB at  386.29KiB/s ETA 00:08[download]   0.1% of    3.27MiB at 1004.46KiB/s ETA 00:03[download]   0.2% of    3.27MiB at    2.10MiB/s ETA 00:01[download]   0.4% of    3.27MiB at    4.26MiB/s ETA 00:00[download]   0.9% of    3.27MiB at    8.33MiB/s ETA 00:00[download]   1.9% of    3.27MiB at   10.76MiB/s ETA 00:00[download]   3.8% of    3.27MiB at   14.22MiB/s ETA 00:00[download]   7.6% of    3.27MiB at   20.74MiB/s ETA 00:00[download]  15.2% of    3.27MiB at   33.21MiB/s ETA 00:00[download]  30.5% of    3.27MiB at   53.10MiB/s ETA 00:00[download]  61.0% of    3.27MiB at   84.33MiB/s ETA 00:00[download] 100.0% of    3.27MiB at  120.11MiB/s ETA 00:00[download] 100% of    3.27MiB in 00:00:00 at 64.69MiB/s[download]   0.4% of  246.27KiB at  305.91KiB/s ETA 00:00[download]   1.2% of  246.27KiB at  824.57KiB/s ETA 00:00[download]   2.8% of  246.27KiB at    1.77MiB/s ETA 00:00[download]   6.1% of  246.27KiB at    3.58MiB/s ETA 00:00[download]  12.6% of  246.27KiB at    6.78MiB/s ETA 00:00[download]  25.6% of  246.27KiB at    9.67MiB/s ETA 00:00[download]  51.6% of  246.27KiB at   12.63MiB/s ETA 00:00[download] 100.0% of  246.27KiB at   18.06MiB/s ETA 00:00[download] 100% of  246.27KiB in 00:00:00 at 7.15MiB/s2026-08-05 11:00:44,217 - handlers.youtube - INFO - Audio extraction complete: output/queue_downloads/17834a3b/Me-at-the-zoo_jNQXAC9IVRw.wav
+2026-08-05 11:00:44,217 - __main__ - INFO - _resolve_input完了 token=17834a3b elapsed=2.93s
+2026-08-05 11:00:44,217 - __main__ - INFO - spinnerブロック脱出 token=17834a3b
+2026-08-05 11:00:44,316 - core.webui_workflow - INFO - 状態遷移 item_id=1 (新規)->QUEUED label=https://www.youtube.com/watch?v=jNQXAC9IVRw
+2026-08-05 11:00:44,316 - __main__ - INFO - enqueue完了 token=17834a3b item_id=1
+2026-08-05 11:00:44,317 - core.webui_workflow - INFO - dispatch_next呼び出し current_item_id=None queued_count=1
+2026-08-05 11:00:44,317 - UnifiedModelManager - INFO - UnifiedModelManager initialized: cache_limit=3, memory_limit=8192MB
+2026-08-05 11:00:44,317 - UnifiedTranscriber - INFO - Starting transcription: output/queue_downloads/17834a3b/Me-at-the-zoo_jNQXAC9IVRw.wav
+2026-08-05 11:00:44,318 - perf.Qwen3ASREngine - INFO - Started: transcribe_Me-at-the-zoo_jNQXAC9IVRw.wav
+2026-08-05 11:00:44,318 - core.webui_workflow - INFO - 状態遷移 item_id=1 QUEUED->PROCESSING label=https://www.youtube.com/watch?v=jNQXAC9IVRw
+2026-08-05 11:00:45,201 - handlers.youtube - INFO - Audio extraction complete: output/queue_downloads/310d0427/Rick-Astley-Never-Gonna-Give-You-Up-Official-Video_dQw4w9WgXcQ.wav
+2026-08-05 11:00:45,202 - __main__ - INFO - _resolve_input完了 token=310d0427 elapsed=4.48s
+2026-08-05 11:00:47,378 - core.webui_workflow - INFO - dispatch_next呼び出し current_item_id=1 queued_count=0
+2026-08-05 11:00:49,328 - core.webui_workflow - INFO - dispatch_next呼び出し current_item_id=1 queued_count=0
+2026-08-05 11:00:49,513 - core.webui_workflow - INFO - dispatch_next呼び出し current_item_id=1 queued_count=0
+2026-08-05 11:00:50,264 - core.webui_workflow - INFO - dispatch_next呼び出し current_item_id=1 queued_count=0
+2026-08-05 11:00:53,403 - core.webui_workflow - INFO - dispatch_next呼び出し current_item_id=None queued_count=0
+2026-08-05 11:00:58,652 - perf.Qwen3ASREngine - INFO - Completed: transcribe_Me-at-the-zoo_jNQXAC9IVRw.wav in 14.334s
+2026-08-05 11:00:58,652 - Qwen3ASREngine - INFO - Transcription completed: 198 characters
+2026-08-05 11:00:58,652 - UnifiedTranscriber - INFO - Transcription completed in 14.33s
+2026-08-05 11:00:58,652 - perf.UnifiedTranscriber - INFO - Metric: total_processing_time = 14.334645748138428 seconds
+2026-08-05 11:01:53,440 - core.webui_workflow - INFO - dispatch_next呼び出し current_item_id=None queued_count=0
+  Stopping...

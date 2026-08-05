@@ -1,0 +1,66 @@
+
+Collecting usage statistics. To deactivate, set browser.gatherUsageStats to false.
+
+2026-08-05 10:47:20.140 Uvicorn server started on :::8501
+
+  You can now view your Streamlit app in your browser.
+
+  Local URL: http://localhost:8501
+  Network URL: http://172.30.62.225:8501
+  External URL: http://138.64.112.153:8501
+
+  Detected WSL. Using poll-based file watching for better compatibility. To force watchdog, set server.fileWatcherType = "watchdog".
+2026-08-05 10:47:22,047 - core - INFO - Core unified modules initialized (v2025.07.29-unified)
+2026-08-05 10:47:22,263 - core.webui_workflow - INFO - dispatch_next呼び出し current_item_id=None queued_count=0
+2026-08-05 10:47:23,596 - core.webui_workflow - INFO - dispatch_next呼び出し current_item_id=None queued_count=0
+2026-08-05 10:47:24,571 - core.webui_workflow - INFO - dispatch_next呼び出し current_item_id=None queued_count=0
+2026-08-05 10:47:25,342 - core.webui_workflow - INFO - dispatch_next呼び出し current_item_id=None queued_count=0
+2026-08-05 10:47:25,609 - core.webui_workflow - INFO - dispatch_next呼び出し current_item_id=None queued_count=0
+2026-08-05 10:47:25,594 - __main__ - INFO - enqueue試行開始 token=6b136106 source_url=https://www.youtube.com/watch?v=dQw4w9WgXcQ uploaded_file=(none)
+2026-08-05 10:47:25,596 - __main__ - INFO - _resolve_input開始 token=6b136106
+2026-08-05 10:47:25,662 - __main__ - INFO - enqueue試行開始 token=3d95ecda source_url=https://www.youtube.com/watch?v=dQw4w9WgXcQ uploaded_file=(none)
+2026-08-05 10:47:25,664 - __main__ - INFO - _resolve_input開始 token=3d95ecda
+2026-08-05 10:47:25,812 - core.webui_workflow - INFO - dispatch_next呼び出し current_item_id=None queued_count=0
+2026-08-05 10:47:26,824 - handlers.youtube - INFO - Video title: Rick Astley - Never Gonna Give You Up (Official Video) (4K Remaster)
+2026-08-05 10:47:26,824 - handlers.youtube - INFO - Video duration: 213s
+2026-08-05 10:47:26,824 - handlers.youtube - INFO - Starting audio extraction: https://www.youtube.com/watch?v=dQw4w9WgXcQ
+2026-08-05 10:47:26,836 - core.webui_workflow - INFO - dispatch_next呼び出し current_item_id=None queued_count=0
+2026-08-05 10:47:27,121 - handlers.youtube - INFO - Video title: Rick Astley - Never Gonna Give You Up (Official Video) (4K Remaster)
+2026-08-05 10:47:27,122 - handlers.youtube - INFO - Video duration: 213s
+2026-08-05 10:47:27,122 - handlers.youtube - INFO - Starting audio extraction: https://www.youtube.com/watch?v=dQw4w9WgXcQ
+2026-08-05 10:47:27,858 - core.webui_workflow - INFO - dispatch_next呼び出し current_item_id=None queued_count=0
+[download]   0.0% of    3.27MiB at  374.02KiB/s ETA 00:08[download]   0.1% of    3.27MiB at  992.11KiB/s ETA 00:03[download]   0.2% of    3.27MiB at    2.10MiB/s ETA 00:01[download]   0.4% of    3.27MiB at    4.19MiB/s ETA 00:00[download]   0.9% of    3.27MiB at    8.20MiB/s ETA 00:00[download]   1.9% of    3.27MiB at   10.95MiB/s ETA 00:00[download]   3.8% of    3.27MiB at   13.96MiB/s ETA 00:00[download]   7.6% of    3.27MiB at   20.42MiB/s ETA 00:00[download]  15.2% of    3.27MiB at   31.90MiB/s ETA 00:00[download]  30.5% of    3.27MiB at   51.52MiB/s ETA 00:00[download]  61.0% of    3.27MiB at   83.31MiB/s ETA 00:00[download] 100.0% of    3.27MiB at  117.53MiB/s ETA 00:00[download] 100% of    3.27MiB in 00:00:00 at 65.23MiB/s[download]   0.0% of    3.27MiB at  322.37KiB/s ETA 00:10[download]   0.1% of    3.27MiB at  873.69KiB/s ETA 00:03[download]   0.2% of    3.27MiB at    1.82MiB/s ETA 00:01[download]   0.4% of    3.27MiB at    3.59MiB/s ETA 00:00[download]   0.9% of    3.27MiB at    6.93MiB/s ETA 00:00[download]   1.9% of    3.27MiB at    9.63MiB/s ETA 00:00[download]   3.8% of    3.27MiB at   12.34MiB/s ETA 00:00[download]   7.6% of    3.27MiB at   18.77MiB/s ETA 00:00[download]  15.2% of    3.27MiB at   27.19MiB/s ETA 00:00[download]  30.5% of    3.27MiB at   42.88MiB/s ETA 00:00[download]  61.0% of    3.27MiB at   70.92MiB/s ETA 00:00[download] 100.0% of    3.27MiB at   96.78MiB/s ETA 00:00[download] 100% of    3.27MiB in 00:00:00 at 58.21MiB/s2026-08-05 10:47:29,594 - handlers.youtube - INFO - Audio extraction complete: output/queue_downloads/6b136106/Rick-Astley-Never-Gonna-Give-You-Up-Official-Video_dQw4w9WgXcQ.wav
+2026-08-05 10:47:29,595 - __main__ - INFO - _resolve_input完了 token=6b136106 elapsed=4.00s
+2026-08-05 10:47:29,953 - handlers.youtube - INFO - Audio extraction complete: output/queue_downloads/3d95ecda/Rick-Astley-Never-Gonna-Give-You-Up-Official-Video_dQw4w9WgXcQ.wav
+2026-08-05 10:47:29,953 - __main__ - INFO - _resolve_input完了 token=3d95ecda elapsed=4.29s
+2026-08-05 10:47:53,583 - core.webui_workflow - INFO - dispatch_next呼び出し current_item_id=None queued_count=0
+2026-08-05 10:48:42,688 - core.webui_workflow - INFO - dispatch_next呼び出し current_item_id=None queued_count=0
+2026-08-05 10:48:43,283 - __main__ - INFO - enqueue試行開始 token=6335c58c source_url=https://www.youtube.com/watch?v=dQw4w9WgXcQ uploaded_file=(none)
+2026-08-05 10:48:43,283 - __main__ - INFO - _resolve_input開始 token=6335c58c
+2026-08-05 10:48:43,830 - __main__ - INFO - enqueue試行開始 token=d3a862a3 source_url=https://www.youtube.com/watch?v=dQw4w9WgXcQ uploaded_file=(none)
+2026-08-05 10:48:43,831 - __main__ - INFO - _resolve_input開始 token=d3a862a3
+2026-08-05 10:48:44,733 - handlers.youtube - INFO - Video title: Rick Astley - Never Gonna Give You Up (Official Video) (4K Remaster)
+2026-08-05 10:48:44,733 - handlers.youtube - INFO - Video duration: 213s
+2026-08-05 10:48:44,734 - handlers.youtube - INFO - Starting audio extraction: https://www.youtube.com/watch?v=dQw4w9WgXcQ
+2026-08-05 10:48:45,416 - handlers.youtube - INFO - Video title: Rick Astley - Never Gonna Give You Up (Official Video) (4K Remaster)
+2026-08-05 10:48:45,416 - handlers.youtube - INFO - Video duration: 213s
+2026-08-05 10:48:45,416 - handlers.youtube - INFO - Starting audio extraction: https://www.youtube.com/watch?v=dQw4w9WgXcQ
+2026-08-05 10:48:45,948 - handlers.youtube - ERROR - Unexpected error: Audio extraction failed: ERROR: unable to download video data: HTTP Error 403: Forbidden
+
+[download]   0.0% of    3.27MiB at  318.02KiB/s ETA 00:10[download]   0.1% of    3.27MiB at  878.94KiB/s ETA 00:03[download]   0.2% of    3.27MiB at    1.89MiB/s ETA 00:01[download]   0.4% of    3.27MiB at    3.81MiB/s ETA 00:00[download]   0.9% of    3.27MiB at    7.47MiB/s ETA 00:00[download]   1.9% of    3.27MiB at   10.17MiB/s ETA 00:00[download]   3.8% of    3.27MiB at   12.25MiB/s ETA 00:00[download]   7.6% of    3.27MiB at   18.80MiB/s ETA 00:00[download]  15.2% of    3.27MiB at   29.28MiB/s ETA 00:00[download]  30.5% of    3.27MiB at   48.83MiB/s ETA 00:00[download]  61.0% of    3.27MiB at   79.63MiB/s ETA 00:00[download] 100.0% of    3.27MiB at  112.43MiB/s ETA 00:00[download] 100% of    3.27MiB in 00:00:00 at 63.93MiB/s2026-08-05 10:48:48,331 - handlers.youtube - INFO - Audio extraction complete: output/queue_downloads/d3a862a3/Rick-Astley-Never-Gonna-Give-You-Up-Official-Video_dQw4w9WgXcQ.wav
+2026-08-05 10:48:48,332 - __main__ - INFO - _resolve_input完了 token=d3a862a3 elapsed=4.50s
+2026-08-05 10:48:48,332 - __main__ - INFO - spinnerブロック脱出 token=d3a862a3
+2026-08-05 10:48:48,461 - core.webui_workflow - INFO - 状態遷移 item_id=1 (新規)->QUEUED label=https://www.youtube.com/watch?v=dQw4w9WgXcQ
+2026-08-05 10:48:48,461 - __main__ - INFO - enqueue完了 token=d3a862a3 item_id=1
+2026-08-05 10:48:48,462 - core.webui_workflow - INFO - dispatch_next呼び出し current_item_id=None queued_count=1
+2026-08-05 10:48:48,462 - UnifiedModelManager - INFO - UnifiedModelManager initialized: cache_limit=3, memory_limit=8192MB
+2026-08-05 10:48:48,463 - UnifiedTranscriber - INFO - Starting transcription: output/queue_downloads/d3a862a3/Rick-Astley-Never-Gonna-Give-You-Up-Official-Video_dQw4w9WgXcQ.wav
+2026-08-05 10:48:48,463 - core.webui_workflow - INFO - 状態遷移 item_id=1 QUEUED->PROCESSING label=https://www.youtube.com/watch?v=dQw4w9WgXcQ
+2026-08-05 10:48:48,463 - perf.Qwen3ASREngine - INFO - Started: transcribe_Rick-Astley-Never-Gonna-Give-You-Up-Official-Video_dQw4w9WgXcQ.wav
+2026-08-05 10:48:51,089 - core.webui_workflow - INFO - dispatch_next呼び出し current_item_id=1 queued_count=0
+2026-08-05 10:48:52,804 - core.webui_workflow - INFO - dispatch_next呼び出し current_item_id=None queued_count=0
+2026-08-05 10:49:12,855 - perf.Qwen3ASREngine - INFO - Completed: transcribe_Rick-Astley-Never-Gonna-Give-You-Up-Official-Video_dQw4w9WgXcQ.wav in 24.392s
+2026-08-05 10:49:12,855 - Qwen3ASREngine - INFO - Transcription completed: 1795 characters
+2026-08-05 10:49:12,855 - UnifiedTranscriber - INFO - Transcription completed in 24.39s
+2026-08-05 10:49:12,855 - perf.UnifiedTranscriber - INFO - Metric: total_processing_time = 24.392131090164185 seconds
+  Stopping...

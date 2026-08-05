@@ -1,0 +1,168 @@
+
+Collecting usage statistics. To deactivate, set browser.gatherUsageStats to false.
+
+2026-08-05 11:26:51.700 Uvicorn server started on :::8501
+
+  You can now view your Streamlit app in your browser.
+
+  Local URL: http://localhost:8501
+  Network URL: http://172.30.62.225:8501
+  External URL: http://138.64.112.153:8501
+
+  Detected WSL. Using poll-based file watching for better compatibility. To force watchdog, set server.fileWatcherType = "watchdog".
+2026-08-05 11:26:57,174 - core - INFO - Core unified modules initialized (v2025.07.29-unified)
+2026-08-05 11:26:57,463 - core.webui_workflow - INFO - dispatch_next呼び出し current_item_id=None queued_count=0
+2026-08-05 11:26:58,458 - core.webui_workflow - INFO - dispatch_next呼び出し current_item_id=None queued_count=0
+2026-08-05 11:26:59,049 - __main__ - INFO - enqueue試行開始 token=a2f96518 source_url=https://www.youtube.com/watch?v=dQw4w9WgXcQ uploaded_file=(none)
+2026-08-05 11:26:59,141 - core.webui_workflow - INFO - 状態遷移 item_id=1 (新規)->RESOLVING label=https://www.youtube.com/watch?v=dQw4w9WgXcQ
+2026-08-05 11:26:59,142 - __main__ - INFO - enqueue(pending)完了 token=a2f96518 item_id=1
+2026-08-05 11:26:59,143 - __main__ - INFO - _resolve_input開始(background) token=a2f96518 item_id=1
+2026-08-05 11:26:59,143 - core.webui_workflow - INFO - dispatch_next呼び出し current_item_id=None queued_count=0
+2026-08-05 11:26:59,519 - core.webui_workflow - INFO - dispatch_next呼び出し current_item_id=None queued_count=0
+2026-08-05 11:26:59,777 - __main__ - INFO - enqueue試行開始 token=d38c28cc source_url=https://www.youtube.com/watch?v=jNQXAC9IVRw uploaded_file=(none)
+2026-08-05 11:26:59,778 - core.webui_workflow - INFO - 状態遷移 item_id=2 (新規)->RESOLVING label=https://www.youtube.com/watch?v=jNQXAC9IVRw
+2026-08-05 11:26:59,778 - __main__ - INFO - enqueue(pending)完了 token=d38c28cc item_id=2
+2026-08-05 11:26:59,779 - __main__ - INFO - _resolve_input開始(background) token=d38c28cc item_id=2
+2026-08-05 11:26:59,779 - core.webui_workflow - INFO - dispatch_next呼び出し current_item_id=None queued_count=0
+2026-08-05 11:27:00,228 - core.webui_workflow - INFO - dispatch_next呼び出し current_item_id=None queued_count=0
+2026-08-05 11:27:00,845 - handlers.youtube - INFO - Video title: Rick Astley - Never Gonna Give You Up (Official Video) (4K Remaster)
+2026-08-05 11:27:00,845 - handlers.youtube - INFO - Video duration: 213s
+2026-08-05 11:27:00,845 - handlers.youtube - INFO - Starting audio extraction: https://www.youtube.com/watch?v=dQw4w9WgXcQ
+2026-08-05 11:27:00,871 - core.webui_workflow - INFO - dispatch_next呼び出し current_item_id=None queued_count=0
+2026-08-05 11:27:01,244 - handlers.youtube - INFO - Video title: Me at the zoo
+2026-08-05 11:27:01,244 - handlers.youtube - INFO - Video duration: 19s
+2026-08-05 11:27:01,244 - handlers.youtube - INFO - Starting audio extraction: https://www.youtube.com/watch?v=jNQXAC9IVRw
+2026-08-05 11:27:01,254 - core.webui_workflow - INFO - dispatch_next呼び出し current_item_id=None queued_count=0
+2026-08-05 11:27:01,866 - core.webui_workflow - INFO - dispatch_next呼び出し current_item_id=None queued_count=0
+[download]   0.0% of    3.27MiB at  325.75KiB/s ETA 00:10[download]   0.1% of    3.27MiB at  876.74KiB/s ETA 00:03[download]   0.2% of    3.27MiB at    1.84MiB/s ETA 00:01[download]   0.4% of    3.27MiB at    3.69MiB/s ETA 00:00[download]   0.9% of    3.27MiB at    7.22MiB/s ETA 00:00[download]   1.9% of    3.27MiB at   10.33MiB/s ETA 00:00[download]   3.8% of    3.27MiB at   12.26MiB/s ETA 00:00[download]   7.6% of    3.27MiB at   18.07MiB/s ETA 00:00[download]  15.2% of    3.27MiB at   28.63MiB/s ETA 00:00[download]  30.5% of    3.27MiB at   48.04MiB/s ETA 00:00[download]  61.0% of    3.27MiB at   75.05MiB/s ETA 00:00[download] 100.0% of    3.27MiB at  107.95MiB/s ETA 00:00[download] 100% of    3.27MiB in 00:00:00 at 61.43MiB/s2026-08-05 11:27:02,297 - core.webui_workflow - INFO - dispatch_next呼び出し current_item_id=None queued_count=0
+2026-08-05 11:27:02,867 - core.webui_workflow - INFO - dispatch_next呼び出し current_item_id=None queued_count=0
+[download]   0.4% of  246.27KiB at  358.21KiB/s ETA 00:00[download]   1.2% of  246.27KiB at  952.02KiB/s ETA 00:00[download]   2.8% of  246.27KiB at    1.99MiB/s ETA 00:00[download]   6.1% of  246.27KiB at    3.95MiB/s ETA 00:00[download]  12.6% of  246.27KiB at    7.44MiB/s ETA 00:00[download]  25.6% of  246.27KiB at   10.70MiB/s ETA 00:00[download]  51.6% of  246.27KiB at   14.07MiB/s ETA 00:00[download] 100.0% of  246.27KiB at   19.89MiB/s ETA 00:00[download] 100% of  246.27KiB in 00:00:00 at 7.39MiB/s2026-08-05 11:27:03,280 - handlers.youtube - INFO - Audio extraction complete: output/queue_downloads/d38c28cc/Me-at-the-zoo_jNQXAC9IVRw.wav
+2026-08-05 11:27:03,280 - __main__ - INFO - _resolve_input完了(background) token=d38c28cc item_id=2 elapsed=3.50s
+2026-08-05 11:27:03,280 - core.webui_workflow - INFO - 状態遷移 item_id=2 RESOLVING->QUEUED label=https://www.youtube.com/watch?v=jNQXAC9IVRw
+2026-08-05 11:27:03,329 - core.webui_workflow - INFO - dispatch_next呼び出し current_item_id=None queued_count=0
+2026-08-05 11:27:03,761 - handlers.youtube - INFO - Audio extraction complete: output/queue_downloads/a2f96518/Rick-Astley-Never-Gonna-Give-You-Up-Official-Video_dQw4w9WgXcQ.wav
+2026-08-05 11:27:03,762 - __main__ - INFO - _resolve_input完了(background) token=a2f96518 item_id=1 elapsed=4.62s
+2026-08-05 11:27:03,762 - core.webui_workflow - INFO - 状態遷移 item_id=1 RESOLVING->QUEUED label=https://www.youtube.com/watch?v=dQw4w9WgXcQ
+2026-08-05 11:27:03,867 - core.webui_workflow - INFO - dispatch_next呼び出し current_item_id=None queued_count=2
+2026-08-05 11:27:03,867 - UnifiedModelManager - INFO - UnifiedModelManager initialized: cache_limit=3, memory_limit=8192MB
+2026-08-05 11:27:03,868 - UnifiedTranscriber - INFO - Starting transcription: output/queue_downloads/a2f96518/Rick-Astley-Never-Gonna-Give-You-Up-Official-Video_dQw4w9WgXcQ.wav
+2026-08-05 11:27:03,868 - core.webui_workflow - INFO - 状態遷移 item_id=1 QUEUED->PROCESSING label=https://www.youtube.com/watch?v=dQw4w9WgXcQ
+2026-08-05 11:27:03,868 - perf.Qwen3ASREngine - INFO - Started: transcribe_Rick-Astley-Never-Gonna-Give-You-Up-Official-Video_dQw4w9WgXcQ.wav
+2026-08-05 11:27:04,359 - core.webui_workflow - INFO - dispatch_next呼び出し current_item_id=None queued_count=0
+2026-08-05 11:27:07,669 - core.webui_workflow - INFO - dispatch_next呼び出し current_item_id=1 queued_count=1
+2026-08-05 11:27:08,856 - core.webui_workflow - INFO - dispatch_next呼び出し current_item_id=1 queued_count=1
+2026-08-05 11:27:09,028 - core.webui_workflow - INFO - dispatch_next呼び出し current_item_id=1 queued_count=1
+2026-08-05 11:27:09,183 - core.webui_workflow - INFO - dispatch_next呼び出し current_item_id=1 queued_count=1
+2026-08-05 11:27:09,326 - core.webui_workflow - INFO - dispatch_next呼び出し current_item_id=1 queued_count=1
+2026-08-05 11:27:27,740 - perf.Qwen3ASREngine - INFO - Completed: transcribe_Rick-Astley-Never-Gonna-Give-You-Up-Official-Video_dQw4w9WgXcQ.wav in 23.872s
+2026-08-05 11:27:27,740 - Qwen3ASREngine - INFO - Transcription completed: 1795 characters
+2026-08-05 11:27:27,741 - UnifiedTranscriber - INFO - Transcription completed in 23.87s
+2026-08-05 11:27:27,741 - perf.UnifiedTranscriber - INFO - Metric: total_processing_time = 23.87247395515442 seconds
+2026-08-05 11:27:37,687 - core.webui_workflow - INFO - dispatch_next呼び出し current_item_id=None queued_count=0
+2026-08-05 11:27:38,704 - __main__ - INFO - enqueue試行開始 token=1c674cf9 source_url=https://www.youtube.com/watch?v=dQw4w9WgXcQ uploaded_file=(none)
+2026-08-05 11:27:38,704 - core.webui_workflow - INFO - 状態遷移 item_id=1 (新規)->RESOLVING label=https://www.youtube.com/watch?v=dQw4w9WgXcQ
+2026-08-05 11:27:38,704 - __main__ - INFO - enqueue(pending)完了 token=1c674cf9 item_id=1
+2026-08-05 11:27:38,704 - __main__ - INFO - _resolve_input開始(background) token=1c674cf9 item_id=1
+2026-08-05 11:27:38,706 - core.webui_workflow - INFO - dispatch_next呼び出し current_item_id=None queued_count=0
+2026-08-05 11:27:38,913 - __main__ - INFO - enqueue試行開始 token=ae5a5366 source_url=https://www.youtube.com/watch?v=jNQXAC9IVRw uploaded_file=(none)
+2026-08-05 11:27:38,914 - core.webui_workflow - INFO - 状態遷移 item_id=2 (新規)->RESOLVING label=https://www.youtube.com/watch?v=jNQXAC9IVRw
+2026-08-05 11:27:38,915 - __main__ - INFO - enqueue(pending)完了 token=ae5a5366 item_id=2
+2026-08-05 11:27:38,915 - __main__ - INFO - _resolve_input開始(background) token=ae5a5366 item_id=2
+2026-08-05 11:27:38,916 - core.webui_workflow - INFO - dispatch_next呼び出し current_item_id=None queued_count=0
+2026-08-05 11:27:40,161 - core.webui_workflow - INFO - dispatch_next呼び出し current_item_id=None queued_count=0
+2026-08-05 11:27:40,352 - handlers.youtube - INFO - Video title: Me at the zoo
+2026-08-05 11:27:40,352 - handlers.youtube - INFO - Video duration: 19s
+2026-08-05 11:27:40,353 - handlers.youtube - INFO - Starting audio extraction: https://www.youtube.com/watch?v=jNQXAC9IVRw
+2026-08-05 11:27:40,386 - handlers.youtube - INFO - Video title: Rick Astley - Never Gonna Give You Up (Official Video) (4K Remaster)
+2026-08-05 11:27:40,386 - handlers.youtube - INFO - Video duration: 213s
+2026-08-05 11:27:40,386 - handlers.youtube - INFO - Starting audio extraction: https://www.youtube.com/watch?v=dQw4w9WgXcQ
+2026-08-05 11:27:41,161 - core.webui_workflow - INFO - dispatch_next呼び出し current_item_id=None queued_count=0
+[download]   0.4% of  246.27KiB at  319.64KiB/s ETA 00:00[download]   1.2% of  246.27KiB at  876.19KiB/s ETA 00:00[download]   2.8% of  246.27KiB at    1.89MiB/s ETA 00:00[download]   6.1% of  246.27KiB at    3.83MiB/s ETA 00:00[download]  12.6% of  246.27KiB at    7.38MiB/s ETA 00:00[download]  25.6% of  246.27KiB at    9.95MiB/s ETA 00:00[download]  51.6% of  246.27KiB at   13.09MiB/s ETA 00:00[download] 100.0% of  246.27KiB at   18.99MiB/s ETA 00:00[download] 100% of  246.27KiB in 00:00:00 at 6.63MiB/s[download]   0.0% of    3.27MiB at  320.20KiB/s ETA 00:10[download]   0.1% of    3.27MiB at  854.93KiB/s ETA 00:03[download]   0.2% of    3.27MiB at    1.83MiB/s ETA 00:01[download]   0.4% of    3.27MiB at    3.68MiB/s ETA 00:00[download]   0.9% of    3.27MiB at    7.14MiB/s ETA 00:00[download]   1.9% of    3.27MiB at   10.77MiB/s ETA 00:00[download]   3.8% of    3.27MiB at   13.47MiB/s ETA 00:00[download]   7.6% of    3.27MiB at   19.85MiB/s ETA 00:00[download]  15.2% of    3.27MiB at   30.30MiB/s ETA 00:00[download]  30.5% of    3.27MiB at   47.74MiB/s ETA 00:00[download]  61.0% of    3.27MiB at   79.95MiB/s ETA 00:00[download] 100.0% of    3.27MiB at  110.78MiB/s ETA 00:00[download] 100% of    3.27MiB in 00:00:00 at 61.77MiB/s2026-08-05 11:27:41,976 - handlers.youtube - INFO - Audio extraction complete: output/queue_downloads/ae5a5366/Me-at-the-zoo_jNQXAC9IVRw.wav
+2026-08-05 11:27:41,976 - __main__ - INFO - _resolve_input完了(background) token=ae5a5366 item_id=2 elapsed=3.06s
+2026-08-05 11:27:41,976 - core.webui_workflow - INFO - 状態遷移 item_id=2 RESOLVING->QUEUED label=https://www.youtube.com/watch?v=jNQXAC9IVRw
+2026-08-05 11:27:42,163 - core.webui_workflow - INFO - dispatch_next呼び出し current_item_id=None queued_count=1
+2026-08-05 11:27:42,164 - UnifiedTranscriber - INFO - Starting transcription: output/queue_downloads/ae5a5366/Me-at-the-zoo_jNQXAC9IVRw.wav
+2026-08-05 11:27:42,164 - core.webui_workflow - INFO - 状態遷移 item_id=2 QUEUED->PROCESSING label=https://www.youtube.com/watch?v=jNQXAC9IVRw
+2026-08-05 11:27:42,164 - perf.Qwen3ASREngine - INFO - Started: transcribe_Me-at-the-zoo_jNQXAC9IVRw.wav
+2026-08-05 11:27:43,161 - core.webui_workflow - INFO - dispatch_next呼び出し current_item_id=2 queued_count=0
+2026-08-05 11:27:43,404 - handlers.youtube - INFO - Audio extraction complete: output/queue_downloads/1c674cf9/Rick-Astley-Never-Gonna-Give-You-Up-Official-Video_dQw4w9WgXcQ.wav
+2026-08-05 11:27:43,405 - __main__ - INFO - _resolve_input完了(background) token=1c674cf9 item_id=1 elapsed=4.70s
+2026-08-05 11:27:43,405 - core.webui_workflow - INFO - 状態遷移 item_id=1 RESOLVING->QUEUED label=https://www.youtube.com/watch?v=dQw4w9WgXcQ
+2026-08-05 11:27:43,248 - core.webui_workflow - INFO - dispatch_next呼び出し current_item_id=2 queued_count=1
+2026-08-05 11:27:45,469 - core.webui_workflow - INFO - dispatch_next呼び出し current_item_id=None queued_count=0
+2026-08-05 11:27:46,575 - core.webui_workflow - INFO - dispatch_next呼び出し current_item_id=None queued_count=0
+2026-08-05 11:27:47,255 - __main__ - INFO - enqueue試行開始 token=ab761195 source_url=https://www.youtube.com/watch?v=dQw4w9WgXcQ uploaded_file=(none)
+2026-08-05 11:27:47,256 - core.webui_workflow - INFO - 状態遷移 item_id=1 (新規)->RESOLVING label=https://www.youtube.com/watch?v=dQw4w9WgXcQ
+2026-08-05 11:27:47,256 - __main__ - INFO - enqueue(pending)完了 token=ab761195 item_id=1
+2026-08-05 11:27:47,257 - __main__ - INFO - _resolve_input開始(background) token=ab761195 item_id=1
+2026-08-05 11:27:47,257 - core.webui_workflow - INFO - dispatch_next呼び出し current_item_id=None queued_count=0
+2026-08-05 11:27:47,489 - __main__ - INFO - enqueue試行開始 token=2ebaa199 source_url=https://www.youtube.com/watch?v=jNQXAC9IVRw uploaded_file=(none)
+2026-08-05 11:27:47,490 - core.webui_workflow - INFO - 状態遷移 item_id=2 (新規)->RESOLVING label=https://www.youtube.com/watch?v=jNQXAC9IVRw
+2026-08-05 11:27:47,490 - __main__ - INFO - enqueue(pending)完了 token=2ebaa199 item_id=2
+2026-08-05 11:27:47,491 - __main__ - INFO - _resolve_input開始(background) token=2ebaa199 item_id=2
+2026-08-05 11:27:47,492 - core.webui_workflow - INFO - dispatch_next呼び出し current_item_id=None queued_count=0
+2026-08-05 11:27:48,520 - perf.Qwen3ASREngine - INFO - Completed: transcribe_Me-at-the-zoo_jNQXAC9IVRw.wav in 6.356s
+2026-08-05 11:27:48,520 - Qwen3ASREngine - INFO - Transcription completed: 198 characters
+2026-08-05 11:27:48,520 - UnifiedTranscriber - INFO - Transcription completed in 6.36s
+2026-08-05 11:27:48,520 - perf.UnifiedTranscriber - INFO - Metric: total_processing_time = 6.356210231781006 seconds
+2026-08-05 11:27:48,739 - core.webui_workflow - INFO - dispatch_next呼び出し current_item_id=None queued_count=0
+2026-08-05 11:27:49,054 - handlers.youtube - INFO - Video title: Rick Astley - Never Gonna Give You Up (Official Video) (4K Remaster)
+2026-08-05 11:27:49,054 - handlers.youtube - INFO - Video duration: 213s
+2026-08-05 11:27:49,054 - handlers.youtube - INFO - Starting audio extraction: https://www.youtube.com/watch?v=dQw4w9WgXcQ
+2026-08-05 11:27:49,073 - handlers.youtube - INFO - Video title: Me at the zoo
+2026-08-05 11:27:49,073 - handlers.youtube - INFO - Video duration: 19s
+2026-08-05 11:27:49,073 - handlers.youtube - INFO - Starting audio extraction: https://www.youtube.com/watch?v=jNQXAC9IVRw
+2026-08-05 11:27:49,739 - core.webui_workflow - INFO - dispatch_next呼び出し current_item_id=None queued_count=0
+[download]   0.0% of    3.27MiB at  374.63KiB/s ETA 00:08[download]   0.1% of    3.27MiB at  992.50KiB/s ETA 00:03[download]   0.2% of    3.27MiB at    2.10MiB/s ETA 00:01[download]   0.4% of    3.27MiB at    4.21MiB/s ETA 00:00[download]   0.9% of    3.27MiB at    8.15MiB/s ETA 00:00[download]   1.9% of    3.27MiB at   10.70MiB/s ETA 00:00[download]   3.8% of    3.27MiB at   13.62MiB/s ETA 00:00[download]   7.6% of    3.27MiB at   20.37MiB/s ETA 00:00[download]  15.2% of    3.27MiB at   31.27MiB/s ETA 00:00[download]   0.4% of  246.27KiB at  366.28KiB/s ETA 00:00[download]  30.5% of    3.27MiB at   49.01MiB/s ETA 00:00[download]   1.2% of  246.27KiB at  979.44KiB/s ETA 00:00[download]   2.8% of  246.27KiB at    2.08MiB/s ETA 00:00[download]   6.1% of  246.27KiB at    4.17MiB/s ETA 00:00[download]  12.6% of  246.27KiB at    7.90MiB/s ETA 00:00[download]  61.0% of    3.27MiB at   81.32MiB/s ETA 00:00[download] 100.0% of    3.27MiB at  114.75MiB/s ETA 00:00[download] 100% of    3.27MiB in 00:00:00 at 64.32MiB/s[download]  25.6% of  246.27KiB at   11.17MiB/s ETA 00:00[download]  51.6% of  246.27KiB at   13.41MiB/s ETA 00:00[download] 100.0% of  246.27KiB at   20.33MiB/s ETA 00:00[download] 100% of  246.27KiB in 00:00:00 at 7.68MiB/s2026-08-05 11:27:50,738 - core.webui_workflow - INFO - dispatch_next呼び出し current_item_id=None queued_count=0
+2026-08-05 11:27:50,917 - handlers.youtube - INFO - Audio extraction complete: output/queue_downloads/2ebaa199/Me-at-the-zoo_jNQXAC9IVRw.wav
+2026-08-05 11:27:50,917 - __main__ - INFO - _resolve_input完了(background) token=2ebaa199 item_id=2 elapsed=3.43s
+2026-08-05 11:27:50,917 - core.webui_workflow - INFO - 状態遷移 item_id=2 RESOLVING->QUEUED label=https://www.youtube.com/watch?v=jNQXAC9IVRw
+2026-08-05 11:27:51,739 - core.webui_workflow - INFO - dispatch_next呼び出し current_item_id=None queued_count=1
+2026-08-05 11:27:51,740 - UnifiedTranscriber - INFO - Starting transcription: output/queue_downloads/2ebaa199/Me-at-the-zoo_jNQXAC9IVRw.wav
+2026-08-05 11:27:51,740 - core.webui_workflow - INFO - 状態遷移 item_id=2 QUEUED->PROCESSING label=https://www.youtube.com/watch?v=jNQXAC9IVRw
+2026-08-05 11:27:51,741 - perf.Qwen3ASREngine - INFO - Started: transcribe_Me-at-the-zoo_jNQXAC9IVRw.wav
+2026-08-05 11:27:52,064 - handlers.youtube - INFO - Audio extraction complete: output/queue_downloads/ab761195/Rick-Astley-Never-Gonna-Give-You-Up-Official-Video_dQw4w9WgXcQ.wav
+2026-08-05 11:27:52,064 - __main__ - INFO - _resolve_input完了(background) token=ab761195 item_id=1 elapsed=4.81s
+2026-08-05 11:27:52,064 - core.webui_workflow - INFO - 状態遷移 item_id=1 RESOLVING->QUEUED label=https://www.youtube.com/watch?v=dQw4w9WgXcQ
+2026-08-05 11:27:52,740 - core.webui_workflow - INFO - dispatch_next呼び出し current_item_id=2 queued_count=1
+2026-08-05 11:27:53,154 - core.webui_workflow - INFO - dispatch_next呼び出し current_item_id=None queued_count=0
+2026-08-05 11:27:54,766 - core.webui_workflow - INFO - dispatch_next呼び出し current_item_id=None queued_count=0
+2026-08-05 11:27:55,896 - __main__ - INFO - enqueue試行開始 token=af633abb source_url=https://www.youtube.com/watch?v=dQw4w9WgXcQ uploaded_file=(none)
+2026-08-05 11:27:55,898 - core.webui_workflow - INFO - 状態遷移 item_id=1 (新規)->RESOLVING label=https://www.youtube.com/watch?v=dQw4w9WgXcQ
+2026-08-05 11:27:55,898 - __main__ - INFO - enqueue(pending)完了 token=af633abb item_id=1
+2026-08-05 11:27:55,899 - __main__ - INFO - _resolve_input開始(background) token=af633abb item_id=1
+2026-08-05 11:27:55,899 - core.webui_workflow - INFO - dispatch_next呼び出し current_item_id=None queued_count=0
+2026-08-05 11:27:55,907 - __main__ - INFO - enqueue試行開始 token=1532a373 source_url=https://www.youtube.com/watch?v=jNQXAC9IVRw uploaded_file=(none)
+2026-08-05 11:27:55,907 - core.webui_workflow - INFO - 状態遷移 item_id=2 (新規)->RESOLVING label=https://www.youtube.com/watch?v=jNQXAC9IVRw
+2026-08-05 11:27:55,908 - __main__ - INFO - enqueue(pending)完了 token=1532a373 item_id=2
+2026-08-05 11:27:55,908 - __main__ - INFO - _resolve_input開始(background) token=1532a373 item_id=2
+2026-08-05 11:27:55,909 - core.webui_workflow - INFO - dispatch_next呼び出し current_item_id=None queued_count=0
+2026-08-05 11:27:57,310 - handlers.youtube - INFO - Video title: Me at the zoo
+2026-08-05 11:27:57,310 - handlers.youtube - INFO - Video duration: 19s
+2026-08-05 11:27:57,310 - handlers.youtube - INFO - Starting audio extraction: https://www.youtube.com/watch?v=jNQXAC9IVRw
+2026-08-05 11:27:57,361 - core.webui_workflow - INFO - dispatch_next呼び出し current_item_id=None queued_count=0
+2026-08-05 11:27:57,671 - handlers.youtube - INFO - Video title: Rick Astley - Never Gonna Give You Up (Official Video) (4K Remaster)
+2026-08-05 11:27:57,671 - handlers.youtube - INFO - Video duration: 213s
+2026-08-05 11:27:57,671 - handlers.youtube - INFO - Starting audio extraction: https://www.youtube.com/watch?v=dQw4w9WgXcQ
+2026-08-05 11:27:58,362 - core.webui_workflow - INFO - dispatch_next呼び出し current_item_id=None queued_count=0
+[download]   0.4% of  246.27KiB at  344.73KiB/s ETA 00:00[download]   1.2% of  246.27KiB at  918.86KiB/s ETA 00:00[download]   2.8% of  246.27KiB at    1.98MiB/s ETA 00:00[download]   6.1% of  246.27KiB at    3.92MiB/s ETA 00:00[download]  12.6% of  246.27KiB at    7.38MiB/s ETA 00:00[download]  25.6% of  246.27KiB at   10.35MiB/s ETA 00:00[download]  51.6% of  246.27KiB at   12.77MiB/s ETA 00:00[download] 100.0% of  246.27KiB at   18.12MiB/s ETA 00:00[download] 100% of  246.27KiB in 00:00:00 at 6.99MiB/s2026-08-05 11:27:58,784 - handlers.youtube - INFO - Audio extraction complete: output/queue_downloads/1532a373/Me-at-the-zoo_jNQXAC9IVRw.wav
+2026-08-05 11:27:58,784 - __main__ - INFO - _resolve_input完了(background) token=1532a373 item_id=2 elapsed=2.87s
+2026-08-05 11:27:58,784 - core.webui_workflow - INFO - 状態遷移 item_id=2 RESOLVING->QUEUED label=https://www.youtube.com/watch?v=jNQXAC9IVRw
+2026-08-05 11:27:59,102 - perf.Qwen3ASREngine - INFO - Completed: transcribe_Me-at-the-zoo_jNQXAC9IVRw.wav in 7.362s
+2026-08-05 11:27:59,103 - Qwen3ASREngine - INFO - Transcription completed: 198 characters
+2026-08-05 11:27:59,103 - UnifiedTranscriber - INFO - Transcription completed in 7.36s
+2026-08-05 11:27:59,103 - perf.UnifiedTranscriber - INFO - Metric: total_processing_time = 7.36191725730896 seconds
+[download]   0.0% of    3.27MiB at  292.73KiB/s ETA 00:11[download]   0.1% of    3.27MiB at  789.89KiB/s ETA 00:04[download]   0.2% of    3.27MiB at    1.70MiB/s ETA 00:01[download]   0.4% of    3.27MiB at    3.47MiB/s ETA 00:00[download]   0.9% of    3.27MiB at    6.84MiB/s ETA 00:00[download]   1.9% of    3.27MiB at    8.37MiB/s ETA 00:00[download]   3.8% of    3.27MiB at   11.25MiB/s ETA 00:00[download]   7.6% of    3.27MiB at   17.18MiB/s ETA 00:00[download]  15.2% of    3.27MiB at   27.07MiB/s ETA 00:00[download]  30.5% of    3.27MiB at   45.40MiB/s ETA 00:00[download]  61.0% of    3.27MiB at   70.58MiB/s ETA 00:00[download] 100.0% of    3.27MiB at   95.97MiB/s ETA 00:00[download] 100% of    3.27MiB in 00:00:00 at 56.02MiB/s2026-08-05 11:27:59,360 - core.webui_workflow - INFO - dispatch_next呼び出し current_item_id=None queued_count=1
+2026-08-05 11:27:59,361 - UnifiedTranscriber - INFO - Starting transcription: output/queue_downloads/1532a373/Me-at-the-zoo_jNQXAC9IVRw.wav
+2026-08-05 11:27:59,361 - core.webui_workflow - INFO - 状態遷移 item_id=2 QUEUED->PROCESSING label=https://www.youtube.com/watch?v=jNQXAC9IVRw
+2026-08-05 11:27:59,548 - perf.Qwen3ASREngine - INFO - Started: transcribe_Me-at-the-zoo_jNQXAC9IVRw.wav
+2026-08-05 11:28:00,362 - core.webui_workflow - INFO - dispatch_next呼び出し current_item_id=2 queued_count=0
+2026-08-05 11:28:01,061 - handlers.youtube - INFO - Audio extraction complete: output/queue_downloads/af633abb/Rick-Astley-Never-Gonna-Give-You-Up-Official-Video_dQw4w9WgXcQ.wav
+2026-08-05 11:28:01,062 - __main__ - INFO - _resolve_input完了(background) token=af633abb item_id=1 elapsed=5.16s
+2026-08-05 11:28:01,062 - core.webui_workflow - INFO - 状態遷移 item_id=1 RESOLVING->QUEUED label=https://www.youtube.com/watch?v=dQw4w9WgXcQ
+2026-08-05 11:28:01,361 - core.webui_workflow - INFO - dispatch_next呼び出し current_item_id=2 queued_count=1
+2026-08-05 11:28:06,124 - perf.Qwen3ASREngine - INFO - Completed: transcribe_Me-at-the-zoo_jNQXAC9IVRw.wav in 6.576s
+2026-08-05 11:28:06,124 - Qwen3ASREngine - INFO - Transcription completed: 198 characters
+2026-08-05 11:28:06,124 - UnifiedTranscriber - INFO - Transcription completed in 6.76s
+2026-08-05 11:28:06,124 - perf.UnifiedTranscriber - INFO - Metric: total_processing_time = 6.762733221054077 seconds
+  Stopping...

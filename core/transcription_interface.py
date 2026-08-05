@@ -10,7 +10,11 @@ from abc import ABC, abstractmethod
 from typing import Any, Dict, List, Optional, Union, Callable
 from dataclasses import dataclass
 from types import SimpleNamespace
+import os
+import sys
+import threading
 import time
+import traceback
 from pathlib import Path
 import torch
 
@@ -425,7 +429,22 @@ class Qwen3ASREngine(TranscriptionEngine):
         memory_limit 予算に計上されないことに留意。
         """
         if self._model is None:
-            from qwen_asr import Qwen3ASRModel
+            # 診断ログ(tc-ops #441調査専用、調査完了後に削除またはコミット要否を計と協議する)
+            self.logger.info(
+                "qwen_asr import直前診断 pid=%s thread=%s cwd=%s sys.path=%s",
+                os.getpid(), threading.current_thread().name, os.getcwd(), sys.path,
+            )
+            try:
+                from qwen_asr import Qwen3ASRModel
+            except BaseException:
+                self.logger.error(
+                    "qwen_asr import失敗診断 pid=%s thread=%s traceback=%s",
+                    os.getpid(), threading.current_thread().name, traceback.format_exc(),
+                )
+                raise
+            self.logger.info(
+                "qwen_asr import成功診断 pid=%s thread=%s", os.getpid(), threading.current_thread().name
+            )
             import torch
 
             device = self.config.device

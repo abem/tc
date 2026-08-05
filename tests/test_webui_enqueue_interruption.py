@@ -1,76 +1,135 @@
 """
-特性テスト(characterization test): tc-ops #440是正2「投入(enqueue)がキューに反映されず消える」現象。
+特性テスト(characterization test): tc-ops #440是正3「投入(enqueue)がキューに反映されず消える」
+現象への是正の固定化(初版のアサーションを反転)。
 
-診断ログによる実機再現(作から計への作業完了報告_WebUIジョブキュー処理化診断ログ追加_20260805.md)で
-確認したとおり、Streamlitは`st.foo`呼び出し(`_resolve_input()`内部の`on_status=st.write`等、
-および`st.spinner`ブロックの`__exit__`)を暗黙のyield pointとして扱い、他の操作(2件目のボタン
-クリック)由来のRerunリクエストが保留中であれば、その場で`RerunException`
-(`streamlit.runtime.scriptrunner.exceptions.RerunException`、`BaseException`派生、
-`except Exception`では捕捉不可)を送出してスクリプト全体を中断する。
+is正前(tc-ops #440是正2で確定): `_resolve_input()`実行中にStreamlitの`RerunException`
+(`BaseException`派生、`except Exception`では捕捉不可)でスクリプトが中断されると、
+`_enqueue_job()`が`_get_queue().enqueue()`まで到達せず、投入内容が消失していた。
 
-このテストは、`_resolve_input()`呼び出し中に`BaseException`派生の例外が発生した場合、
-`_enqueue_job()`が`_get_queue().enqueue()`まで到達せず、当該投入がキューに一切残らないという
-「現在の(未是正の)挙動」を機械的に固定化する。**是正実装(次チケット)でこの挙動が変わったら、
-このテストのアサーションを反転させること**(割り込みが発生しても投入が失われない、または
-再試行される、等の是正後挙動を検証する形へ更新する)。
+is正後(tc-ops #440是正3): `_enqueue_job()`は入力解決(ダウンロード等)を待たず、即座に
+`QueueItem`を`RESOLVING`状態でキューへ追加してから返る。この処理は`st.foo`呼び出しを
+一切含まないため、Streamlitのスクリプト中断(RerunException)を原理的に受けない。ダウンロード
+自体はバックグラウンドスレッドで非同期に行われ、その完了/失敗は`QueueItem`の状態遷移
+(`RESOLVING`→`QUEUED`/`FAILED`)としてのみ反映される(消失しない)。
+
+注意: `unittest.mock.patch`は`with`ブロックを抜けると即座に元に戻るため、バックグラウンド
+スレッドが実際にモック対象を呼び出すまでは`with`ブロックを抜けないこと(そうしないと、
+スレッドがCPUを得たタイミング次第で本物の関数が呼ばれてしまう競合状態になる)。
 """
 
+import threading
+import time
 from unittest.mock import patch
 
-import pytest
+from core.webui_workflow import QueueItemState
 
 
-class _SimulatedRerunInterrupt(BaseException):
+class _SimulatedInterrupt(BaseException):
     """Streamlitの`RerunException`と同じ性質(`BaseException`派生、`except Exception`で捕捉
     不可)を持つ軽量ダミー。本物の`RerunException`は`RerunData`という内部専用オブジェクトを
-    要求するため、Streamlit内部APIへの依存を増やさずに性質だけを再現する
-    (予備調査完了報告1-3節の設計方針どおり)。"""
+    要求するため、Streamlit内部APIへの依存を増やさずに性質だけを再現する。"""
 
 
-class TestEnqueueJobInterruption:
-    def test_interruption_during_resolve_input_leaves_queue_unchanged(self):
-        """`_resolve_input()`実行中にBaseException派生の例外で中断された場合、
-        `_get_queue()`に新規`QueueItem`が一切追加されないことを固定化する。"""
+def _settings():
+    return {
+        "model": "Qwen/Qwen3-ASR-1.7B",
+        "device": "auto",
+        "language": None,
+        "diarization": False,
+        "include_timestamps": False,
+    }
+
+
+def _new_items_since(job_queue, item_ids_before):
+    return [item for item in job_queue.items if item.item_id not in item_ids_before]
+
+
+class TestEnqueueJobReturnsImmediately:
+    def test_enqueue_job_does_not_block_on_resolution(self):
+        """`_enqueue_job()`は入力解決(ダウンロード等)の完了を待たず即座に返る
+        (st.foo呼び出しを含まないため、RerunExceptionによる中断を原理的に受けない、是正の核心)。"""
         import webui
 
-        job_queue_before = webui._get_queue()
-        items_before = list(job_queue_before.items)
+        call_started = threading.Event()
+        release_event = threading.Event()
 
-        form_values = {"source_url": "https://www.youtube.com/watch?v=dummy", "uploaded_file": None}
-        settings_values = {
-            "model": "Qwen/Qwen3-ASR-1.7B",
-            "device": "auto",
-            "language": None,
-            "diarization": False,
-            "include_timestamps": False,
-        }
+        def _slow_resolve(form_values, download_dir, on_status):
+            call_started.set()
+            release_event.wait(timeout=5)
+            return None
 
-        with patch("webui._resolve_input", side_effect=_SimulatedRerunInterrupt()):
-            with pytest.raises(_SimulatedRerunInterrupt):
-                webui._enqueue_job(form_values, settings_values, "")
+        form_values = {"source_url": "https://www.youtube.com/watch?v=slow", "uploaded_file": None}
 
-        job_queue_after = webui._get_queue()
-        assert job_queue_after is job_queue_before
-        assert list(job_queue_after.items) == items_before
+        with patch("webui._resolve_input", side_effect=_slow_resolve):
+            start = time.time()
+            webui._enqueue_job(form_values, _settings(), "")
+            elapsed = time.time() - start
+            assert elapsed < 1.0, f"_enqueue_job()が解決処理の完了を待ってブロックした(elapsed={elapsed:.2f}s)"
 
-    def test_interruption_propagates_uncaught(self):
-        """`_enqueue_job()`内にBaseException派生例外を捕捉するtry/exceptが存在しないこと
-        (=RerunExceptionが握りつぶされずStreamlitのスクリプトランナーまで正しく伝播すること)
-        を確認する。上記テストの`pytest.raises`が実質的に同じ性質を検証しているが、
-        「例外が発生しても投入が消えるだけで、握りつぶされて処理が続行するわけではない」
-        という区別を明示的に固定化するため独立したテストとして残す。"""
+            assert call_started.wait(timeout=5), "バックグラウンドスレッドがモックを呼び出さなかった"
+            release_event.set()
+            time.sleep(0.1)  # パッチ有効なうちにバックグラウンドスレッドの後続処理を完了させる
+
+
+class TestQueueItemSurvivesResolutionInterruption:
+    def test_item_is_enqueued_as_resolving_before_resolution_completes(self):
+        """`_enqueue_job()`呼び出し直後、解決(ダウンロード)が完了していなくても`QueueItem`が
+        `RESOLVING`状態で既にキューに存在する(是正の核心)。"""
         import webui
 
-        with patch("webui._resolve_input", side_effect=_SimulatedRerunInterrupt()):
-            with pytest.raises(_SimulatedRerunInterrupt):
-                webui._enqueue_job(
-                    {"source_url": "https://www.youtube.com/watch?v=dummy2", "uploaded_file": None},
-                    {
-                        "model": "Qwen/Qwen3-ASR-1.7B",
-                        "device": "auto",
-                        "language": None,
-                        "diarization": False,
-                        "include_timestamps": False,
-                    },
-                    "",
-                )
+        call_started = threading.Event()
+        release_event = threading.Event()
+
+        def _slow_resolve(form_values, download_dir, on_status):
+            call_started.set()
+            release_event.wait(timeout=5)
+            return None
+
+        job_queue = webui._get_queue()
+        ids_before = {item.item_id for item in job_queue.items}
+
+        form_values = {"source_url": "https://www.youtube.com/watch?v=slow2", "uploaded_file": None}
+
+        with patch("webui._resolve_input", side_effect=_slow_resolve):
+            webui._enqueue_job(form_values, _settings(), "")
+
+            new_items = _new_items_since(job_queue, ids_before)
+            assert len(new_items) == 1
+            assert new_items[0].state is QueueItemState.RESOLVING
+            assert new_items[0].resolution is None
+
+            assert call_started.wait(timeout=5), "バックグラウンドスレッドがモックを呼び出さなかった"
+            release_event.set()
+            time.sleep(0.1)
+
+    def test_interruption_during_background_resolution_does_not_remove_item_from_queue(self):
+        """バックグラウンドスレッドでの解決(ダウンロード)中に`BaseException`派生の例外
+        (`RerunException`と同じ性質)が発生しても、既にキューに追加済みの`QueueItem`は消えず、
+        `FAILED`へ遷移するのみである(消失しない、is正前との決定的な違い)。"""
+        import webui
+
+        def _interrupted_resolve(form_values, download_dir, on_status):
+            raise _SimulatedInterrupt("simulated RerunException-like interruption")
+
+        job_queue = webui._get_queue()
+        ids_before = {item.item_id for item in job_queue.items}
+
+        form_values = {"source_url": "https://www.youtube.com/watch?v=interrupted", "uploaded_file": None}
+
+        with patch("webui._resolve_input", side_effect=_interrupted_resolve):
+            webui._enqueue_job(form_values, _settings(), "")  # 例外はバックグラウンドに留まり伝播しない
+
+            new_items = _new_items_since(job_queue, ids_before)
+            assert len(new_items) == 1
+            item = new_items[0]
+
+            for _ in range(50):  # バックグラウンドスレッドの状態遷移完了を待つ(パッチ有効なうちに)
+                if item.state is not QueueItemState.RESOLVING:
+                    break
+                time.sleep(0.05)
+            else:
+                raise AssertionError("バックグラウンドスレッドの完了待ちがタイムアウトした")
+
+        assert item.state is QueueItemState.FAILED
+        assert item in job_queue.items  # キューから消えていないことの直接確認
+        assert isinstance(item.resolve_error, _SimulatedInterrupt)

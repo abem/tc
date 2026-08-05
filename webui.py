@@ -14,10 +14,11 @@ from __future__ import annotations
 
 import os
 import sqlite3
+import threading
 import time
 import uuid
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Callable, Dict, Optional
 
 import streamlit as st
 
@@ -124,23 +125,26 @@ def _render_context_hints_panel() -> str:
     return context_value
 
 
-def _resolve_input(form_values: Dict[str, Any], download_dir: Path) -> Optional[InputResolution]:
+def _resolve_input(
+    form_values: Dict[str, Any], download_dir: Path, on_status: Callable[[str], None]
+) -> Optional[InputResolution]:
     """`download_dir` は投入(enqueue)ごとに一意なディレクトリを渡すこと。YouTube/X経路は
     `resolve_input_audio()`の既存の`output_dir`引数をそのまま使ってダウンロード先を分離し、
     同一URLを複数回投入した際のファイルパス衝突(tc-ops #440是正・不具合2)を防ぐ
     (`core/cli_workflow.py`・`handlers/youtube.py`は無変更)。
 
+    `on_status`はバックグラウンドスレッド(`_start_resolution_job()`、tc-ops #440是正3)から
+    呼ばれるため、`st.write`を直接渡さないこと(`ScriptRunContext`が無いスレッドからの
+    Streamlit UI呼び出しは安全でない)。呼び出し元は`QueueItem.log`への追記等、非UI手段を渡す。
+
     診断ログ(tc-ops #440是正2・査sa差し戻し対応): `resolve_input_audio()`が通常の`Exception`
-    (yt-dlpのダウンロード失敗等、`handlers/youtube.py` L184-186で`raise`される)で失敗した場合と、
-    Streamlitの`RerunException`(`BaseException`派生、この`except Exception`では捕捉されない)で
-    スクリプトが中断される場合を切り分けるため、token(`download_dir.name`)付きでログしてから
-    re-raiseする。前者ならこのログが出た上で呼び出し元に伝播する。後者ならこのログ自体が
-    出力されない(=中断ポイントが`resolve_input_audio()`内部のより深い箇所であることの証跡)。
+    (yt-dlpのダウンロード失敗等、`handlers/youtube.py` L184-186で`raise`される)場合にtoken
+    (`download_dir.name`)付きでログしてから re-raiseする。
     """
     if form_values["source_url"]:
         try:
             return resolve_input_audio(
-                form_values["source_url"], download_dir, ensure_yt_dlp=True, on_status=st.write
+                form_values["source_url"], download_dir, ensure_yt_dlp=True, on_status=on_status
             )
         except Exception as e:
             logger.error("resolve_input_audio失敗(通常のException) token=%s error=%s", download_dir.name, e)
@@ -183,17 +187,57 @@ def _start_job_from_item(item: QueueItem) -> TranscriptionJob:
     return start_transcription_job(transcriber, item.resolution.local_audio_path)
 
 
-def _enqueue_job(form_values: Dict[str, Any], settings_values: Dict[str, Any], context_value: str) -> None:
-    """入力を解決しキューへ追加する(現行ジョブが処理中でも追加投入できる。要件4-2-1)。
+def _start_resolution_job(
+    job_queue: TranscriptionJobQueue, item: QueueItem, form_values: Dict[str, Any], download_dir: Path, token: str
+) -> None:
+    """`item`(`RESOLVING`状態)の入力解決(ダウンロード等)をバックグラウンドスレッドで実行する
+    (tc-ops #440是正3)。完了時に`job_queue.resolve_success()`/`resolve_failed()`で状態遷移させる。
 
-    投入(enqueue)ごとに一意な`download_dir`を発行してから解決する(不具合2是正)。
-    `st.spinner`で解決処理(ダウンロード等)中であることを示す(不具合1是正)。
-
-    診断ログ(tc-ops #440是正2): `token`をenqueue試行の識別子として使い、`_resolve_input()`
-    完了・`_get_queue().enqueue()`到達それぞれの時点でログを出す。中断(例: Streamlitの
-    RerunExceptionによるスクリプト再実行)が発生した場合、その時点より後のログが出力されない
-    ことが、原因追跡の証跡になる(意図的にtry/finallyで揃えていない)。
+    `start_transcription_job()`(文字起こし本体の非同期実行)と同じパターン。バックグラウンド
+    スレッドはメインスクリプトのRerunException(tc-ops #440是正2で確定した中断原因)の影響を
+    受けないため、`_enqueue_job()`側で既にキューへ追加済みの`item`が消えることはない。
     """
+
+    def _on_status(message: str) -> None:
+        item.log.append(message)
+
+    def _run() -> None:
+        logger.info("_resolve_input開始(background) token=%s item_id=%s", token, item.item_id)
+        t0 = time.time()
+        try:
+            resolution = _resolve_input(form_values, download_dir, _on_status)
+        except BaseException as e:  # noqa: BLE001 - 失敗をFAILEDへ伝える(ジョブ実行スレッドと同一方針)
+            logger.info(
+                "_resolve_input失敗(background) token=%s item_id=%s elapsed=%.2fs",
+                token, item.item_id, time.time() - t0,
+            )
+            job_queue.resolve_failed(item, e)
+            return
+        logger.info(
+            "_resolve_input完了(background) token=%s item_id=%s elapsed=%.2fs", token, item.item_id, time.time() - t0
+        )
+        if resolution is None:
+            job_queue.resolve_failed(item, RuntimeError("URLを入力するか、ファイルをアップロードしてください。"))
+            return
+        job_queue.resolve_success(item, resolution)
+
+    threading.Thread(target=_run, daemon=True).start()
+
+
+def _enqueue_job(form_values: Dict[str, Any], settings_values: Dict[str, Any], context_value: str) -> None:
+    """キューへ即座に追加してから入力解決(ダウンロード等)をバックグラウンドで開始する
+    (現行ジョブが処理中でも追加投入できる。要件4-2-1)。
+
+    tc-ops #440是正3: 本関数は`st.foo`呼び出し(Streamlitの暗黙のyieldポイント)を一切含まない
+    ため、他の操作(2件目のボタンクリック等)によるRerunExceptionで中断されることが原理的にない
+    (tc-ops #440是正2で確定した原因への根本対応)。ダウンロード自体は`_start_resolution_job()`
+    がバックグラウンドスレッドで行う。キューに`RESOLVING`状態で即座に反映されることが、
+    「クリック直後に状態変化が見える」という不具合1是正の要件も引き続き満たす。
+    """
+    if not form_values["source_url"] and form_values["uploaded_file"] is None:
+        st.error("URLを入力するか、ファイルをアップロードしてください。")
+        return
+
     token = uuid.uuid4().hex[:8]
     logger.info(
         "enqueue試行開始 token=%s source_url=%s uploaded_file=%s",
@@ -202,15 +246,6 @@ def _enqueue_job(form_values: Dict[str, Any], settings_values: Dict[str, Any], c
         form_values["uploaded_file"].name if form_values.get("uploaded_file") is not None else "(none)",
     )
     download_dir = Path("output") / "queue_downloads" / token
-    with st.spinner("入力を解決しています(ダウンロード等)..."):
-        logger.info("_resolve_input開始 token=%s", token)
-        t0 = time.time()
-        resolution = _resolve_input(form_values, download_dir)
-        logger.info("_resolve_input完了 token=%s elapsed=%.2fs", token, time.time() - t0)
-    logger.info("spinnerブロック脱出 token=%s", token)
-    if resolution is None:
-        st.error("URLを入力するか、ファイルをアップロードしてください。")
-        return
 
     # 解決済みdevice・context_valueをjob_settingsへ書き戻す(record_transcription_history()に
     # 渡る際、未解決の"auto"のままcontext_hints_used=0固定で記録されるのを防ぐため。査sa指摘是正)。
@@ -218,11 +253,13 @@ def _enqueue_job(form_values: Dict[str, Any], settings_values: Dict[str, Any], c
     job_settings["device"] = resolve_device(settings_values["device"])
     job_settings["context"] = context_value
 
-    label = form_values["source_url"] or (
-        form_values["uploaded_file"].name if form_values["uploaded_file"] is not None else resolution.original_source
-    )
-    item = _get_queue().enqueue(label=label, resolution=resolution, settings=job_settings)
-    logger.info("enqueue完了 token=%s item_id=%s", token, item.item_id)
+    label = form_values["source_url"] or form_values["uploaded_file"].name
+
+    job_queue = _get_queue()
+    item = job_queue.enqueue_pending(label=label, settings=job_settings)
+    logger.info("enqueue(pending)完了 token=%s item_id=%s", token, item.item_id)
+
+    _start_resolution_job(job_queue, item, form_values, download_dir, token)
 
 
 def _dispatch_next_job(job_queue: TranscriptionJobQueue) -> None:
@@ -342,6 +379,14 @@ def _render_queue_and_result() -> None:
     _dispatch_next_job(job_queue)
 
     st.subheader("キュー状態")
+
+    resolving = job_queue.resolving
+    if resolving:
+        for item in resolving:
+            st.write(f"解決中(ダウンロード等): {item.label}")
+            if item.log:
+                st.text("\n".join(item.log[-5:]))
+
     st.caption(f"待機件数: {len(job_queue.queued)}件")
 
     current = job_queue.current

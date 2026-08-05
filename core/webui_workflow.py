@@ -64,8 +64,15 @@ def start_transcription_job(transcriber: "UnifiedTranscriber", audio_path: str, 
 
 
 class QueueItemState(Enum):
-    """ジョブキュー項目の状態(予備調査#440・4-1節「ジョブ状態遷移」)。"""
+    """ジョブキュー項目の状態(予備調査#440・4-1節「ジョブ状態遷移」)。
 
+    `RESOLVING`(tc-ops #440是正3): 投入内容の解決(ダウンロード等)がバックグラウンドスレッドで
+    進行中の状態。`_enqueue_job()`はこの状態でキューへ即座に追加してから返るため、`st.foo`
+    呼び出し(Streamlitの暗黙のyieldポイント)を経由せず、原理的に中断され得ない
+    (tc-ops #440是正2で確定した原因: `RerunException`は`st.foo`呼び出し経由でのみ送出される)。
+    """
+
+    RESOLVING = "resolving"
     QUEUED = "queued"
     PROCESSING = "processing"
     DONE = "done"
@@ -76,11 +83,14 @@ class QueueItemState(Enum):
 class QueueItem:
     """ジョブキューの1項目。投入内容の解決結果(`resolution`)を各項目が専有することで、
     完了時のクリーンアップ(`_cleanup_temp_file()`)が他項目へ波及しないことを構造的に担保する
-    (予備調査#440・4-1節「既存の一時ファイル削除処理への影響」)。"""
+    (予備調査#440・4-1節「既存の一時ファイル削除処理への影響」)。
+
+    `resolution`は`RESOLVING`状態の間は`None`(未確定)、解決完了後に設定される
+    (tc-ops #440是正3)。"""
 
     label: str
-    resolution: "InputResolution"
     settings: Dict[str, Any]
+    resolution: Optional["InputResolution"] = None
     item_id: int = 0
     state: QueueItemState = QueueItemState.QUEUED
     job: Optional[TranscriptionJob] = None
@@ -91,6 +101,7 @@ class QueueItem:
     output_file: Optional[str] = None
     gdrive_url: Optional[str] = None
     error_message: Optional[str] = None
+    resolve_error: Optional[BaseException] = None
 
 
 class TranscriptionJobQueue:
@@ -106,12 +117,51 @@ class TranscriptionJobQueue:
         self._next_id: int = 1
 
     def enqueue(self, label: str, resolution: "InputResolution", settings: Dict[str, Any]) -> QueueItem:
-        """新規項目を`QUEUED`状態でキュー末尾に追加する(実行中ジョブがあっても追加投入可能)。"""
+        """新規項目を`QUEUED`状態でキュー末尾に追加する(実行中ジョブがあっても追加投入可能)。
+
+        `resolution`が既に確定している場合に使う(既存呼び出し元・既存テストとの後方互換のため
+        シグネチャ・挙動を変更しない)。投入時点でダウンロード等が未完了の場合は`enqueue_pending()`
+        を使う(tc-ops #440是正3)。"""
         item = QueueItem(label=label, resolution=resolution, settings=dict(settings), item_id=self._next_id)
         self._next_id += 1
         self.items.append(item)
         logger.info("状態遷移 item_id=%s (新規)->QUEUED label=%s", item.item_id, label)
         return item
+
+    def enqueue_pending(self, label: str, settings: Dict[str, Any]) -> QueueItem:
+        """新規項目を`RESOLVING`状態(`resolution`未確定)でキュー末尾に即座に追加する
+        (tc-ops #440是正3)。
+
+        `st.session_state`操作とロガー呼び出しのみで完結し`st.foo`呼び出しを含まないため、
+        Streamlitの`RerunException`(`st.foo`呼び出し経由でのみ送出される)による中断を
+        原理的に受けない。呼び出し元は本メソッドの直後にダウンロード等をバックグラウンド
+        スレッドで開始し、完了時に`resolve_success()`/`resolve_failed()`を呼ぶこと。"""
+        item = QueueItem(label=label, settings=dict(settings), state=QueueItemState.RESOLVING, item_id=self._next_id)
+        self._next_id += 1
+        self.items.append(item)
+        logger.info("状態遷移 item_id=%s (新規)->RESOLVING label=%s", item.item_id, label)
+        return item
+
+    def resolve_success(self, item: QueueItem, resolution: "InputResolution") -> None:
+        """`RESOLVING`項目の解決(ダウンロード等)が成功した場合に`QUEUED`へ遷移する(tc-ops #440是正3)。"""
+        logger.info("状態遷移 item_id=%s RESOLVING->QUEUED label=%s", item.item_id, item.label)
+        item.resolution = resolution
+        item.state = QueueItemState.QUEUED
+
+    def resolve_failed(self, item: QueueItem, error: BaseException) -> None:
+        """`RESOLVING`項目の解決(ダウンロード等)が失敗した場合に`FAILED`へ遷移する(tc-ops #440是正3)。
+
+        後続の`RESOLVING`/`QUEUED`項目には影響しない。"""
+        logger.info("状態遷移 item_id=%s RESOLVING->FAILED error=%s", item.item_id, error)
+        item.resolve_error = error
+        item.error_message = str(error)
+        item.state = QueueItemState.FAILED
+        item.finished_at = time.time()
+
+    @property
+    def resolving(self) -> List[QueueItem]:
+        """投入内容の解決(ダウンロード等)がバックグラウンドで進行中の項目一覧(tc-ops #440是正3)。"""
+        return [item for item in self.items if item.state is QueueItemState.RESOLVING]
 
     @property
     def current(self) -> Optional[QueueItem]:

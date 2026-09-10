@@ -38,7 +38,7 @@ done
 grep -q "transcription_history_fts.*rebuild\|rebuild.*transcription_history_fts" core/cli_workflow.py && echo OK_REBUILD
 
 # 3-4. webui.pyにキーワード検索UI・検索条件・チェックボックス・ダウンロードボタンが存在
-grep -q 'st.text_input(' webui.py | true  # (既存箇所と衝突しうるため件数ではなく後続の個別grepで判定)
+# (st.text_input()自体は既存箇所と衝突しうるため件数判定はせず、以下の個別grepで判定する)
 grep -q "history_keyword" webui.py && echo OK_KEYWORD_UI
 grep -q "MATCH" webui.py && echo OK_FTS_QUERY
 grep -q "history_select_" webui.py && echo OK_SELECT_CHECKBOX

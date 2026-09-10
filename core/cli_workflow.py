@@ -153,14 +153,55 @@ CREATE TABLE IF NOT EXISTS transcription_history (
 );
 CREATE INDEX IF NOT EXISTS idx_history_processed_at ON transcription_history(processed_at);
 CREATE INDEX IF NOT EXISTS idx_history_source_type ON transcription_history(source_type);
+
+-- キーワード検索(Phase3): external contentのFTS5仮想テーブル。
+-- 本体テーブルへのINSERT/UPDATE/DELETEは下記トリガーで同期する(FTS5公式レシピ準拠)。
+-- tokenize='trigram': 既定のunicode61トークナイザは分かち書きされていない日本語を
+-- 空白の無い1トークンとして扱うため部分一致検索が機能しない(実測確認済み)。
+-- trigram(3文字連続n-gram、SQLite 3.34+)であれば分かち書き不要で部分一致検索できる。
+CREATE VIRTUAL TABLE IF NOT EXISTS transcription_history_fts USING fts5(
+    source_title, source_original, result_text, notes,
+    content='transcription_history', content_rowid='id',
+    tokenize='trigram'
+);
+
+CREATE TRIGGER IF NOT EXISTS transcription_history_ai AFTER INSERT ON transcription_history BEGIN
+    INSERT INTO transcription_history_fts(rowid, source_title, source_original, result_text, notes)
+    VALUES (new.id, new.source_title, new.source_original, new.result_text, new.notes);
+END;
+
+CREATE TRIGGER IF NOT EXISTS transcription_history_ad AFTER DELETE ON transcription_history BEGIN
+    INSERT INTO transcription_history_fts(transcription_history_fts, rowid, source_title, source_original, result_text, notes)
+    VALUES ('delete', old.id, old.source_title, old.source_original, old.result_text, old.notes);
+END;
+
+CREATE TRIGGER IF NOT EXISTS transcription_history_au AFTER UPDATE ON transcription_history BEGIN
+    INSERT INTO transcription_history_fts(transcription_history_fts, rowid, source_title, source_original, result_text, notes)
+    VALUES ('delete', old.id, old.source_title, old.source_original, old.result_text, old.notes);
+    INSERT INTO transcription_history_fts(rowid, source_title, source_original, result_text, notes)
+    VALUES (new.id, new.source_title, new.source_original, new.result_text, new.notes);
+END;
 """
 
 DEFAULT_HISTORY_DB_PATH = Path("output/history.db")
 
 
 def ensure_history_table(conn: sqlite3.Connection) -> None:
-    """`transcription_history` テーブル(未作成時は自動作成)。DDLは設計書§3準拠。"""
+    """`transcription_history` テーブル(未作成時は自動作成)。DDLは設計書§3準拠。
+
+    FTS5仮想テーブル(`transcription_history_fts`)を初めて作成する際は、
+    導入前に登録済みの既存行がトリガーの対象外のため一度だけrebuildでバックフィルする。
+    """
+    fts_existed = (
+        conn.execute(
+            "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='transcription_history_fts'"
+        ).fetchone()[0]
+        > 0
+    )
     conn.executescript(_HISTORY_DDL)
+    if not fts_existed:
+        conn.execute("INSERT INTO transcription_history_fts(transcription_history_fts) VALUES ('rebuild')")
+        conn.commit()
 
 
 def record_transcription_history(

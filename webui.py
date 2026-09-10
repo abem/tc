@@ -540,6 +540,8 @@ def _render_history_tab() -> None:
         date_from = st.date_input("開始日", value=None, key="history_date_from")
     with col2:
         date_to = st.date_input("終了日", value=None, key="history_date_to")
+    search_keyword = st.text_input("キーワード検索", value="", key="history_keyword")
+    st.caption("3文字以上で検索できます(2文字以下は検索結果が得られません)")
 
     _render_history_cleanup_section()
 
@@ -555,6 +557,13 @@ def _render_history_tab() -> None:
         if date_to:
             conditions.append("date(processed_at) <= date(?)")
             params.append(date_to.isoformat())
+        if search_keyword:
+            # フレーズ全体を1トークン列として扱う(MATCH演算子の誤解釈を避けるため" "で囲む)。
+            escaped_keyword = search_keyword.replace('"', '""')
+            conditions.append(
+                "id IN (SELECT rowid FROM transcription_history_fts WHERE transcription_history_fts MATCH ?)"
+            )
+            params.append(f'"{escaped_keyword}"')
         if conditions:
             query += " WHERE " + " AND ".join(conditions)
         query += " ORDER BY processed_at DESC"
@@ -569,6 +578,7 @@ def _render_history_tab() -> None:
     for row in rows:
         title = row["source_title"] or row["source_original"]
         with st.expander(f"{row['processed_at']} - {title} ({row['model_name']})"):
+            st.checkbox("出力対象に含める", key=f"history_select_{row['id']}")
             st.write(f"音源種別: {row['source_type']}")
             st.write(f"文字数: {row['char_count']} / 処理時間: {row['processing_time_sec']:.1f}秒")
             if row["gdrive_url"]:
@@ -579,6 +589,23 @@ def _render_history_tab() -> None:
                 height=200,
                 key=f"history_text_{row['id']}",
             )
+
+    selected_rows = [row for row in rows if st.session_state.get(f"history_select_{row['id']}", False)]
+    if selected_rows:
+        summary_parts = []
+        for row in selected_rows:
+            title = row["source_title"] or row["source_original"]
+            summary_parts.append(
+                f"## {row['processed_at']} - {title}（{row['model_name']}）\n\n{row['result_text']}\n\n---"
+            )
+        summary_markdown = "\n\n".join(summary_parts)
+        st.download_button(
+            "選択履歴をまとめ出力",
+            data=summary_markdown,
+            file_name=f"history_summary_{datetime.now().strftime('%Y%m%d_%H%M%S')}.md",
+            mime="text/markdown",
+            key="history_summary_download",
+        )
 
 
 def main() -> None:

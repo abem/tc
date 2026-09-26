@@ -931,8 +931,17 @@ class UnifiedTranscriber:
         self.perf_logger = PerformanceLogger(self.__class__.__name__)
 
         # Initialize engines
-        # モデル名でエンジンを切替(Qwen3-ASR 系は専用エンジン、それ以外は Whisper)
-        if Qwen3ASREngine.is_qwen3_model(transcription_config.model):
+        # モデル名でエンジンを切替(Nemotron系→専用サブプロセスエンジン、
+        # Qwen3-ASR系→専用エンジン、それ以外はWhisper)。
+        # nemotron判定はqwen3判定より前に置く(tc-ops #546 Phase2設計report§2)。
+        # is_nemotron_model/is_qwen3_modelの判定文字列は互いに排他的なため、
+        # この順序自体は既存モデル名の解決結果に影響しない。
+        # core.nemotron_engineはローカルimportとする(循環import回避。
+        # nemotron_engine.py側がTranscriptionEngine等を本モジュールからimportするため)。
+        from core.nemotron_engine import is_nemotron_model, NemotronSubprocessEngine
+        if is_nemotron_model(transcription_config.model):
+            self.transcription_engine = NemotronSubprocessEngine(transcription_config)
+        elif Qwen3ASREngine.is_qwen3_model(transcription_config.model):
             self.transcription_engine = Qwen3ASREngine(transcription_config)
         else:
             self.transcription_engine = WhisperTranscriptionEngine(transcription_config)

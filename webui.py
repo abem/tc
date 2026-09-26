@@ -36,6 +36,7 @@ from core.cli_workflow import (
 )
 from core.config import SystemConfig, TranscriptionConfig, UnifiedConfig
 from core.logging import get_logger
+from core.nemotron_engine import is_nemotron_model
 from core.transcription_interface import UnifiedTranscriber
 from core.webui_workflow import (
     QueueItem,
@@ -108,7 +109,12 @@ def _render_settings_panel() -> Dict[str, Any]:
     with col1:
         model = st.selectbox(
             "モデル",
-            options=["Qwen/Qwen3-ASR-1.7B", "kotoba-tech/kotoba-whisper-v2.2", "openai/whisper-large-v3"],
+            options=[
+                "Qwen/Qwen3-ASR-1.7B",
+                "kotoba-tech/kotoba-whisper-v2.2",
+                "openai/whisper-large-v3",
+                "nvidia/nemotron-3.5-asr-streaming-0.6b",
+            ],
             index=0,
         )
     with col2:
@@ -116,10 +122,22 @@ def _render_settings_panel() -> Dict[str, Any]:
     with col3:
         language_choice = st.selectbox("言語", options=["自動判定", "ja", "en"], index=0)
 
+    # Nemotronはオフラインバッチ推論が単一セグメントのみを返す設計のため、
+    # タイムスタンプ(ForcedAligner/SRT出力)には現時点で非対応(tc-ops #546 Phase2)。
+    nemotron_selected = is_nemotron_model(model)
     include_timestamps = st.checkbox(
         "タイムスタンプ付与(ForcedAligner使用、GPUメモリ約1.2GB追加)",
         value=False,
+        disabled=nemotron_selected,
     )
+    if nemotron_selected:
+        st.caption("Nemotronは現時点でタイムスタンプ非対応です")
+        # disabled=Trueはウィジェットの操作を防ぐだけで、直前のモデル(Qwen等)で
+        # チェック済みだった値(True)はStreamlitのウィジェット状態として保持され続ける。
+        # そのままだとitem.settings["include_timestamps"]がTrueで送信され、L409の
+        # SRTプレビューが実行されて「実質1行の壊れた出力」が表示される(査sa是正指摘)。
+        # disabledに加えて値自体をFalseへ強制上書きする。
+        include_timestamps = False
     return {
         "model": model,
         "device": device_choice,

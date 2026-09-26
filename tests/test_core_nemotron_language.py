@@ -114,8 +114,8 @@ class TestNemotronEngineDeviceArgPassthrough:
         class _FakeCompletedProcess:
             returncode = 0
             stdout = (
-                '{"transcription": "", "audio_duration_sec": 1.0, '
-                '"infer_elapsed_sec": 0.1}'
+                '{"chunks": [{"transcription": "", "audio_duration_sec": 1.0, '
+                '"infer_elapsed_sec": 0.1}]}'
             )
             stderr = ""
 

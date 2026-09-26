@@ -63,13 +63,25 @@ def start_transcription_job(transcriber: "UnifiedTranscriber", audio_path: str, 
     return job
 
 
-class QueueItemState(Enum):
+class QueueItemState(str, Enum):
     """ジョブキュー項目の状態(予備調査#440・4-1節「ジョブ状態遷移」)。
 
     `RESOLVING`(tc-ops #440是正3): 投入内容の解決(ダウンロード等)がバックグラウンドスレッドで
     進行中の状態。`_enqueue_job()`はこの状態でキューへ即座に追加してから返るため、`st.foo`
     呼び出し(Streamlitの暗黙のyieldポイント)を経由せず、原理的に中断され得ない
     (tc-ops #440是正2で確定した原因: `RerunException`は`st.foo`呼び出し経由でのみ送出される)。
+
+    `str, Enum`を継承する理由(tc-ops #548是正、2026-09-27): Streamlitが作業ツリーへの
+    編集を検知して自動リロードすると、このモジュールが再読込され`QueueItemState`が
+    別クラスオブジェクトとして再定義される。プレーンな`Enum`の`__eq__`(および`is`比較)は
+    同一性ベースのため、リロード前に生成された`QueueItem.state`(旧クラスのメンバー)と
+    リロード後に評価される`QueueItemState.DONE`(新クラスのメンバー)は、値が同じ"done"でも
+    一致しなくなる(実運用で「失敗: None」の誤表示として顕在化。ログ・Drive履歴上は
+    正常完了していた)。`str, Enum`にすると`__eq__`が文字列値としての比較にフォールバックし
+    (`QueueItemState.DONE == "done"`が`True`になる)、モジュール再読込後も一致し続ける。
+    この変更と、本ファイル・`webui.py`内の同一性比較(`is`演算子によるQueueItemState
+    メンバーとの比較)全箇所を等価比較(`==`)へ置換することはセットで行う
+    (`==`への置換だけでは効果がない)。
     """
 
     RESOLVING = "resolving"
@@ -161,18 +173,18 @@ class TranscriptionJobQueue:
     @property
     def resolving(self) -> List[QueueItem]:
         """投入内容の解決(ダウンロード等)がバックグラウンドで進行中の項目一覧(tc-ops #440是正3)。"""
-        return [item for item in self.items if item.state is QueueItemState.RESOLVING]
+        return [item for item in self.items if item.state == QueueItemState.RESOLVING]
 
     @property
     def current(self) -> Optional[QueueItem]:
         for item in self.items:
-            if item.state is QueueItemState.PROCESSING:
+            if item.state == QueueItemState.PROCESSING:
                 return item
         return None
 
     @property
     def queued(self) -> List[QueueItem]:
-        return [item for item in self.items if item.state is QueueItemState.QUEUED]
+        return [item for item in self.items if item.state == QueueItemState.QUEUED]
 
     @property
     def finished(self) -> List[QueueItem]:

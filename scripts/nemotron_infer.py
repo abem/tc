@@ -6,13 +6,30 @@
 `json.loads(proc.stdout)` がそれを前提としているため)、診断・進捗ログは
 すべて標準エラー出力(`sys.stderr`)へ出す。
 
-tc-ops #546 Phase1実測(`WORK_20260926_220529_phase1/nemotron_infer.py`)で
-動作確認済みのモデルロード・推論パターンを踏襲する。Phase1版との違いは、
-(1) stdoutをJSON1行に限定した点、(2) `--language` 引数を受け付ける点、
-(3) `--device` 引数を受け付ける点、の3点。
-
-使い方: venv-nemotron/bin/python scripts/nemotron_infer.py <audio_path> \
+使い方: venv-nemotron/bin/python scripts/nemotron_infer.py <audio_path> [<audio_path> ...] \
     [--language ja-JP] [--device auto|cuda|cpu]
+
+## 複数音声ファイル(チャンク)を1プロセス・1モデルロードで処理する(tc-ops #546/#548是正)
+
+音声パスを可変長引数(`nargs="+"`)で受け取り、モデルを**1回だけ**ロードして
+全ファイルをループ処理する。出力JSONは常に`{"chunks": [{...}, {...}, ...]}`形式
+(1ファイルのみでも要素数1のchunks配列)。
+
+**経緯**: 当初はチャンクごとに本スクリプトを新規プロセスとして起動する設計
+だったが、`main()`が呼び出しごとに`AutoModelForRNNT.from_pretrained()`から
+モデルを再ロードするため、チャンク数に比例してロード時間(実測5.6〜27.8秒/回)が
+累積し、重大な性能劣化を招いた(実測: チャンク分割後62.5秒、分割前19.5秒)。
+本設計により、モデルロードはプロセス全体で1回のみとなる。
+
+各チャンクの推論後には明示的に`torch.cuda.empty_cache()`を呼ぶ(1プロセス内で
+複数チャンクを処理する分、チャンクごとの一時的なアクティベーションメモリを
+都度解放し、チャンク数に応じたVRAM累積を防ぐ、査sa指摘対応)。
+
+1チャンクの処理が失敗しても、そのチャンクの`chunks`エントリに`"error"`キーを
+入れて後続チャンクの処理を継続する(呼び出し元`core/nemotron_engine.py`が
+これを検知して`[チャンクN失敗]`プレースホルダへ変換する設計)。モデルロード
+自体の失敗など、全チャンク処理不能な異常はプロセス全体の異常終了(returncode=1)
+として扱う。
 
 ## 不具合是正の記録(tc-ops #546、2026-09-26)
 
@@ -74,7 +91,10 @@ def resolve_device_map(device: str):
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Nemotron-3.5-ASR-Streaming 単体推論")
-    parser.add_argument("audio_path", help="音声ファイルのパス")
+    parser.add_argument(
+        "audio_paths", nargs="+",
+        help="音声ファイルのパス(複数指定可。複数指定時はチャンクとして1モデルロードで順次処理する)",
+    )
     parser.add_argument(
         "--language", default="auto",
         help="言語コード(例: ja-JP, en-US)。既定はauto(自動検出)。",
@@ -85,7 +105,7 @@ def main() -> int:
     )
     args = parser.parse_args()
 
-    result = {"audio_path": args.audio_path, "language": args.language, "device": args.device}
+    result = {"language": args.language, "device": args.device}
 
     try:
         import torch
@@ -102,35 +122,54 @@ def main() -> int:
         model = AutoModelForRNNT.from_pretrained(model_id, device_map=device_map)
         load_elapsed = time.time() - t0
         result["load_elapsed_sec"] = load_elapsed
-        _log(f"Model loaded in {load_elapsed:.2f}s")
-
-        audio = load_audio(args.audio_path, sampling_rate=processor.feature_extractor.sampling_rate)
-        audio_duration_sec = len(audio) / processor.feature_extractor.sampling_rate
-        result["audio_duration_sec"] = audio_duration_sec
+        _log(f"Model loaded in {load_elapsed:.2f}s (once for {len(args.audio_paths)} chunk(s))")
 
         language_arg = resolve_processor_language(args.language)
-        inputs = processor(
-            audio, sampling_rate=processor.feature_extractor.sampling_rate, language=language_arg
-        )
-        inputs = inputs.to(model.device, dtype=model.dtype)
+        chunks = []
 
-        _log("Running inference...")
-        t1 = time.time()
-        output = model.generate(**inputs, return_dict_in_generate=True)
-        infer_elapsed = time.time() - t1
-        result["infer_elapsed_sec"] = infer_elapsed
-        result["rtf"] = infer_elapsed / audio_duration_sec if audio_duration_sec > 0 else None
-        _log(f"Inference completed in {infer_elapsed:.2f}s")
+        for i, audio_path in enumerate(args.audio_paths):
+            chunk_result = {"audio_path": audio_path}
+            try:
+                audio = load_audio(audio_path, sampling_rate=processor.feature_extractor.sampling_rate)
+                audio_duration_sec = len(audio) / processor.feature_extractor.sampling_rate
+                chunk_result["audio_duration_sec"] = audio_duration_sec
 
-        text = processor.decode(output.sequences, skip_special_tokens=True)
-        if isinstance(text, list):
-            text = "".join(text)
-        result["transcription"] = text
+                inputs = processor(
+                    audio, sampling_rate=processor.feature_extractor.sampling_rate, language=language_arg
+                )
+                inputs = inputs.to(model.device, dtype=model.dtype)
 
-        del model, inputs, output
+                _log(f"Chunk {i + 1}/{len(args.audio_paths)}: running inference...")
+                t1 = time.time()
+                output = model.generate(**inputs, return_dict_in_generate=True)
+                infer_elapsed = time.time() - t1
+                chunk_result["infer_elapsed_sec"] = infer_elapsed
+                chunk_result["rtf"] = infer_elapsed / audio_duration_sec if audio_duration_sec > 0 else None
+                _log(f"Chunk {i + 1}/{len(args.audio_paths)}: done in {infer_elapsed:.2f}s")
+
+                text = processor.decode(output.sequences, skip_special_tokens=True)
+                if isinstance(text, list):
+                    text = "".join(text)
+                chunk_result["transcription"] = text
+
+                del inputs, output
+            except Exception as chunk_e:  # noqa: BLE001 - このチャンクだけ失敗として記録し、後続チャンクは継続する
+                chunk_result["error"] = f"{type(chunk_e).__name__}: {chunk_e}"
+                _log(f"Chunk {i + 1}/{len(args.audio_paths)} failed: {chunk_e}")
+                traceback.print_exc(file=sys.stderr)
+            finally:
+                # 査sa指摘: 1プロセス内で複数チャンクを処理する分、チャンクごとに
+                # 明示的なVRAM後処理を行い、チャンク数に応じたメモリ累積を防ぐ。
+                torch.cuda.empty_cache()
+
+            chunks.append(chunk_result)
+
+        del model
         torch.cuda.empty_cache()
 
-    except Exception as e:  # noqa: BLE001 - 呼び出し元(core/nemotron_engine.py)へ
+        result["chunks"] = chunks
+
+    except Exception as e:  # noqa: BLE001 - モデルロード等、全チャンク処理不能な異常
         # returncode!=0として異常終了を伝える。詳細はstderrへ出す(stdoutはJSON専用)。
         _log(f"ERROR: {type(e).__name__}: {e}")
         traceback.print_exc(file=sys.stderr)

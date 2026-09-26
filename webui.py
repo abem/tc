@@ -377,7 +377,7 @@ def _format_finished_item_label(item: QueueItem) -> str:
     `item_id`(投入順の連番)と確定時刻を見出しに含めることで、同一ラベル(同一URL等)の複数項目が
     画面上で区別できない問題(識別不能問題)と、なぜこの並び順なのかが読み取れない問題
     (表示順問題)の両方を改善する。"""
-    status_label = "完了" if item.state is QueueItemState.DONE else "失敗"
+    status_label = "完了" if item.state == QueueItemState.DONE else "失敗"
     return f"[{status_label}] #{item.item_id} {item.label} (確定 {_format_time(item.finished_at)})"
 
 
@@ -473,7 +473,7 @@ def _render_queue_and_result() -> None:
                     f"投入順: {item.item_id}件目 / 投入時刻: {_format_time(item.submitted_at)} / "
                     f"確定時刻: {_format_time(item.finished_at)}"
                 )
-                if item.state is QueueItemState.DONE:
+                if item.state == QueueItemState.DONE:
                     _render_result_detail(item)
                 else:
                     st.error(f"文字起こしに失敗しました: {item.error_message}")

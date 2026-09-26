@@ -11,16 +11,23 @@
 同じ `TranscriptionEngine` 抽象基底の契約を満たすため、`UnifiedTranscriber` からは
 既存エンジンと区別なく呼び出せる。
 
-## 長音声チャンク処理(tc-ops #546、2026-09-27追加)
+## 長音声チャンク処理(tc-ops #546/#548、2026-09-27)
 
 Phase2設計report §5は「長音声チャンク処理: 要」と結論していたが、Phase2実装・
 緊急是正のいずれにも未実装だった(査sa実測で判明)。査の線形外挿再計算により、
 10分音声でも推定ピークVRAMが総量(16376MiB)を超過する可能性が高いと判明したため、
 既存`Qwen3ASREngine._transcribe_long_audio`(`core/transcription_interface.py`
 L693-826)と同じ`CHUNK_THRESHOLD_SEC=300`秒の閾値を踏襲し、超過時は音声を
-チャンクへ分割してサブプロセスを複数回呼び出す。既存エンジンはメモリ上の
-`np.ndarray`をそのままモデルへ渡せるが、Nemotronはサブプロセス経由(ファイル
-パスを引数として渡す設計)のため、チャンクは一時wavファイルへ実際に切り出す。
+チャンクへ分割する。既存エンジンはメモリ上の`np.ndarray`をそのままモデルへ渡せるが、
+Nemotronはサブプロセス経由(ファイルパスを引数として渡す設計)のため、チャンクは
+一時wavファイルへ実際に切り出す。
+
+**単一モデルロード化(tc-ops #548是正)**: 当初はチャンクごとに`scripts/nemotron_infer.py`
+を新規プロセスとして起動していたが、同スクリプトの`main()`が呼び出しごとにモデルを
+再ロードするため、チャンク数に比例してロード時間が累積し重大な性能劣化を招いた
+(実測: チャンク分割後62.5秒、分割前19.5秒)。本設計では、全チャンクのファイルパスを
+`scripts/nemotron_infer.py`へ一度に渡し(`_invoke_subprocess()`は常に1回だけ呼ばれる)、
+同スクリプト側で1回のモデルロードで全チャンクをループ処理する。
 """
 from __future__ import annotations
 
@@ -44,8 +51,9 @@ INFER_SCRIPT = _REPO_ROOT / "scripts" / "nemotron_infer.py"
 
 # タイムアウト算出式(Phase2設計report §1): 実測RTF最大0.0401(Phase1)に十分な
 # 安全マージンを持たせ、固定オーバーヘッド(モデルロード時間の吸収)を加える。
-# チャンク分割時は「対象区間の長さ」を基準に算出する(チャンク単位で1プロセス
-# 起動→終了するため、全体長ではなくチャンク長に対する余裕があればよい)。
+# 単一モデルロード化(tc-ops #548)により、1プロセスが全チャンクを処理するため、
+# 「全チャンク合計の音声長」を基準に算出する(モデルロードは1回のみで済むため、
+# チャンク数に応じてこの固定オーバーヘッドを増やす必要はない)。
 _TIMEOUT_MULTIPLIER = 3.0
 _TIMEOUT_FIXED_OVERHEAD_SEC = 30.0
 _TIMEOUT_MIN_SEC = 60.0
@@ -70,22 +78,48 @@ def is_nemotron_model(model_name: str) -> bool:
 def compute_chunk_boundaries(
     duration_sec: float, chunk_threshold_sec: float = CHUNK_THRESHOLD_SEC
 ) -> list[tuple[float, float]]:
-    """音声長からチャンクの(開始秒, 終了秒)境界リストを計算する。
+    """音声長からチャンクの(開始秒, 終了秒)境界リストを計算する(均等分割方式)。
 
     `duration_sec <= chunk_threshold_sec` の場合は分割せず、全体を単一チャンク
     `[(0.0, duration_sec)]` として返す(通常の短音声はこちらを通る)。
+
+    分割が必要な場合は、`ceil(duration_sec / chunk_threshold_sec)`本のチャンクに
+    **均等分割**する(各チャンクの長さは`duration_sec / チャンク本数`で揃える)。
+
+    ## 均等分割を採用した経緯(tc-ops #546是正、2026-09-27)
+
+    当初は固定`chunk_threshold_sec`秒ごとの単純分割だった。実機検証(本番再現用
+    音声、language=ja-JP・device=cuda)により、末尾に生じる短いチャンク(実測27.7秒)を
+    前方文脈なしで単体推論すると、エラーにはならず正常終了のまま空文字列
+    (`"transcription": ""`)を返すことを確認した(采指示の切り分け手順で再現・確定)。
+
+    対策として一時的に「短い最終チャンクの開始位置を前方拡張してオーバーラップさせる」
+    実装を行ったが、実測で20秒分の発話(通話では60〜100字程度)が結果にそのまま
+    重複して現れることが判明し、利用者への害が大きいとして計・采判断により撤回した。
+
+    代わりに本方式(均等分割)を採用する: 総長を`ceil(総長/chunk_threshold_sec)`本で
+    割り、全チャンクを同じ長さにする。これにより「短い末尾チャンク」自体が原理的に
+    生じなくなり、重複も生じない。チャンク最大長は`chunk_threshold_sec`秒以下のまま
+    変わらない(例: 328秒→164秒×2、620秒→約206.67秒×3、299秒→分割なし1本のまま)。
+
     モデル推論・サブプロセスを一切呼び出さない純粋関数のため、GPU不要で
     単体テスト可能。
     """
+    import math
+
     if duration_sec <= 0:
         return [(0.0, 0.0)]
     if duration_sec <= chunk_threshold_sec:
         return [(0.0, duration_sec)]
 
+    num_chunks = math.ceil(duration_sec / chunk_threshold_sec)
+    chunk_len = duration_sec / num_chunks
+
     boundaries: list[tuple[float, float]] = []
     start = 0.0
-    while start < duration_sec:
-        end = min(start + chunk_threshold_sec, duration_sec)
+    for i in range(num_chunks):
+        # 最終チャンクは浮動小数点の累積誤差を避けるため、必ずduration_secちょうどにする。
+        end = duration_sec if i == num_chunks - 1 else start + chunk_len
         boundaries.append((start, end))
         start = end
     return boundaries
@@ -141,24 +175,25 @@ class NemotronSubprocessEngine(TranscriptionEngine):
         return tmp_path
 
     def _invoke_subprocess(
-        self, audio_path_for_subprocess: str, chunk_duration_sec: float, lang_code: str, device_arg: str
+        self, audio_paths: list[str], total_duration_sec: float, lang_code: str, device_arg: str
     ) -> dict:
         """`scripts/nemotron_infer.py`を1回起動し、パース済みJSON応答を返す。
 
-        `chunk_duration_sec`はタイムアウト算出のみに使う(全体長ではなく、この
-        呼び出しで処理する区間の長さを渡すこと)。異常終了・タイムアウト・
-        JSON解析失敗はすべて`RuntimeError`に変換して送出する(呼び出し元が
-        チャンク単位でこれを捕捉しプレースホルダに置き換えるか、単一チャンクの
-        場合はそのまま`transcribe()`の外へ伝播させるかを選べる設計)。
+        `audio_paths`は1件以上のファイルパスのリスト(2件以上の場合、同スクリプト側は
+        モデルを1回だけロードして順次処理する。tc-ops #548是正: チャンクごとに
+        新規プロセスを起動しモデルを再ロードしていたことによる性能劣化の是正)。
+        `total_duration_sec`はタイムアウト算出のみに使う(全チャンク合計の音声長を
+        渡すこと。1プロセスで全チャンクを処理するため)。異常終了・タイムアウト・
+        JSON解析失敗はすべて`RuntimeError`に変換して送出する。
         """
         timeout_sec = max(
-            _TIMEOUT_MIN_SEC, chunk_duration_sec * _TIMEOUT_MULTIPLIER + _TIMEOUT_FIXED_OVERHEAD_SEC
+            _TIMEOUT_MIN_SEC, total_duration_sec * _TIMEOUT_MULTIPLIER + _TIMEOUT_FIXED_OVERHEAD_SEC
         )
 
         try:
             proc = subprocess.run(
                 [
-                    str(VENV_PYTHON), str(INFER_SCRIPT), str(audio_path_for_subprocess),
+                    str(VENV_PYTHON), str(INFER_SCRIPT), *[str(p) for p in audio_paths],
                     "--language", lang_code,
                     "--device", device_arg,
                 ],
@@ -186,8 +221,8 @@ class NemotronSubprocessEngine(TranscriptionEngine):
             ) from e
 
     @staticmethod
-    def _extract_text(data: dict) -> str:
-        text = data.get("transcription", "")
+    def _extract_chunk_text(chunk_data: dict) -> str:
+        text = chunk_data.get("transcription", "")
         if isinstance(text, list):
             # processor.decode()の戻り値がリスト形状の場合に備えた後方互換(結合する)。
             text = "".join(text)
@@ -196,7 +231,8 @@ class NemotronSubprocessEngine(TranscriptionEngine):
     def transcribe(self, audio_path: str, **kwargs) -> TranscriptionResult:
         """Nemotron-3.5-ASR-Streaming で文字起こし(隔離venvサブプロセス経由)。
 
-        音声長が`CHUNK_THRESHOLD_SEC`を超える場合は自動的に分割して処理する。
+        音声長が`CHUNK_THRESHOLD_SEC`を超える場合は自動的にチャンク分割するが、
+        サブプロセスの起動・モデルロードは常に1回のみ(tc-ops #548是正)。
         """
         self.validate_audio_file(audio_path)
 
@@ -215,57 +251,77 @@ class NemotronSubprocessEngine(TranscriptionEngine):
         device_arg = self.config.device or "auto"
 
         boundaries = compute_chunk_boundaries(duration_sec)
+        chunked = len(boundaries) > 1
 
-        if len(boundaries) == 1:
-            # 短音声: 分割せずそのまま処理(既存の単一チャンク時と完全に同じ挙動・
-            # 同じsubprocess呼び出し引数を保つ。異常時は直接RuntimeErrorを伝播する)。
-            data = self._invoke_subprocess(audio_path, duration_sec, lang_code, device_arg)
-            text = self._extract_text(data)
-            result_duration = data.get("audio_duration_sec", duration_sec)
-            infer_elapsed_sec: Optional[float] = data.get("infer_elapsed_sec")
-        else:
+        if chunked:
             self.logger.info(
                 f"Audio is {duration_sec:.0f}s (>{CHUNK_THRESHOLD_SEC}s), "
-                f"splitting into {len(boundaries)} chunks for Nemotron subprocess processing"
+                f"splitting into {len(boundaries)} chunks (single subprocess/model load)"
             )
-            texts: list[str] = []
-            failed_chunks = 0
-            infer_elapsed_total = 0.0
-            for i, (chunk_start, chunk_end) in enumerate(boundaries):
-                chunk_path = self._extract_chunk_wav(audio_path, chunk_start, chunk_end)
-                try:
-                    data = self._invoke_subprocess(
-                        chunk_path, chunk_end - chunk_start, lang_code, device_arg
-                    )
-                    chunk_text = self._extract_text(data)
-                    texts.append(chunk_text)
-                    infer_elapsed_total += data.get("infer_elapsed_sec") or 0.0
-                    self.logger.info(f"Chunk {i + 1}/{len(boundaries)} done")
-                except RuntimeError as e:
-                    failed_chunks += 1
-                    self.logger.warning(f"Chunk {i + 1}/{len(boundaries)} failed: {e}, inserting placeholder")
-                    # プレースホルダは前後で改行を強制(自然文ではないため)。
-                    # 既存Qwen3ASREngineと同じUXパターン(欠落箇所をユーザーが気づけるようにする)。
-                    texts.append(f"\n[チャンク{i + 1}失敗]\n")
-                finally:
-                    Path(chunk_path).unlink(missing_ok=True)
+            chunk_paths = [
+                self._extract_chunk_wav(audio_path, s, e) for s, e in boundaries
+            ]
+        else:
+            # 短音声: 分割不要。元ファイルをそのまま渡す(一時ファイル切り出し不要)。
+            chunk_paths = [audio_path]
 
-            if failed_chunks > 0:
-                self.logger.warning(
-                    f"Long audio transcription completed with {failed_chunks}/{len(boundaries)} failed chunks"
-                )
-
-            # チャンク境界がちょうど単語直後で切れた場合の結合防止(既存Qwen3ASREngine
-            # と同じ半角スペース区切り、L810台のbugfixパターンを踏襲)。
-            text = " ".join(texts)
-            result_duration = duration_sec
-            infer_elapsed_sec = infer_elapsed_total
+        try:
+            data = self._invoke_subprocess(chunk_paths, duration_sec, lang_code, device_arg)
+        finally:
+            if chunked:
+                for p in chunk_paths:
+                    Path(p).unlink(missing_ok=True)
 
         processing_time = self.perf_logger.end_timing(op_name)
 
+        chunk_results = data.get("chunks", [])
+        texts: list[str] = []
+        failed_chunks = 0
+        empty_chunks = 0
+        infer_elapsed_total = 0.0
+        for i, chunk_data in enumerate(chunk_results):
+            if "error" in chunk_data:
+                failed_chunks += 1
+                self.logger.warning(
+                    f"Chunk {i + 1}/{len(chunk_results)} failed: {chunk_data['error']}, inserting placeholder"
+                )
+                # プレースホルダは前後で改行を強制(自然文ではないため)。
+                # 既存Qwen3ASREngineと同じUXパターン(欠落箇所をユーザーが気づけるようにする)。
+                texts.append(f"\n[チャンク{i + 1}失敗]\n")
+            else:
+                chunk_text = self._extract_chunk_text(chunk_data)
+                if not chunk_text:
+                    # モデルが例外を出さず正常終了したまま空文字列を返すケース
+                    # (長い無音区間等、tc-ops #546是正で実機確認した事象)。
+                    # failed_chunks(異常終了)とは別枠で記録する(計指示)。
+                    # プレースホルダは挿入しない(空文字列を返すこと自体は正常応答の
+                    # 一種であり、失敗とは断定できないため)。
+                    empty_chunks += 1
+                    self.logger.warning(
+                        f"Chunk {i + 1}/{len(chunk_results)} returned an empty transcription "
+                        "(possible long silence or isolated short segment)"
+                    )
+                texts.append(chunk_text)
+                infer_elapsed_total += chunk_data.get("infer_elapsed_sec") or 0.0
+
+        if failed_chunks > 0:
+            self.logger.warning(
+                f"Transcription completed with {failed_chunks}/{len(chunk_results)} failed chunks"
+            )
+        if empty_chunks > 0:
+            self.logger.warning(
+                f"Transcription completed with {empty_chunks}/{len(chunk_results)} chunks "
+                "returning empty transcription"
+            )
+
+        # チャンク境界がちょうど単語直後で切れた場合の結合防止(既存Qwen3ASREngine
+        # と同じ半角スペース区切り、L810台のbugfixパターンを踏襲)。単一チャンクの
+        # 場合はtexts長が1のため実質的に結合の影響はない。
+        text = " ".join(texts)
+
         segment = TranscriptionSegment(
             start=0.0,
-            end=result_duration,
+            end=duration_sec,
             text=text,
             speaker=None,
             confidence=None,
@@ -278,14 +334,17 @@ class NemotronSubprocessEngine(TranscriptionEngine):
             text=text,
             segments=[segment],
             language=self.config.language or "ja",
-            duration=result_duration,
+            duration=duration_sec,
             processing_time=processing_time or (time.time() - start_time),
             model_name=self.config.model,
             has_speakers=False,
             metadata={
                 "engine": "nemotron-subprocess",
-                "infer_elapsed_sec": infer_elapsed_sec,
-                "chunked": len(boundaries) > 1,
+                "infer_elapsed_sec": infer_elapsed_total,
+                "load_elapsed_sec": data.get("load_elapsed_sec"),
+                "chunked": chunked,
                 "chunk_count": len(boundaries),
+                "failed_chunks": failed_chunks,
+                "empty_chunks": empty_chunks,
             },
         )

@@ -57,25 +57,43 @@ class TestComputeChunkBoundaries:
 
         assert compute_chunk_boundaries(299) == [(0.0, 299)]
 
-    def test_328_seconds_splits_into_two_equal_chunks(self):
-        """計指示の具体例: 328秒→164秒×2の均等分割(短い末尾チャンクは生じない)。"""
-        from core.nemotron_engine import compute_chunk_boundaries
+    def test_328_seconds_stays_single_chunk_under_new_threshold(self):
+        """tc-ops #546是正(分割最終手段化、2026-09-27): 基準音声と同じ328秒は、
+        新閾値(350秒)の下では分割されないこと。
 
-        boundaries = compute_chunk_boundaries(328)
-        assert boundaries == [(0.0, 164.0), (164.0, 328)]
-        # 2チャンクとも同じ長さ(164秒)であること
-        assert boundaries[0][1] - boundaries[0][0] == pytest.approx(164.0)
-        assert boundaries[1][1] - boundaries[1][0] == pytest.approx(164.0)
+        旧閾値(300秒)の下では328秒は164秒×2に分割されていたが、モデルの
+        アーキテクチャ上のハード上限(config.max_position_embeddings=5000、
+        実測で400秒がエラー境界)が判明し、采決定によりCHUNK_THRESHOLD_SECを
+        350秒へ引き上げた。328秒は350秒以下のため分割不要となり、旧実装が
+        引き起こしていた後半チャンクの文脈喪失(#78、分割なし#71比で類似度0.897)
+        が原理的に発生しなくなったことをこのテストで保証する。"""
+        from core.nemotron_engine import compute_chunk_boundaries, CHUNK_THRESHOLD_SEC
 
-    def test_620_seconds_splits_into_three_equal_chunks(self):
-        """計指示の具体例: 620秒→約206.67秒×3の均等分割。"""
-        from core.nemotron_engine import compute_chunk_boundaries
+        assert CHUNK_THRESHOLD_SEC == 350
+        assert compute_chunk_boundaries(328) == [(0.0, 328)]
 
-        boundaries = compute_chunk_boundaries(620)
+    def test_two_chunk_threshold_example_splits_into_two_equal_chunks(self):
+        """閾値を明確に超える音声(閾値×2+1秒)は2チャンクへ均等分割されること
+        (閾値の具体値に依存しない、CHUNK_THRESHOLD_SECを動的に参照した検証)。"""
+        from core.nemotron_engine import compute_chunk_boundaries, CHUNK_THRESHOLD_SEC
+
+        duration = CHUNK_THRESHOLD_SEC + 1  # 閾値をわずかに超える(ceil(duration/閾値)=2)
+        boundaries = compute_chunk_boundaries(duration)
+        assert len(boundaries) == 2
+        expected_len = duration / 2
+        for s, e in boundaries:
+            assert (e - s) == pytest.approx(expected_len)
+
+    def test_three_chunk_threshold_example_splits_into_three_equal_chunks(self):
+        """閾値の2倍を超え3倍以下の音声は3チャンクへ均等分割されること。"""
+        from core.nemotron_engine import compute_chunk_boundaries, CHUNK_THRESHOLD_SEC
+
+        duration = CHUNK_THRESHOLD_SEC * 2 + 20  # 2倍を超える(ceil(duration/閾値)=3)
+        boundaries = compute_chunk_boundaries(duration)
         assert len(boundaries) == 3
         lengths = [e - s for s, e in boundaries]
         for length in lengths:
-            assert length == pytest.approx(620 / 3, abs=0.01)
+            assert length == pytest.approx(duration / 3, abs=0.01)
 
     def test_no_chunk_exceeds_threshold_after_equal_division(self):
         """均等分割後もチャンク最大長がCHUNK_THRESHOLD_SEC以下であること
@@ -135,6 +153,12 @@ class TestTranscribeChunking:
         )
         engine = NemotronSubprocessEngine(config)
         monkeypatch.setattr(engine, "_get_audio_duration", lambda audio_path: fake_duration)
+        # 無音区間調整は実際の音声ファイル(SAMPLE_AUDIO、1秒)を読み込むため、
+        # fake_durationとの不整合を避けチャンク分割フローのテストを音声I/Oから
+        # 完全に分離するため、恒等関数(均等分割点をそのまま返す)に差し替える。
+        # 無音区間調整自体の単体テストはTestFindSilenceBoundary/
+        # TestAdjustBoundariesToSilenceで別途行う。
+        monkeypatch.setattr(nemotron_engine_module, "adjust_boundaries_to_silence", lambda boundaries, audio_path: boundaries)
         return engine
 
     def test_short_audio_does_not_chunk_passes_single_path_list(self, monkeypatch):
@@ -168,7 +192,10 @@ class TestTranscribeChunking:
         常に1回(単一モデルロード、tc-ops #548是正)。全チャンクのパスが一度に渡され、
         結果は半角スペースで結合されること(既存Qwen3ASREngineと同じ境界の
         単語結合防止パターン)。"""
-        engine = self._make_engine(monkeypatch, fake_duration=650.0)
+        from core.nemotron_engine import CHUNK_THRESHOLD_SEC
+
+        fake_duration = CHUNK_THRESHOLD_SEC * 2 + 50  # ceil(duration/閾値)=3本になる長さ
+        engine = self._make_engine(monkeypatch, fake_duration=fake_duration)
 
         extracted_ranges = []
 
@@ -195,14 +222,14 @@ class TestTranscribeChunking:
 
         result = engine.transcribe(SAMPLE_AUDIO)
 
-        # 均等分割(tc-ops #546是正): 650秒はceil(650/300)=3本に均等分割される
-        # (300+300+50の不均等分割ではない)。
-        expected_chunk_len = 650.0 / 3
+        # 均等分割(tc-ops #546是正): CHUNK_THRESHOLD_SEC*2+50はceil(.../閾値)=3本に
+        # 均等分割される(閾値+閾値+端数、の不均等分割ではない)。
+        expected_chunk_len = fake_duration / 3
         assert len(extracted_ranges) == 3
         for i, (s, e) in enumerate(extracted_ranges):
             assert s == pytest.approx(i * expected_chunk_len, abs=0.01)
             assert (e - s) == pytest.approx(expected_chunk_len, abs=0.01)
-        assert extracted_ranges[-1][1] == 650.0
+        assert extracted_ranges[-1][1] == pytest.approx(fake_duration)
         assert len(call_log) == 1  # サブプロセス起動(=モデルロード)は常に1回
         assert call_log[0] == [
             "/tmp/fake_chunk_1.wav", "/tmp/fake_chunk_2.wav", "/tmp/fake_chunk_3.wav",
@@ -212,54 +239,39 @@ class TestTranscribeChunking:
         assert result.metadata["chunk_count"] == 3
         assert result.metadata["infer_elapsed_sec"] == pytest.approx(3.0)
 
-    def test_328s_equal_division_both_chunk_results_are_included(self, monkeypatch):
-        """328秒(計指示の実機検証と同一長)は164秒×2に均等分割され(短い末尾
-        チャンクは生じない)、両チャンクの結果が結合後のテキストに含まれること
-        を検証する。
+    def test_328s_baseline_audio_stays_single_chunk_no_context_loss(self, monkeypatch):
+        """328秒(基準音声#71・#75-78と同一長)は、新閾値(350秒)の下では分割
+        されず単一チャンクとして処理されること。
 
         tc-ops #546で「末尾チャンクの結果が最終テキストに含まれない」という報告
-        (#75・#76、940字)があった。実機検証(作、実GPU)により、原因は結合処理の
-        バグではなく、当時の固定長分割方式(300秒+28秒)で生じた**短い末尾チャンクを
-        前方文脈なしで単体推論すると空文字列が返る**Nemotron側の挙動であることを
-        特定した(完了報告書D節に詳細記載)。均等分割方式への変更によりこの短い
-        末尾チャンク自体が生じなくなるため、本テストはその前提(164秒×2に分割され、
-        両チャンクとも中身のあるテキストが結合されること)を自動テスト化する。"""
+        (#75・#76、940字)があった。実機検証(作、実GPU)により、原因はNemotronの
+        短い孤立チャンクでの空応答挙動と特定したが、その後の均等分割方式(164秒×2)
+        でも別の品質劣化(#78、分割なし#71比で類似度0.897、後半チャンクの文脈喪失)
+        が判明し、采決定によりCHUNK_THRESHOLD_SECを350秒へ引き上げた
+        (完了報告書D節に詳細記載)。328秒は350秒以下のため、本是正後は分割自体が
+        発生せず、後半チャンクの文脈喪失が原理的に起こらないことを保証する。"""
         engine = self._make_engine(monkeypatch, fake_duration=328.0)
 
-        def _fake_extract(audio_path, start_sec, end_sec):
-            return f"/tmp/fake_chunk_{start_sec:.0f}_{end_sec:.0f}.wav"
-
-        extracted_ranges = []
-
-        def _fake_extract_tracking(audio_path, start_sec, end_sec):
-            extracted_ranges.append((start_sec, end_sec))
-            return _fake_extract(audio_path, start_sec, end_sec)
+        call_log = []
 
         def _fake_invoke(audio_paths, total_duration_sec, lang_code, device_arg):
-            assert len(audio_paths) == 2
+            call_log.append(list(audio_paths))
             return {
-                "chunks": [
-                    {"transcription": "チャンク1(164秒分)のテキスト", "infer_elapsed_sec": 4.5},
-                    {"transcription": "チャンク2(164秒分)のテキスト", "infer_elapsed_sec": 4.5},
-                ],
+                "chunks": [{"transcription": "分割なしの全文テキスト", "infer_elapsed_sec": 9.0}],
                 "load_elapsed_sec": 5.02,
             }
 
-        monkeypatch.setattr(engine, "_extract_chunk_wav", staticmethod(_fake_extract_tracking))
         monkeypatch.setattr(engine, "_invoke_subprocess", _fake_invoke)
-        monkeypatch.setattr(Path, "unlink", lambda self, missing_ok=False: None)
 
         result = engine.transcribe(SAMPLE_AUDIO)
 
-        # 短い末尾チャンク(旧300秒+28秒)ではなく164秒×2の均等分割であること
-        assert extracted_ranges == [(0.0, 164.0), (164.0, 328.0)]
-        assert "チャンク1(164秒分)のテキスト" in result.text
-        assert "チャンク2(164秒分)のテキスト" in result.text, (
-            "末尾チャンクの結果が結合後のテキストから欠落している"
-        )
+        assert len(call_log) == 1
+        assert call_log[0] == [SAMPLE_AUDIO]  # チャンク抽出を経由せず元ファイルをそのまま渡す
+        assert result.text == "分割なしの全文テキスト"
+        assert result.metadata["chunked"] is False
+        assert result.metadata["chunk_count"] == 1
         assert result.metadata["failed_chunks"] == 0
         assert result.metadata["empty_chunks"] == 0
-        assert result.metadata["chunk_count"] == 2
 
     def test_empty_chunk_transcription_logged_separately_from_failed(self, monkeypatch):
         """途中のチャンクがエラーにならず正常終了のまま空文字列を返すケース
@@ -322,3 +334,130 @@ class TestTranscribeChunking:
         assert "[チャンク2失敗]" in result.text
         assert "チャンク3" in result.text
         assert result.metadata["failed_chunks"] == 1
+
+
+class TestFindSilenceBoundary:
+    """`find_silence_boundary()`の純粋関数としての検証(GPU不要、ダミーnumpy配列使用)。
+    tc-ops #546是正(分割最終手段化、2026-09-27、采の具体的指示による実装)。"""
+
+    def _make_audio_with_quiet_span(self, duration_sec, sr, quiet_start_sec, quiet_end_sec, seed=0):
+        import numpy as np
+
+        rng = np.random.default_rng(seed)
+        n = int(duration_sec * sr)
+        audio = (rng.standard_normal(n) * 0.1).astype(np.float32)
+        q0 = int(quiet_start_sec * sr)
+        q1 = int(quiet_end_sec * sr)
+        audio[q0:q1] = 0.0
+        return audio
+
+    def test_finds_quiet_span_within_search_radius(self):
+        """target_secの近傍に明確な無音区間があれば、その位置を返すこと。"""
+        from core.nemotron_engine import find_silence_boundary
+
+        sr = 16000
+        audio = self._make_audio_with_quiet_span(100.0, sr, quiet_start_sec=45.0, quiet_end_sec=48.0)
+
+        result = find_silence_boundary(audio, sr, target_sec=50.0, total_duration_sec=100.0, search_radius_sec=20.0)
+
+        assert 45.0 <= result <= 48.0, f"無音区間(45〜48秒)内の位置が返らなかった: {result}"
+
+    def test_falls_back_to_target_when_search_window_too_small(self):
+        """探索窓が音声端に近く実効的に狭すぎる場合、target_secへフォールバックすること。"""
+        import numpy as np
+        from core.nemotron_engine import find_silence_boundary
+
+        sr = 16000
+        audio = (np.random.default_rng(1).standard_normal(int(0.05 * sr))).astype(np.float32)  # 50ms
+
+        result = find_silence_boundary(audio, sr, target_sec=0.02, total_duration_sec=0.05, search_radius_sec=20.0)
+
+        assert result == 0.02
+
+    def test_search_window_clamped_to_audio_bounds(self):
+        """探索窓が音声の始端・終端を越える場合、実際の音声範囲内にクランプされること
+        (返り値が音声長を超えたり負になったりしない)。"""
+        from core.nemotron_engine import find_silence_boundary
+
+        sr = 16000
+        audio = self._make_audio_with_quiet_span(30.0, sr, quiet_start_sec=25.0, quiet_end_sec=28.0)
+
+        # target=28秒、search_radius=20秒 -> 素朴には8〜48秒だが、音声は30秒までしかない
+        result = find_silence_boundary(audio, sr, target_sec=28.0, total_duration_sec=30.0, search_radius_sec=20.0)
+
+        assert 0.0 <= result <= 30.0
+
+
+class TestAdjustBoundariesToSilence:
+    """`adjust_boundaries_to_silence()`の検証。実ファイルI/O(librosa.load)を伴うため、
+    最小限の実wavファイル(GPU不要、音声デコードのみ)を一時生成して検証する。"""
+
+    def _write_test_wav(self, tmp_path, duration_sec=100.0, sr=16000, quiet_start_sec=45.0, quiet_end_sec=48.0):
+        import numpy as np
+        import soundfile as sf
+
+        rng = np.random.default_rng(0)
+        n = int(duration_sec * sr)
+        audio = (rng.standard_normal(n) * 0.1).astype(np.float32)
+        audio[int(quiet_start_sec * sr):int(quiet_end_sec * sr)] = 0.0
+        path = tmp_path / "test_silence.wav"
+        sf.write(str(path), audio, sr)
+        return str(path)
+
+    def test_single_chunk_passthrough_without_audio_io(self, tmp_path, monkeypatch):
+        """境界が1件(分割不要)の場合は音声ファイルを読み込まず、そのまま返すこと。"""
+        from core.nemotron_engine import adjust_boundaries_to_silence
+
+        # librosa.loadが呼ばれたら失敗させ、実際に読み込みが発生していないことを保証する。
+        import librosa
+
+        def _fail_if_called(*args, **kwargs):
+            raise AssertionError("分割不要な場合はlibrosa.loadを呼んではならない")
+
+        monkeypatch.setattr(librosa, "load", _fail_if_called)
+
+        boundaries = [(0.0, 100.0)]
+        result = adjust_boundaries_to_silence(boundaries, "/nonexistent/path.wav")
+
+        assert result == boundaries
+
+    def test_internal_boundary_adjusted_to_silence(self, tmp_path):
+        """内部境界(チャンク間の分割点)が、その近傍の無音区間へ実際に寄せられること。
+        先頭(0.0)・末尾(全体長)は変更されないこと。"""
+        from core.nemotron_engine import adjust_boundaries_to_silence
+
+        wav_path = self._write_test_wav(tmp_path, duration_sec=100.0, quiet_start_sec=45.0, quiet_end_sec=48.0)
+
+        # 均等分割点が50秒(無音区間の少し先)になるよう2チャンクの境界を用意する。
+        boundaries = [(0.0, 50.0), (50.0, 100.0)]
+        adjusted = adjust_boundaries_to_silence(boundaries, wav_path)
+
+        assert adjusted[0][0] == 0.0
+        assert adjusted[-1][1] == 100.0
+        internal_point = adjusted[0][1]
+        assert 45.0 <= internal_point <= 48.0, (
+            f"内部境界が無音区間(45〜48秒)へ寄せられなかった: {internal_point}"
+        )
+        assert adjusted[0][1] == adjusted[1][0]  # 連続性が保たれていること
+
+    def test_no_silence_found_falls_back_to_equal_division(self, tmp_path):
+        """近傍に無音区間が無い場合、均等分割点のままフォールバックすること
+        (一様乱数ノイズのみの音声、無音区間なし)。"""
+        import numpy as np
+        import soundfile as sf
+        from core.nemotron_engine import adjust_boundaries_to_silence
+
+        sr = 16000
+        rng = np.random.default_rng(2)
+        audio = (rng.standard_normal(int(100.0 * sr)) * 0.5 + 0.5).astype(np.float32)  # 無音区間なし、常に大振幅
+        path = tmp_path / "no_silence.wav"
+        sf.write(str(path), np.clip(audio, -1.0, 1.0), sr)
+
+        boundaries = [(0.0, 50.0), (50.0, 100.0)]
+        adjusted = adjust_boundaries_to_silence(boundaries, str(path))
+
+        # 無音区間が無くても、探索窓内で最小RMSの点へは寄る(クラッシュしないこと)。
+        # 先頭・末尾は不変であること、境界の連続性が保たれることのみを保証する。
+        assert adjusted[0][0] == 0.0
+        assert adjusted[-1][1] == 100.0
+        assert adjusted[0][1] == adjusted[1][0]

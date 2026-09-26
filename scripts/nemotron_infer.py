@@ -116,6 +116,12 @@ def main() -> int:
         device_map = resolve_device_map(args.device)
         result["device_map"] = device_map
 
+        cuda_available = torch.cuda.is_available()
+        if cuda_available:
+            # tc-ops #546「分割最終手段化」のGPU実測用: プロセス内でのピークVRAM
+            # (torch起因分)を正確に取るため、モデルロード前に統計をリセットする。
+            torch.cuda.reset_peak_memory_stats()
+
         _log(f"Loading model: {model_id} (device_map={device_map})")
         t0 = time.time()
         processor = AutoProcessor.from_pretrained(model_id)
@@ -166,6 +172,14 @@ def main() -> int:
 
         del model
         torch.cuda.empty_cache()
+
+        if cuda_available:
+            # torch起因の確保量のピーク(allocated=実使用、reserved=キャッシュアロケータ
+            # 込みの確保量。reservedの方が実際のプロセス占有量に近い)。
+            # nvidia-smi実測(プロセス全体、CUDAコンテキスト等のオーバーヘッド込み)と
+            # 併用することで、両者の差からオーバーヘッド分を把握できる。
+            result["peak_vram_allocated_mib"] = torch.cuda.max_memory_allocated() / (1024 * 1024)
+            result["peak_vram_reserved_mib"] = torch.cuda.max_memory_reserved() / (1024 * 1024)
 
         result["chunks"] = chunks
 

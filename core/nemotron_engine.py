@@ -58,10 +58,25 @@ _TIMEOUT_MULTIPLIER = 3.0
 _TIMEOUT_FIXED_OVERHEAD_SEC = 30.0
 _TIMEOUT_MIN_SEC = 60.0
 
-# 長音声を分割する閾値(秒)。既存Qwen3ASREngine(`core/transcription_interface.py`
-# L596)の実績値(RTX 4080 SUPER + torch 2.11.0+cu130環境で15分超のCUBLASエラー
-# 実例に基づく安全マージン)を暫定的に踏襲する(Phase2設計report §5)。
-CHUNK_THRESHOLD_SEC = 300
+# 長音声を分割する閾値(秒)。tc-ops #546「分割最終手段化」是正(2026-09-27)で
+# 実機GPU実測に基づき確定した値。
+#
+# 当初はVRAM制約のみを前提に「5〜30分は原則分割しない」を目指したが、実測により
+# Nemotron本体にVRAMとは無関係の**アーキテクチャ上のハード上限**が存在することが
+# 判明した: `config.max_position_embeddings=5000`(サブサンプル後のエンコーダ
+# フレーム数の上限)。実測で400秒の音声はエンコーダ系列長5001となり
+# `ValueError: Sequence Length: 5001 has to be less or equal than
+# config.max_position_embeddings 5000.`で確実に失敗する(600秒では系列長7501で
+# 同様に失敗)。さらに380秒(RTF 0.043、正常)→399秒(RTF 0.25、6倍近い劣化だが
+# 正常終了)という実測から、上限(400秒)に近づくほど推論が急激に不安定化する
+# 傾向も確認した。VRAM自体は5分時点でpeak_vram_reserved約7.3GB(空き12GB弱に
+# 対し余裕あり)であり、この劣化・失敗はVRAM不足によるものではない。
+#
+# 采決定(2026-09-27)により、380秒の劣化の兆候を踏まえた安全マージンを見て
+# 350秒を新閾値とする(境界400秒から50秒の安全マージン)。「分割は最後の手段」
+# という方針自体は維持するが、「5〜30分は原則無分割」という当初目標は撤回し、
+# 350秒(約5.8分)を安全な無分割上限とする。
+CHUNK_THRESHOLD_SEC = 350
 
 
 def is_nemotron_model(model_name: str) -> bool:
@@ -123,6 +138,97 @@ def compute_chunk_boundaries(
         boundaries.append((start, end))
         start = end
     return boundaries
+
+
+# 分割点の無音区間への寄せ(tc-ops #546是正、2026-09-27、采の具体的指示による実装)。
+#
+# 均等分割点がちょうど発話の途中に当たると、チャンク境界で語が途切れる可能性がある
+# (tc-ops #546 D節で確認した「短い孤立チャンクの空応答」問題とは別種の、通常の
+# チャンク境界での品質劣化リスク)。分割点そのものを、均等分割点の前後
+# ±20秒(`SILENCE_SEARCH_RADIUS_SEC`)の範囲内で最も音量の小さい(＝発話が途切れて
+# いる可能性が高い)位置へ寄せることで、境界が発話の真ん中に当たる確率を下げる。
+SILENCE_SEARCH_RADIUS_SEC = 20.0
+_SILENCE_RMS_FRAME_SEC = 0.2
+
+
+def find_silence_boundary(
+    audio: "np.ndarray",
+    sr: int,
+    target_sec: float,
+    total_duration_sec: float,
+    search_radius_sec: float = SILENCE_SEARCH_RADIUS_SEC,
+) -> float:
+    """`target_sec`の前後`search_radius_sec`秒以内で、最もRMS音量が小さい時刻を返す。
+
+    探索窓が音声の範囲外にはみ出す場合はクランプする。探索窓の実効長が短すぎて
+    RMSフレームを1つも作れない場合は、`target_sec`をそのまま返す(＝均等分割点への
+    フォールバック。呼び出し元は本関数の戻り値をそのまま分割点として使えばよく、
+    フォールバック時の分岐を別途持つ必要はない)。
+
+    モデル推論・サブプロセスを一切呼び出さない純粋関数のため、GPU不要で
+    単体テスト可能(`audio`にはダミーのnumpy配列を渡せばよい)。
+    """
+    import numpy as np
+
+    search_start = max(0.0, target_sec - search_radius_sec)
+    search_end = min(total_duration_sec, target_sec + search_radius_sec)
+    if search_end <= search_start:
+        return target_sec
+
+    frame_length = max(1, int(_SILENCE_RMS_FRAME_SEC * sr))
+    hop_length = max(1, frame_length // 2)
+
+    start_sample = int(search_start * sr)
+    end_sample = int(search_end * sr)
+    segment = audio[start_sample:end_sample]
+    if len(segment) < frame_length:
+        return target_sec
+
+    try:
+        import librosa
+        rms = librosa.feature.rms(y=segment, frame_length=frame_length, hop_length=hop_length)[0]
+    except Exception:
+        # librosa側の予期しない失敗時も、均等分割点へのフォールバックで処理を継続する。
+        return target_sec
+
+    if len(rms) == 0:
+        return target_sec
+
+    quietest_frame_idx = int(np.argmin(rms))
+    quietest_sample_offset = quietest_frame_idx * hop_length
+    return search_start + quietest_sample_offset / sr
+
+
+def adjust_boundaries_to_silence(
+    boundaries: list[tuple[float, float]],
+    audio_path: str,
+    search_radius_sec: float = SILENCE_SEARCH_RADIUS_SEC,
+) -> list[tuple[float, float]]:
+    """均等分割済みの`boundaries`の内部境界(先頭の0.0・末尾の全体長を除く、
+    チャンク間の分割点)を、`find_silence_boundary()`で最寄りの無音区間へ調整する。
+
+    `boundaries`が1件(分割不要)の場合はそのまま返す(音声ファイルを読み込まない)。
+    無音区間が見つからない場合、`find_silence_boundary()`が均等分割点をそのまま
+    返すため、本関数も自動的に既存の均等分割へフォールバックする。
+    """
+    if len(boundaries) <= 1:
+        return boundaries
+
+    import librosa
+
+    audio, sr = librosa.load(str(audio_path), sr=16000, mono=True)
+    total_duration_sec = len(audio) / sr
+
+    adjusted_points = [boundaries[0][0]]  # 先頭は0.0で固定
+    for i in range(len(boundaries) - 1):
+        original_split = boundaries[i][1]
+        new_split = find_silence_boundary(audio, sr, original_split, total_duration_sec, search_radius_sec)
+        # 直前の調整済み分割点を下回らないようにクランプする(境界の逆転・消失防止)。
+        new_split = max(new_split, adjusted_points[-1])
+        adjusted_points.append(new_split)
+    adjusted_points.append(boundaries[-1][1])  # 末尾は全体長で固定
+
+    return [(adjusted_points[i], adjusted_points[i + 1]) for i in range(len(adjusted_points) - 1)]
 
 
 class NemotronSubprocessEngine(TranscriptionEngine):
@@ -254,9 +360,12 @@ class NemotronSubprocessEngine(TranscriptionEngine):
         chunked = len(boundaries) > 1
 
         if chunked:
+            # 分割点を均等分割点の前後±20秒の範囲で最も静かな位置へ寄せる(采指示)。
+            # 無音区間が見つからない場合は自動的に均等分割点へフォールバックする。
+            boundaries = adjust_boundaries_to_silence(boundaries, audio_path)
             self.logger.info(
                 f"Audio is {duration_sec:.0f}s (>{CHUNK_THRESHOLD_SEC}s), "
-                f"splitting into {len(boundaries)} chunks (single subprocess/model load)"
+                f"splitting into {len(boundaries)} chunks (silence-adjusted, single subprocess/model load)"
             )
             chunk_paths = [
                 self._extract_chunk_wav(audio_path, s, e) for s, e in boundaries

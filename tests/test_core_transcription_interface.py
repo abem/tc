@@ -31,13 +31,22 @@ def _make_engine():
 
 
 class TestDetectRepetition:
-    """(a) 反復検出関数が実障害テキストを実際に検知することの検証。"""
+    """(a) 反復検出関数が実障害テキストを実際に検知することの検証。
+
+    tc-ops #547是正(2026-09-27、(c)反復部分のみ除去)により、戻り値が
+    `bool`から`(bool, 反復開始位置の文字インデックスまたはNone)`へ拡張された。
+    """
 
     def test_detects_real_incident_text(self):
         from core.transcription_interface import Qwen3ASREngine
 
         incident_text = FIXTURE_PATH.read_text(encoding="utf-8")
-        assert Qwen3ASREngine._detect_repetition(incident_text) is True
+        is_repeated, position = Qwen3ASREngine._detect_repetition(incident_text)
+        assert is_repeated is True
+        assert position is not None
+        # 反復開始位置以前が「正常な発話」であることの検証((c)の前提)。
+        normal_prefix_len = incident_text.index("アジェンツ、")
+        assert 0 < position <= normal_prefix_len
 
     def test_detects_incident_tail_only(self):
         """反復サイクルが始まった以降の断片だけでも検知できることを確認。"""
@@ -45,7 +54,9 @@ class TestDetectRepetition:
 
         incident_text = FIXTURE_PATH.read_text(encoding="utf-8")
         tail = incident_text[incident_text.index("アジェンツ、"):]
-        assert Qwen3ASREngine._detect_repetition(tail) is True
+        is_repeated, position = Qwen3ASREngine._detect_repetition(tail)
+        assert is_repeated is True
+        assert position is not None
 
     def test_normal_text_not_flagged(self):
         """通常の(反復のない)文章は誤検知しないことを確認。"""
@@ -53,7 +64,7 @@ class TestDetectRepetition:
 
         incident_text = FIXTURE_PATH.read_text(encoding="utf-8")
         normal_prefix = incident_text[: incident_text.index("アジェンツ、")]
-        assert Qwen3ASREngine._detect_repetition(normal_prefix) is False
+        assert Qwen3ASREngine._detect_repetition(normal_prefix) == (False, None)
 
     def test_short_phrase_repetition_detected(self):
         """短い相槌等の1〜2回程度の自然な繰り返しは誤検知しない一方、
@@ -61,15 +72,17 @@ class TestDetectRepetition:
         from core.transcription_interface import Qwen3ASREngine
 
         natural = "はい、はい、そうですね。分かりました。"
-        assert Qwen3ASREngine._detect_repetition(natural) is False
+        assert Qwen3ASREngine._detect_repetition(natural) == (False, None)
 
         looped = "とても良いです。" * 5
-        assert Qwen3ASREngine._detect_repetition(looped) is True
+        is_repeated, position = Qwen3ASREngine._detect_repetition(looped)
+        assert is_repeated is True
+        assert position == 0  # 冒頭から反復のみで構成されるテキストのため
 
     def test_empty_text_not_flagged(self):
         from core.transcription_interface import Qwen3ASREngine
 
-        assert Qwen3ASREngine._detect_repetition("") is False
+        assert Qwen3ASREngine._detect_repetition("") == (False, None)
 
 
 class TestChunkRetryFallback:
@@ -109,22 +122,46 @@ class TestChunkRetryFallback:
         # 反復テキストの一部(検知対象になった箇所)は破棄され残らないこと
         assert "アジェンツ" not in text
 
-    def test_retry_still_repetitive_inserts_placeholder(self):
-        """1回目・再試行とも反復するケース: プレースホルダに置換され、
-        反復テキストがそのまま結果に残らないこと。"""
+    def test_retry_still_repetitive_falls_back_to_silence_split(self):
+        """1回目・再試行とも反復するが、無音分割(d、tc-ops #547是正・采指示)後の
+        前半/後半はそれぞれ正常に書き起こせるケース: チャンク全体を破棄せず、
+        分割後の内容を保持できることを確認。"""
         incident_text = FIXTURE_PATH.read_text(encoding="utf-8")
+        left_clean = "前半の正常な発話です。"
+        right_clean = "後半の正常な発話です。"
 
         first = SimpleNamespace(text=incident_text, language="Japanese")
         retry = SimpleNamespace(text=incident_text, language="Japanese")
+        left = SimpleNamespace(text=left_clean, language="Japanese")
+        right = SimpleNamespace(text=right_clean, language="Japanese")
 
         engine, text, lang, failed_chunks, repeated_chunks = self._run_with_transcribe_side_effect(
-            [[first], [retry]]
+            [[first], [retry], [left], [right]]
         )
 
-        assert engine._model.transcribe.call_count == 2
+        assert engine._model.transcribe.call_count == 4
         assert repeated_chunks == 1
-        assert "[チャンク1反復検出のため破棄]" in text
+        assert left_clean in text
+        assert right_clean in text
         assert "アジェンツ" not in text
+        assert "[チャンク1反復検出のため破棄]" not in text
+
+    def test_retry_and_both_split_halves_still_repetitive_inserts_placeholders(self):
+        """1回目・再試行、および無音分割(d)後の前半/後半すべてが反復から
+        回復できない最悪ケース: 旧実装のようにチャンク全体を無条件で破棄する
+        のではなく、回復できなかった半分ごとにプレースホルダが挿入されること
+        (反復テキストがそのまま結果に残らないという既存不変条件は維持)。"""
+        looped = "とても良いです。" * 5
+        side_effect = [[SimpleNamespace(text=looped, language="Japanese")]] * 6
+
+        engine, text, lang, failed_chunks, repeated_chunks = self._run_with_transcribe_side_effect(
+            side_effect
+        )
+
+        assert engine._model.transcribe.call_count == 6
+        assert repeated_chunks == 1
+        assert "反復検出のため破棄" in text
+        assert "とても良いです" not in text
 
     def test_no_repetition_no_retry(self):
         """反復が無い正常系では再試行が起きず、transcribe()が1回だけ呼ばれること。"""
@@ -138,6 +175,108 @@ class TestChunkRetryFallback:
         assert engine._model.transcribe.call_count == 1
         assert repeated_chunks == 0
         assert clean_text in text
+
+
+class TestPartialRepetitionRemovalAndSplitFallback:
+    """tc-ops #547是正(2026-09-27、真因未確定のまま采指示で無条件採用)の
+    `_transcribe_chunk_with_fallback()`単体テスト。
+
+    `_transcribe_long_audio()`を介さず`_transcribe_chunk_with_fallback()`を
+    直接呼び出すことで、(c)反復部分のみ除去・(d)無音区間2分割フォールバックの
+    分岐条件(チャンク長・`allow_split`)を`librosa.load`のモック無しで
+    厳密に制御する。
+    """
+
+    def _make_engine_with_side_effect(self, side_effect):
+        engine = _make_engine()
+        engine._model = MagicMock()
+        engine._model.transcribe.side_effect = side_effect
+        return engine
+
+    def test_truncation_keeps_prefix_when_chunk_too_short_to_split(self):
+        """チャンク長が分割最小長(`_MIN_SPLIT_DURATION_SEC`)未満の場合、
+        (d)分割は試みられず、(c)反復開始位置以前の正常テキストが保持されること。"""
+        incident_text = FIXTURE_PATH.read_text(encoding="utf-8")
+        engine = self._make_engine_with_side_effect([
+            [SimpleNamespace(text=incident_text, language="Japanese")],
+            [SimpleNamespace(text=incident_text, language="Japanese")],
+        ])
+        sr = 16000
+        assert engine._MIN_SPLIT_DURATION_SEC > 10.0  # 前提: 10秒チャンクは分割最小長未満
+        chunk_audio = np.zeros(int(sr * 10), dtype=np.float32)  # 10秒 < 分割最小長
+
+        text, was_repeated, lang = engine._transcribe_chunk_with_fallback(
+            chunk_audio, sr, context="", language="Japanese", chunk_label="1", total_chunks=1,
+        )
+
+        assert engine._model.transcribe.call_count == 2  # 分割呼び出しは発生しない
+        assert was_repeated is True
+        assert text.strip() != ""
+        assert "アジェンツ" not in text
+        assert "[チャンク1反復検出のため破棄]" not in text
+
+    def test_truncation_discards_when_no_salvageable_prefix(self):
+        """反復が冒頭(位置0)から始まり残せる正常テキストが無い場合、
+        既存の全体破棄方式(プレースホルダ)を維持すること。"""
+        looped = "とても良いです。" * 5
+        engine = self._make_engine_with_side_effect([
+            [SimpleNamespace(text=looped, language="Japanese")],
+            [SimpleNamespace(text=looped, language="Japanese")],
+        ])
+        sr = 16000
+        chunk_audio = np.zeros(int(sr * 10), dtype=np.float32)
+
+        text, was_repeated, lang = engine._transcribe_chunk_with_fallback(
+            chunk_audio, sr, context="", language="Japanese", chunk_label="1", total_chunks=1,
+        )
+
+        assert engine._model.transcribe.call_count == 2
+        assert was_repeated is True
+        assert text == "\n[チャンク1反復検出のため破棄]\n"
+
+    def test_split_fallback_recurses_once_then_truncates_remaining_half(self):
+        """分割(d)後の片側がなお反復するケース: 再帰は1段のみに限定され
+        (allow_split=Falseで孫分割はしない)、その半分だけ(c)切り詰めが適用され、
+        もう半分の正常な内容は保持されること(全体破棄にはならない)。"""
+        incident_text = FIXTURE_PATH.read_text(encoding="utf-8")
+        right_clean = "後半は正常です。"
+        engine = self._make_engine_with_side_effect([
+            [SimpleNamespace(text=incident_text, language="Japanese")],  # top first
+            [SimpleNamespace(text=incident_text, language="Japanese")],  # top retry
+            [SimpleNamespace(text=incident_text, language="Japanese")],  # left first (still repeats)
+            [SimpleNamespace(text=incident_text, language="Japanese")],  # left retry (still repeats)
+            [SimpleNamespace(text=right_clean, language="Japanese")],     # right first (clean)
+        ])
+        sr = 16000
+        chunk_audio = np.zeros(int(sr * 300), dtype=np.float32)  # 300秒(分割対象)
+
+        text, was_repeated, lang = engine._transcribe_chunk_with_fallback(
+            chunk_audio, sr, context="", language="Japanese", chunk_label="1", total_chunks=1,
+        )
+
+        assert engine._model.transcribe.call_count == 5
+        assert was_repeated is True
+        assert right_clean in text
+        assert "アジェンツ" not in text
+        assert "[チャンク1反復検出のため破棄]" not in text
+
+    def test_no_repetition_single_call_no_fallback(self):
+        """反復が無い正常系では、フォールバック分岐に一切入らずtranscribe()が
+        1回だけ呼ばれること(正常チャンクの処理フロー・実行回数への非影響確認)。"""
+        clean_text = "これは正常な発話です。"
+        engine = self._make_engine_with_side_effect([
+            [SimpleNamespace(text=clean_text, language="Japanese")],
+        ])
+        sr = 16000
+        chunk_audio = np.zeros(int(sr * 300), dtype=np.float32)
+
+        text, was_repeated, lang = engine._transcribe_chunk_with_fallback(
+            chunk_audio, sr, context="", language="Japanese", chunk_label="1", total_chunks=1,
+        )
+
+        assert engine._model.transcribe.call_count == 1
+        assert was_repeated is False
+        assert text == clean_text
 
 
 class TestGenerationConfigWiring:

@@ -8,20 +8,30 @@
 
 承認済みキックオフ計画に基づき実装・単体テスト（GPU不要範囲）を行い、その後kei経由で采承認を得たうえでGPU実測（回帰ゲート4条件）を実施した。着手前にWebUIアイドル状態・GPU使用状況（19%、6196MiB、kei報告のベースラインと一致）を確認済み。
 
-**訂正（査sa品質検査で不合格・是正済み）**: 初版では、streaming経路（`_run_streaming_inference()`/`_build_streaming_chunk_generator()`）が`main()`で解決済みの`language_arg`を一切受け取らず、`processor(...)`呼び出しに`language`を渡していなかった（オフラインバッチ経路は従来から正しく渡していた）。この結果、`--language ja-JP`等を明示指定してもstreaming経路のみ常にNemotronの既定値`"auto"`（自動言語判定）に落ちる設計欠落があった。sa指摘を受け、両関数へ`language`引数を追加し`processor(...)`へ明示的に渡すよう是正した。回帰テスト（`tests/test_core_nemotron_language.py::TestStreamingLanguagePropagation`、2件）を追加し、明示指定（`en-US`）・既定値（`auto`）ともにstreaming経路の`processor(...)`呼び出しへ正しく伝播することを検証した（pytest 182 passed、1 skipped）。
+**訂正1（査sa品質検査で不合格・是正済み）**: 初版では、streaming経路（`_run_streaming_inference()`/`_build_streaming_chunk_generator()`）が`main()`で解決済みの`language_arg`を一切受け取らず、`processor(...)`呼び出しに`language`を渡していなかった（オフラインバッチ経路は従来から正しく渡していた）。この結果、`--language ja-JP`等を明示指定してもstreaming経路のみ常にNemotronの既定値`"auto"`（自動言語判定）に落ちる設計欠落があった。sa指摘を受け、両関数へ`language`引数を追加し`processor(...)`へ明示的に渡すよう是正した。回帰テスト（`tests/test_core_nemotron_language.py::TestStreamingLanguagePropagation`、2件）を追加し、明示指定（`en-US`）・既定値（`auto`）ともにstreaming経路の`processor(...)`呼び出しへ正しく伝播することを検証した（pytest 182 passed、1 skipped）。
 
-**下記「回帰ゲート4条件のGPU実測結果」のうち条件1・3・4は是正前後で変化しない（350秒以下のオフライン経路・pytest・Qwen3回帰は本是正の影響範囲外）。条件2のCER比較は、采指示により`language`対称性（streaming側・分割方式側とも明示的に同一の`"ja-JP"`）を明記のうえ再測定した（下記は再測定後の値）。**
+**下記「回帰ゲート4条件のGPU実測結果」のうち条件1・3・4は両是正の影響範囲外（350秒以下のオフライン経路・pytest・Qwen3回帰）で変化しない。条件2は2回是正・2回再測定しており、最終的に有効なのは直後の「条件2最終再測定」節の値である。**
 
-### 条件2再測定（言語対称性の確認、2026-09-27、采指示）
+**訂正2（査sa品質検査で再度不合格・是正済み、真因）**: 上記「訂正1」の是正（`language`を`processor(...)`へ渡す）を反映して条件2を再測定したところ、CER・文字数が是正前と完全に一致した。sa指摘（`processing_nemotron3_5_asr.py`の`DEFAULT_PROMPT_DICTIONARY`で`"ja-JP"=10`・`"auto"=101`と明確に異なるプロンプトIDに解決されるにもかかわらず、生成結果が完全一致するのは不自然）を受けて調査した結果、真因は別にあることが判明した:
 
-是正前の初回測定はstreaming側が実質`"auto"`で動作しており、分割方式側（明示的に`"ja-JP"`）と非対称な条件だった。是正後、両経路とも`engine._resolve_language()`の同一戻り値（明示的な`"ja-JP"`）を使用して再測定した:
+`processor(...)`が`language`から計算するのは`inputs["prompt_ids"]`（音声非依存、`language`のみで決まる値）だが、**ストリーミング生成の実際のエントリポイント**（`NemotronAsrStreamingGenerationMixin._prepare_encoder_decoder_kwargs_for_generation`）は`decoder_input_ids`を`blank_token_id`へ無条件で初期化しており、各チャンクの`processor(...)`が計算した`prompt_ids`を暗黙に参照することはない。`prompt_ids`を実際に生成へ反映させる唯一の経路は、`Nemotron3_5AsrGenerationMixin.generate()`が**`model.generate()`呼び出し時のトップレベルkwargs**から`kwargs.pop("prompt_ids", None)`で取り出し`get_audio_features()`をラップして注入する経路のみである（オフラインバッチ経路は`model.generate(**inputs, ...)`の`**inputs`展開で`prompt_ids`キーが自動的にトップレベルへ渡っていたため、意識せず正しく動作していた）。訂正1はこの`prompt_ids`をどこにも転送しておらず、実質無効だった。
+
+**是正**: `processor._resolve_prompt_ids(language, 1)`（音声非依存の軽量な内部ヘルパー）で`prompt_ids`を直接計算し、`model.generate(prompt_ids=..., ...)`へ明示的なトップレベル引数として渡すよう修正した（`scripts/nemotron_infer.py`のみの変更）。
+
+**是正の実効性確認（GPU実機、2026-09-27）**: candidate3_20sent.wav（日本語、70.2秒）に対し、streaming経路を強制的に通し`language="ja-JP"`（正しい）と`language="en-US"`（意図的に誤り）を比較した。`ja-JP`では383字の正常な日本語書き起こしが得られた一方、`en-US`では**出力が完全に空文字列（0字）**になった。異なる`prompt_ids`が実際に生成へ反映され、誤った言語プロンプトでは意味のある出力が得られないことを明確に確認した（是正前はこの2条件で出力が完全一致していたはずであり、対照的な結果である）。
+
+回帰テストも全面的に書き換えた: `tests/test_core_nemotron_language.py::TestStreamingLanguagePropagation`は、当初`processor(...)`へ`language`が渡ることのみを確認していたが、それでは真因（`prompt_ids`が`model.generate()`へ届いているか）を検出できないため、`model.generate()`が実際に受け取る`prompt_ids`の値（`auto`=101・`en-US`=0・`ja-JP`=10相当）を直接検証する形へ変更した（pytest 182 passed、1 skipped）。
+
+### 条件2最終再測定（prompt_ids是正後、language対称性確保、2026-09-27）
+
+両経路とも明示的に同一の`"ja-JP"`を使用して再測定した:
 
 | 経路 | lang_code | 文字数 | 正規化CER |
 |---|---|---|---|
-| streaming | ja-JP（明示、伝播確認済み） | 2495（是正前と同一） | **13.49%**（是正前と同一） |
-| 分割方式(旧経路) | ja-JP（明示） | 2536（変化なし） | 13.73%（変化なし） |
+| streaming（prompt_ids是正後） | ja-JP | 2506 | **13.33%** |
+| 分割方式(旧経路、変更なし) | ja-JP | 2536 | 13.73% |
 
-**言語対称性を確保した条件下でも、CER・文字数とも是正前の測定値と完全に一致した。** これは、このJSUT日本語音声では`"auto"`判定でも正しく`"ja-JP"`相当の結果が得られていたことを裏付けるものであり、当初の「streamingが分割方式に劣らない」という結論に変更はない。処理時間はstreaming側で31.9秒（前回27.3秒、run-to-runの変動範囲内）、VRAMは前回と同一（2501.7MiB/2558.0MiB）だった。分割方式は変化なし（11.75秒→12.32秒、VRAM同一）。
+**streamingのCER(13.33%)は分割方式(13.73%)を引き続き下回り、「劣らない」という結論に変更はない。** 値自体は訂正1時点の測定（streaming 13.49%/2495字）から変化しており（是正が実際に生成へ影響するようになったことの追加証拠）、わずかに改善した。処理時間: streaming 39.8秒（推論時間28.7秒、RTF=0.059）、分割方式22.2秒（推論時間合計10.8秒）。VRAM: streaming 2501.7MiB/2558.0MiB、分割方式4853.9MiB/7172.0MiB（いずれも前回測定と同水準）。
 
 ## 実装内容
 

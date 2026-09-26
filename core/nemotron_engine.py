@@ -3,7 +3,7 @@
 生産用 `.venv` には Nemotron が要求する `transformers>=5.13.0` をインストールできない
 (qwen-asr が `transformers<5` を要求するため、生産用`.venv`の`transformers==4.57.6`と
 両立しない。tc-ops #546 予備調査で確認済み)。そのため Nemotron は隔離venv
-(`venv-nemotron-poc/`、`scripts/setup_nemotron_venv.sh` で構築)上のPythonを
+(`venv-nemotron/`、`scripts/setup_nemotron_venv.sh` で構築)上のPythonを
 サブプロセスとして起動し、標準出力のJSON経由で結果を受け取る方式を採る
 (tc-ops #546 Phase2設計report §1)。
 
@@ -24,9 +24,9 @@ from core.transcription_interface import (
     TranscriptionSegment,
 )
 
-# リポジトリルート(このファイルの1階層上)。venv-nemotron-poc/・scripts/はここを基準に置く。
+# リポジトリルート(このファイルの1階層上)。venv-nemotron/・scripts/はここを基準に置く。
 _REPO_ROOT = Path(__file__).resolve().parent.parent
-VENV_PYTHON = _REPO_ROOT / "venv-nemotron-poc" / "bin" / "python"
+VENV_PYTHON = _REPO_ROOT / "venv-nemotron" / "bin" / "python"
 INFER_SCRIPT = _REPO_ROOT / "scripts" / "nemotron_infer.py"
 
 # タイムアウト算出式(Phase2設計report §1): 実測RTF最大0.0401(Phase1)に十分な
@@ -95,9 +95,15 @@ class NemotronSubprocessEngine(TranscriptionEngine):
         )
         lang_code = self._resolve_language()
 
+        device_arg = self.config.device or "auto"
+
         try:
             proc = subprocess.run(
-                [str(VENV_PYTHON), str(INFER_SCRIPT), str(audio_path), "--language", lang_code],
+                [
+                    str(VENV_PYTHON), str(INFER_SCRIPT), str(audio_path),
+                    "--language", lang_code,
+                    "--device", device_arg,
+                ],
                 capture_output=True,
                 text=True,
                 timeout=timeout_sec,

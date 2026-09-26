@@ -148,26 +148,48 @@ class TestNemotronEngineDeviceArgPassthrough:
 
 class TestStreamingLanguagePropagation:
     """streaming経路(tc-ops #546 Phase2)が明示的な言語指定を無視する欠落の
-    回帰テスト(査sa是正指摘、2026-09-27)。
+    回帰テスト(査sa是正指摘、2026-09-27、2回)。
 
-    当初の実装は`main()`で解決済みの`language_arg`を`_run_streaming_inference()`/
-    `_build_streaming_chunk_generator()`へ渡しておらず、streaming経路のみ
-    `--language`明示指定時でも常にNemotronの既定値"auto"に落ちていた
-    (オフラインバッチ経路は`processor(..., language=language_arg)`を従来から
-    正しく渡しており、streaming経路固有の欠落だった)。
+    **1回目の是正(不十分だった)**: 当初の実装は`main()`で解決済みの
+    `language_arg`を`_run_streaming_inference()`/`_build_streaming_chunk_generator()`
+    へ渡しておらず、streaming経路のみ`--language`明示指定時でも常に
+    Nemotronの既定値"auto"に落ちていた。`language`を各チャンクの
+    `processor(...)`呼び出しへ渡すよう是正したが、これだけでは不十分だった。
+
+    **2回目の是正(真因)**: `processor(...)`が`language`から計算するのは
+    `inputs["prompt_ids"]`(音声非依存、languageのみで決まる値)だが、
+    ストリーミング生成の実際のエントリポイントはこの値を暗黙に参照せず、
+    `Nemotron3_5AsrGenerationMixin.generate()`が`model.generate()`呼び出し時の
+    **トップレベルkwargs**から`prompt_ids`を取り出す経路のみが有効
+    (`processing_nemotron3_5_asr.py`・`generation_nemotron3_5_asr.py`で実ソース
+    確認済み)。オフラインバッチ経路は`model.generate(**inputs, ...)`の`**inputs`
+    展開で`prompt_ids`キーが自動的にトップレベルへ渡るため意識せず正しく
+    動作していたが、streaming経路は`processor(...)`の戻り値から`prompt_ids`を
+    一切抽出・転送していなかった。本テストは、`model.generate()`が実際に
+    受け取る`prompt_ids`(language文字列→プロンプトID整数への変換結果)を検証する
+    (`processor(...)`にlanguageが渡ることの確認だけでは、この真因を検出できない)。
     """
 
     SAMPLE_AUDIO = str(Path(__file__).parent.parent / "samples" / "e2e_sample.wav")
 
-    def _make_fake_processor_and_model(self, processor_calls: list):
-        """processor(...)呼び出しに渡されたkwargsを`processor_calls`へ記録する
-        フェイクのprocessor/modelを構築する。実transformers/torchのモデル
-        ロード・推論は一切発生させない。"""
+    # DEFAULT_PROMPT_DICTIONARY(processing_nemotron3_5_asr.py)の実値と一致させた
+    # フェイク辞書の抜粋(本テストで使う3言語分のみ)。
+    _FAKE_PROMPT_DICTIONARY = {"en-US": 0, "ja-JP": 10, "auto": 101}
+
+    def _make_fake_processor_and_model(self, processor_calls: list, generate_calls: list):
+        """processor(...)/model.generate(...)呼び出しに渡されたkwargsをそれぞれ
+        記録するフェイクを構築する。実transformers/torchのモデルロード・推論は
+        一切発生させない。"""
         frames = 4
 
         def fake_processor_call(chunk_audio, **kwargs):
             processor_calls.append(kwargs)
             return {"input_features": torch.zeros(1, frames, 80)}
+
+        def fake_resolve_prompt_ids(language, batch_size):
+            # 実装(_resolve_prompt_ids)と同じ契約: languageは単一文字列、
+            # batch_size件に展開してprompt_dictionaryで整数化する。
+            return torch.tensor([self._FAKE_PROMPT_DICTIONARY[language]] * batch_size, dtype=torch.long)
 
         fake_processor = SimpleNamespace(
             feature_extractor=SimpleNamespace(sampling_rate=16000),
@@ -177,6 +199,7 @@ class TestStreamingLanguagePropagation:
             num_mel_frames_per_audio_chunk=frames,
             set_num_lookahead_tokens=lambda n: None,
             decode=lambda sequences, skip_special_tokens=True: "ダミーの書き起こし結果",
+            _resolve_prompt_ids=fake_resolve_prompt_ids,
         )
         # SimpleNamespaceは__call__を通常の属性として持てない(型でなくインスタンスに
         # 生えるため呼び出し不可)ので、呼び出し可能なラッパーで包む
@@ -184,49 +207,55 @@ class TestStreamingLanguagePropagation:
         fake_processor = _CallableNamespace(fake_processor, fake_processor_call)
 
         def fake_generate(**kwargs):
+            generate_calls.append(kwargs)
             # 実際のtransformers.generate()はgeneratorを内部で逐次消費するが、
             # フェイクではlanguage伝播の検証のため明示的に消費する
             # (processor(...)呼び出しを実際に発火させる)。
             list(kwargs["input_features"])
             return SimpleNamespace(sequences=torch.tensor([[1, 2, 3]]))
 
-        fake_model = SimpleNamespace(generate=fake_generate)
+        fake_model = SimpleNamespace(generate=fake_generate, device="cpu")
         return fake_processor, fake_model
 
-    def test_explicit_language_reaches_processor_in_streaming_path(
+    def test_explicit_language_reaches_generate_as_prompt_ids(
         self, nemotron_infer_module, monkeypatch
     ):
-        """`--language en-US`等の明示指定が、streaming経路のprocessor(...)呼び出し
-        まで実際に伝播すること。"""
-        processor_calls = []
-        fake_processor, fake_model = self._make_fake_processor_and_model(processor_calls)
+        """`--language ja-JP`等の明示指定が、streaming経路の`model.generate()`
+        呼び出しへ正しいプロンプトID(`prompt_ids`)として実際に伝播すること
+        (真因の検証。単に`processor(...)`へ`language`が渡るだけでは不十分)。"""
+        processor_calls, generate_calls = [], []
+        fake_processor, fake_model = self._make_fake_processor_and_model(processor_calls, generate_calls)
 
         # transformers.audio_utils.load_audioは生産用.venvでも利用可能(実測確認済み)
         # のため、実ファイル(1秒のサンプル音声)をそのまま読み込ませる。
         result = nemotron_infer_module._run_streaming_inference(
-            fake_processor, fake_model, self.SAMPLE_AUDIO, 13, "en-US",
+            fake_processor, fake_model, self.SAMPLE_AUDIO, 13, "ja-JP",
         )
 
-        assert len(processor_calls) >= 1
-        assert all(call.get("language") == "en-US" for call in processor_calls)
+        assert len(generate_calls) == 1
+        assert "prompt_ids" in generate_calls[0]
+        assert generate_calls[0]["prompt_ids"].tolist() == [self._FAKE_PROMPT_DICTIONARY["ja-JP"]]
         assert result["transcription"] == "ダミーの書き起こし結果"
 
-    def test_auto_language_reaches_processor_in_streaming_path(
+    def test_different_languages_resolve_to_different_prompt_ids(
         self, nemotron_infer_module, monkeypatch
     ):
-        """既定の"auto"も明示的にprocessor(...)へ渡ること(Noneへの変換が
-        再導入されていないことの確認、tc-ops #546緊急是正の教訓を streaming
-        経路でも踏襲する)。"""
-        processor_calls = []
-        fake_processor, fake_model = self._make_fake_processor_and_model(processor_calls)
+        """"auto"と明示的な言語("en-US")とで、`model.generate()`が受け取る
+        `prompt_ids`が実際に異なる値になること(査sa指摘: 異なる言語条件付け
+        トークンにもかかわらず出力が完全一致した=真因が伝播していない証拠、
+        という推論を裏付けるための直接的な回帰テスト)。"""
+        results = {}
+        for language in ("auto", "en-US"):
+            processor_calls, generate_calls = [], []
+            fake_processor, fake_model = self._make_fake_processor_and_model(processor_calls, generate_calls)
+            nemotron_infer_module._run_streaming_inference(
+                fake_processor, fake_model, self.SAMPLE_AUDIO, 13, language,
+            )
+            results[language] = generate_calls[0]["prompt_ids"].tolist()
 
-        nemotron_infer_module._run_streaming_inference(
-            fake_processor, fake_model, self.SAMPLE_AUDIO, 13, "auto",
-        )
-
-        assert len(processor_calls) >= 1
-        assert all(call.get("language") == "auto" for call in processor_calls)
-        assert all(call.get("language") is not None for call in processor_calls)
+        assert results["auto"] == [self._FAKE_PROMPT_DICTIONARY["auto"]]
+        assert results["en-US"] == [self._FAKE_PROMPT_DICTIONARY["en-US"]]
+        assert results["auto"] != results["en-US"]
 
 
 class _CallableNamespace:

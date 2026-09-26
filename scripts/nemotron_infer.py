@@ -144,11 +144,27 @@ def _run_streaming_inference(
     `audio_path`は常に1件のみを受け取る。
 
     `language`は`main()`で解決済みの`language_arg`(`resolve_processor_language()`の
-    戻り値)をそのまま受け取り、`_build_streaming_chunk_generator()`経由で
-    `processor(...)`呼び出しへ明示的に渡す(査sa是正指摘、2026-09-27: 当初の実装は
-    この値を渡しておらず、`--language`明示指定時でもstreaming経路のみ常に
-    Nemotronの既定値"auto"に落ちる欠落があった。オフラインバッチ経路は
-    従来からlanguage_argを正しく渡しており、streaming経路固有の欠落だった)。
+    戻り値)をそのまま受け取る。
+
+    **言語プロンプト条件付けの経路(査sa是正指摘、2026-09-27、2回目)**: 当初の是正
+    (1回目)は`language`を各チャンクの`processor(...)`呼び出しへ渡すのみだったが、
+    `processor(...)`が`language`から計算するのは`inputs["prompt_ids"]`
+    (`processing_nemotron3_5_asr.py` L300: `inputs["prompt_ids"] =
+    self._resolve_prompt_ids(language, len(audio))`)であり、**この値自体は
+    音声の中身に依存せずlanguageのみで決まる**(全チャンクで同一)。しかし
+    ストリーミング経路の実際の生成エントリポイント
+    (`NemotronAsrStreamingGenerationMixin._prepare_encoder_decoder_kwargs_for_generation`、
+    `generation_nemotron_asr_streaming.py`)は`decoder_input_ids`を`blank_token_id`
+    へ無条件で初期化しており、各チャンクの`processor(...)`が計算した`prompt_ids`を
+    暗黙に参照することはない。`prompt_ids`を実際に生成へ反映させる唯一の経路は、
+    `Nemotron3_5AsrGenerationMixin.generate()`(`generation_nemotron3_5_asr.py`)が
+    `kwargs.pop("prompt_ids", None)`で**`model.generate()`呼び出し時のトップレベル
+    kwargs**から取り出し、`get_audio_features()`をラップして注入する経路のみである
+    (オフラインバッチ経路は`model.generate(**inputs, ...)`の`**inputs`展開で
+    `prompt_ids`キーが自動的にトップレベルkwargsへ渡るため、意識せず正しく動作していた)。
+    このため、`prompt_ids`は`processor._resolve_prompt_ids(language, batch_size=1)`
+    (音声非依存、`language`のみで決まる値を返す軽量な内部ヘルパー)で直接計算し、
+    `model.generate(prompt_ids=...)`へ明示的なトップレベル引数として渡す。
     """
     import torch
     from transformers.audio_utils import load_audio
@@ -161,13 +177,15 @@ def _run_streaming_inference(
 
     processor.set_num_lookahead_tokens(num_lookahead_tokens)
     generator = _build_streaming_chunk_generator(audio, processor, sampling_rate, language)
+    prompt_ids = processor._resolve_prompt_ids(language, 1).to(model.device)
 
-    _log(f"Running streaming inference (num_lookahead_tokens={num_lookahead_tokens})...")
+    _log(f"Running streaming inference (num_lookahead_tokens={num_lookahead_tokens}, language={language})...")
     t0 = time.time()
     with torch.no_grad():
         output = model.generate(
             input_features=generator,
             num_lookahead_tokens=num_lookahead_tokens,
+            prompt_ids=prompt_ids,
             return_dict_in_generate=True,
         )
     infer_elapsed = time.time() - t0

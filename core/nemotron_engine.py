@@ -78,6 +78,11 @@ _TIMEOUT_MIN_SEC = 60.0
 # 350秒(約5.8分)を安全な無分割上限とする。
 CHUNK_THRESHOLD_SEC = 350
 
+# ストリーミング推論(chunked_limited方式)のlookahead設定(tc-ops #546 Phase2、
+# 2026-09-27、采決定)。ストリーミング推論スパイクの実測で、対応値[0, 3, 6, 13]の
+# うち最も文字数(精度の代理指標)・RTFともに良好だった値を採用する。
+STREAMING_NUM_LOOKAHEAD_TOKENS = 13
+
 
 def is_nemotron_model(model_name: str) -> bool:
     """モデル名が Nemotron 系かどうかを判定する。
@@ -281,7 +286,12 @@ class NemotronSubprocessEngine(TranscriptionEngine):
         return tmp_path
 
     def _invoke_subprocess(
-        self, audio_paths: list[str], total_duration_sec: float, lang_code: str, device_arg: str
+        self,
+        audio_paths: list[str],
+        total_duration_sec: float,
+        lang_code: str,
+        device_arg: str,
+        streaming: bool = False,
     ) -> dict:
         """`scripts/nemotron_infer.py`を1回起動し、パース済みJSON応答を返す。
 
@@ -291,10 +301,19 @@ class NemotronSubprocessEngine(TranscriptionEngine):
         `total_duration_sec`はタイムアウト算出のみに使う(全チャンク合計の音声長を
         渡すこと。1プロセスで全チャンクを処理するため)。異常終了・タイムアウト・
         JSON解析失敗はすべて`RuntimeError`に変換して送出する。
+
+        `streaming=True`(tc-ops #546 Phase2、350秒超の音声向け)の場合、
+        `--streaming --num-lookahead-tokens {STREAMING_NUM_LOOKAHEAD_TOKENS}`を
+        付与する。この場合`audio_paths`は1件のみ対応(呼び出し元が保証すること、
+        `scripts/nemotron_infer.py`側でも検証している)。
         """
         timeout_sec = max(
             _TIMEOUT_MIN_SEC, total_duration_sec * _TIMEOUT_MULTIPLIER + _TIMEOUT_FIXED_OVERHEAD_SEC
         )
+
+        extra_args = []
+        if streaming:
+            extra_args = ["--streaming", "--num-lookahead-tokens", str(STREAMING_NUM_LOOKAHEAD_TOKENS)]
 
         try:
             proc = subprocess.run(
@@ -302,6 +321,7 @@ class NemotronSubprocessEngine(TranscriptionEngine):
                     str(VENV_PYTHON), str(INFER_SCRIPT), *[str(p) for p in audio_paths],
                     "--language", lang_code,
                     "--device", device_arg,
+                    *extra_args,
                 ],
                 capture_output=True,
                 text=True,
@@ -356,30 +376,48 @@ class NemotronSubprocessEngine(TranscriptionEngine):
         lang_code = self._resolve_language()
         device_arg = self.config.device or "auto"
 
-        boundaries = compute_chunk_boundaries(duration_sec)
-        chunked = len(boundaries) > 1
-
-        if chunked:
-            # 分割点を均等分割点の前後±20秒の範囲で最も静かな位置へ寄せる(采指示)。
-            # 無音区間が見つからない場合は自動的に均等分割点へフォールバックする。
-            boundaries = adjust_boundaries_to_silence(boundaries, audio_path)
-            self.logger.info(
-                f"Audio is {duration_sec:.0f}s (>{CHUNK_THRESHOLD_SEC}s), "
-                f"splitting into {len(boundaries)} chunks (silence-adjusted, single subprocess/model load)"
-            )
-            chunk_paths = [
-                self._extract_chunk_wav(audio_path, s, e) for s, e in boundaries
-            ]
-        else:
-            # 短音声: 分割不要。元ファイルをそのまま渡す(一時ファイル切り出し不要)。
-            chunk_paths = [audio_path]
-
+        chunk_paths_to_cleanup: list[str] = []
         try:
-            data = self._invoke_subprocess(chunk_paths, duration_sec, lang_code, device_arg)
+            if duration_sec > CHUNK_THRESHOLD_SEC:
+                # tc-ops #546 Phase2(2026-09-27、采決定): 350秒超の音声はまず
+                # cache-aware streaming推論(1回のgenerate()で音声全体を一括処理、
+                # チャンク分割による文脈喪失が構造的に生じない)を試みる。
+                try:
+                    self.logger.info(
+                        f"Audio is {duration_sec:.0f}s (>{CHUNK_THRESHOLD_SEC}s), "
+                        f"using cache-aware streaming inference "
+                        f"(num_lookahead_tokens={STREAMING_NUM_LOOKAHEAD_TOKENS})"
+                    )
+                    data = self._invoke_subprocess(
+                        [audio_path], duration_sec, lang_code, device_arg, streaming=True,
+                    )
+                    boundaries = [(0.0, duration_sec)]
+                    chunked = False
+                except Exception as e:
+                    # ストリーミング推論の失敗はユーザーから見て失敗にせず、既存の
+                    # 均等分割+無音区間調整方式へフォールバックする(采指示)。
+                    self.logger.warning(f"Streaming推論が失敗、分割方式へフォールバック: {e}")
+                    boundaries = compute_chunk_boundaries(duration_sec)
+                    # 分割点を均等分割点の前後±20秒の範囲で最も静かな位置へ寄せる(采指示)。
+                    # 無音区間が見つからない場合は自動的に均等分割点へフォールバックする。
+                    boundaries = adjust_boundaries_to_silence(boundaries, audio_path)
+                    self.logger.info(
+                        f"Falling back to {len(boundaries)}-way silence-adjusted split "
+                        "(single subprocess/model load)"
+                    )
+                    chunk_paths_to_cleanup = [
+                        self._extract_chunk_wav(audio_path, s, e) for s, e in boundaries
+                    ]
+                    data = self._invoke_subprocess(chunk_paths_to_cleanup, duration_sec, lang_code, device_arg)
+                    chunked = True
+            else:
+                # 短音声: 分割不要・ストリーミングも使わない(既存動作を変更しない)。
+                boundaries = [(0.0, duration_sec)]
+                chunked = False
+                data = self._invoke_subprocess([audio_path], duration_sec, lang_code, device_arg)
         finally:
-            if chunked:
-                for p in chunk_paths:
-                    Path(p).unlink(missing_ok=True)
+            for p in chunk_paths_to_cleanup:
+                Path(p).unlink(missing_ok=True)
 
         processing_time = self.perf_logger.end_timing(op_name)
 

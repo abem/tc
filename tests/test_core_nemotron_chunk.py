@@ -205,7 +205,12 @@ class TestTranscribeChunking:
 
         call_log = []
 
-        def _fake_invoke(audio_paths, total_duration_sec, lang_code, device_arg):
+        def _fake_invoke(audio_paths, total_duration_sec, lang_code, device_arg, streaming=False):
+            if streaming:
+                # tc-ops #546 Phase2: 350秒超はまずstreamingを試みる設計になった
+                # (本テストの対象外)ため、意図的に失敗させ均等分割方式へ
+                # フォールバックさせる(フォールバック自体はTestStreamingDispatch側で検証)。
+                raise RuntimeError("streaming not supported in this test double")
             call_log.append(list(audio_paths))
             return {
                 "chunks": [
@@ -285,7 +290,9 @@ class TestTranscribeChunking:
         )
         monkeypatch.setattr(Path, "unlink", lambda self, missing_ok=False: None)
 
-        def _fake_invoke(audio_paths, total_duration_sec, lang_code, device_arg):
+        def _fake_invoke(audio_paths, total_duration_sec, lang_code, device_arg, streaming=False):
+            if streaming:
+                raise RuntimeError("streaming not supported in this test double")
             return {
                 "chunks": [
                     {"transcription": "チャンク1", "infer_elapsed_sec": 1.0},
@@ -317,7 +324,9 @@ class TestTranscribeChunking:
         )
         monkeypatch.setattr(Path, "unlink", lambda self, missing_ok=False: None)
 
-        def _fake_invoke(audio_paths, total_duration_sec, lang_code, device_arg):
+        def _fake_invoke(audio_paths, total_duration_sec, lang_code, device_arg, streaming=False):
+            if streaming:
+                raise RuntimeError("streaming not supported in this test double")
             return {
                 "chunks": [
                     {"transcription": "チャンク1", "infer_elapsed_sec": 1.0},
@@ -334,6 +343,108 @@ class TestTranscribeChunking:
         assert "[チャンク2失敗]" in result.text
         assert "チャンク3" in result.text
         assert result.metadata["failed_chunks"] == 1
+
+
+class TestStreamingDispatch:
+    """tc-ops #546 Phase2(2026-09-27、cache-aware streaming推論の本実装)の
+    350秒境界での経路選択・フォールバック機構を検証する。モデル・実サブ
+    プロセスは一切起動しない(_invoke_subprocess/_extract_chunk_wavをモックで代替)。
+    """
+
+    def _make_engine(self, monkeypatch, *, fake_duration: float):
+        from core.config import TranscriptionConfig
+        from core.nemotron_engine import NemotronSubprocessEngine
+        import core.nemotron_engine as nemotron_engine_module
+        import sys
+
+        monkeypatch.setattr(nemotron_engine_module, "VENV_PYTHON", Path(sys.executable))
+
+        config = TranscriptionConfig(
+            model="nvidia/nemotron-3.5-asr-streaming-0.6b", language="ja", device="cpu"
+        )
+        engine = NemotronSubprocessEngine(config)
+        monkeypatch.setattr(engine, "_get_audio_duration", lambda audio_path: fake_duration)
+        monkeypatch.setattr(
+            nemotron_engine_module, "adjust_boundaries_to_silence", lambda boundaries, audio_path: boundaries
+        )
+        return engine
+
+    def test_over_350s_uses_streaming_and_skips_split(self, monkeypatch):
+        """350秒超の音声はまずstreaming推論を試み、成功時は分割・チャンク抽出を
+        一切行わず、streaming結果をそのまま単一チャンクとして採用すること
+        (経路選択の検証、指示書§3完了条件)。"""
+        from core.nemotron_engine import CHUNK_THRESHOLD_SEC, STREAMING_NUM_LOOKAHEAD_TOKENS
+
+        engine = self._make_engine(monkeypatch, fake_duration=CHUNK_THRESHOLD_SEC + 50)
+
+        call_log = []
+        extract_called = []
+
+        def _fake_invoke(audio_paths, total_duration_sec, lang_code, device_arg, streaming=False):
+            call_log.append({"audio_paths": list(audio_paths), "streaming": streaming})
+            assert streaming is True
+            return {"chunks": [{"transcription": "ストリーミングによる全文テキスト", "infer_elapsed_sec": 12.0}]}
+
+        monkeypatch.setattr(engine, "_invoke_subprocess", _fake_invoke)
+        monkeypatch.setattr(
+            engine, "_extract_chunk_wav",
+            staticmethod(lambda audio_path, s, e: extract_called.append((s, e)) or "/tmp/should_not_be_used.wav"),
+        )
+
+        result = engine.transcribe(SAMPLE_AUDIO)
+
+        assert len(call_log) == 1  # 分割方式へのフォールバックは発生しない
+        assert call_log[0]["audio_paths"] == [SAMPLE_AUDIO]  # 元ファイルをそのまま渡す(分割なし)
+        assert call_log[0]["streaming"] is True
+        assert extract_called == []  # チャンク抽出は一切呼ばれない
+        assert result.text == "ストリーミングによる全文テキスト"
+        assert result.metadata["chunked"] is False
+        assert result.metadata["chunk_count"] == 1
+        assert STREAMING_NUM_LOOKAHEAD_TOKENS == 13
+
+    def test_streaming_failure_falls_back_to_split_with_warning_log(self, monkeypatch, caplog):
+        """streaming推論が例外を送出した場合、既存の均等分割+無音区間調整方式へ
+        フォールバックし、一意な文言でログに警告が出ること(指示書§3完了条件の
+        grep対象文言と完全一致させる。他の"フォールバック"を含む無関係なログ
+        (device_map解決等)と混同しないよう、この文言は変更しないこと)。"""
+        from core.nemotron_engine import CHUNK_THRESHOLD_SEC
+        import logging
+
+        engine = self._make_engine(monkeypatch, fake_duration=CHUNK_THRESHOLD_SEC + 50)
+
+        extracted_ranges = []
+
+        def _fake_extract(audio_path, start_sec, end_sec):
+            extracted_ranges.append((start_sec, end_sec))
+            return f"/tmp/fake_fallback_chunk_{len(extracted_ranges)}.wav"
+
+        call_log = []
+
+        def _fake_invoke(audio_paths, total_duration_sec, lang_code, device_arg, streaming=False):
+            call_log.append({"audio_paths": list(audio_paths), "streaming": streaming})
+            if streaming:
+                raise RuntimeError("simulated streaming failure")
+            return {
+                "chunks": [
+                    {"transcription": f"分割チャンク{i + 1}", "infer_elapsed_sec": 1.0}
+                    for i in range(len(audio_paths))
+                ]
+            }
+
+        monkeypatch.setattr(engine, "_extract_chunk_wav", staticmethod(_fake_extract))
+        monkeypatch.setattr(engine, "_invoke_subprocess", _fake_invoke)
+        monkeypatch.setattr(Path, "unlink", lambda self, missing_ok=False: None)
+
+        with caplog.at_level(logging.WARNING):
+            result = engine.transcribe(SAMPLE_AUDIO)
+
+        assert len(call_log) == 2  # 1回目: streaming(失敗)、2回目: 分割方式(成功)
+        assert call_log[0]["streaming"] is True
+        assert call_log[1]["streaming"] is False
+        assert len(extracted_ranges) >= 1  # 分割方式へフォールバックしチャンク抽出が実行された
+        assert "Streaming推論が失敗、分割方式へフォールバック" in caplog.text
+        assert result.metadata["chunked"] is True
+        assert "分割チャンク1" in result.text
 
 
 class TestFindSilenceBoundary:

@@ -27,8 +27,10 @@ ERROR: TypeError: object of type 'NoneType' has no len()
 """
 import importlib.util
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
+import torch
 
 
 def _load_nemotron_infer_module():
@@ -142,3 +144,102 @@ class TestNemotronEngineDeviceArgPassthrough:
         assert "--device" in args
         device_idx = args.index("--device")
         assert args[device_idx + 1] == "cpu"
+
+
+class TestStreamingLanguagePropagation:
+    """streaming経路(tc-ops #546 Phase2)が明示的な言語指定を無視する欠落の
+    回帰テスト(査sa是正指摘、2026-09-27)。
+
+    当初の実装は`main()`で解決済みの`language_arg`を`_run_streaming_inference()`/
+    `_build_streaming_chunk_generator()`へ渡しておらず、streaming経路のみ
+    `--language`明示指定時でも常にNemotronの既定値"auto"に落ちていた
+    (オフラインバッチ経路は`processor(..., language=language_arg)`を従来から
+    正しく渡しており、streaming経路固有の欠落だった)。
+    """
+
+    SAMPLE_AUDIO = str(Path(__file__).parent.parent / "samples" / "e2e_sample.wav")
+
+    def _make_fake_processor_and_model(self, processor_calls: list):
+        """processor(...)呼び出しに渡されたkwargsを`processor_calls`へ記録する
+        フェイクのprocessor/modelを構築する。実transformers/torchのモデル
+        ロード・推論は一切発生させない。"""
+        frames = 4
+
+        def fake_processor_call(chunk_audio, **kwargs):
+            processor_calls.append(kwargs)
+            return {"input_features": torch.zeros(1, frames, 80)}
+
+        fake_processor = SimpleNamespace(
+            feature_extractor=SimpleNamespace(sampling_rate=16000),
+            num_samples_first_audio_chunk=16000,
+            num_samples_per_audio_chunk=16000,
+            num_mel_frames_first_audio_chunk=frames,
+            num_mel_frames_per_audio_chunk=frames,
+            set_num_lookahead_tokens=lambda n: None,
+            decode=lambda sequences, skip_special_tokens=True: "ダミーの書き起こし結果",
+        )
+        # SimpleNamespaceは__call__を通常の属性として持てない(型でなくインスタンスに
+        # 生えるため呼び出し不可)ので、呼び出し可能なラッパーで包む
+        # (fake_processor(...) がfake_processor_call(...)へ委譲する)。
+        fake_processor = _CallableNamespace(fake_processor, fake_processor_call)
+
+        def fake_generate(**kwargs):
+            # 実際のtransformers.generate()はgeneratorを内部で逐次消費するが、
+            # フェイクではlanguage伝播の検証のため明示的に消費する
+            # (processor(...)呼び出しを実際に発火させる)。
+            list(kwargs["input_features"])
+            return SimpleNamespace(sequences=torch.tensor([[1, 2, 3]]))
+
+        fake_model = SimpleNamespace(generate=fake_generate)
+        return fake_processor, fake_model
+
+    def test_explicit_language_reaches_processor_in_streaming_path(
+        self, nemotron_infer_module, monkeypatch
+    ):
+        """`--language en-US`等の明示指定が、streaming経路のprocessor(...)呼び出し
+        まで実際に伝播すること。"""
+        processor_calls = []
+        fake_processor, fake_model = self._make_fake_processor_and_model(processor_calls)
+
+        # transformers.audio_utils.load_audioは生産用.venvでも利用可能(実測確認済み)
+        # のため、実ファイル(1秒のサンプル音声)をそのまま読み込ませる。
+        result = nemotron_infer_module._run_streaming_inference(
+            fake_processor, fake_model, self.SAMPLE_AUDIO, 13, "en-US",
+        )
+
+        assert len(processor_calls) >= 1
+        assert all(call.get("language") == "en-US" for call in processor_calls)
+        assert result["transcription"] == "ダミーの書き起こし結果"
+
+    def test_auto_language_reaches_processor_in_streaming_path(
+        self, nemotron_infer_module, monkeypatch
+    ):
+        """既定の"auto"も明示的にprocessor(...)へ渡ること(Noneへの変換が
+        再導入されていないことの確認、tc-ops #546緊急是正の教訓を streaming
+        経路でも踏襲する)。"""
+        processor_calls = []
+        fake_processor, fake_model = self._make_fake_processor_and_model(processor_calls)
+
+        nemotron_infer_module._run_streaming_inference(
+            fake_processor, fake_model, self.SAMPLE_AUDIO, 13, "auto",
+        )
+
+        assert len(processor_calls) >= 1
+        assert all(call.get("language") == "auto" for call in processor_calls)
+        assert all(call.get("language") is not None for call in processor_calls)
+
+
+class _CallableNamespace:
+    """SimpleNamespaceの属性群を保持しつつ、インスタンス自体を呼び出し可能にする
+    薄いラッパー(`fake_processor(chunk_audio, **kwargs)`の呼び出し形を再現するため)。
+    """
+
+    def __init__(self, namespace: SimpleNamespace, call_fn):
+        self._namespace = namespace
+        self._call_fn = call_fn
+
+    def __call__(self, *args, **kwargs):
+        return self._call_fn(*args, **kwargs)
+
+    def __getattr__(self, name):
+        return getattr(self._namespace, name)

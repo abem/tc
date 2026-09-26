@@ -89,6 +89,101 @@ def resolve_device_map(device: str):
     return "auto"
 
 
+def _build_streaming_chunk_generator(audio, processor, sampling_rate: int, language: str):
+    """基準音声(np.ndarray)を、processorが要求する正確なサンプル数に刻んで
+    chunked_limitedストリーミング用のinput_featuresチャンクを生成する。
+
+    `processor.num_samples_first_audio_chunk`/`num_samples_per_audio_chunk`の
+    理論値どおりに音声を刻んでも、実際のSTFTフレーム数が±1ずれるケースが
+    実測で確認された(tc-ops #546ストリーミング推論スパイク、center/win_lengthの
+    丸め起因と推測)。`_validate_stream_chunk`は固定長チャンクしか受け付けない
+    ため、返ってきたmelフレームをチャンクごとに要求フレーム数へ明示的に
+    切り詰め/ゼロ埋めする(スパイクで確認済みの対処)。
+    """
+    import numpy as np
+    import torch
+
+    n_first = processor.num_samples_first_audio_chunk
+    n_per = processor.num_samples_per_audio_chunk
+    frames_first = processor.num_mel_frames_first_audio_chunk
+    frames_per = processor.num_mel_frames_per_audio_chunk
+    total = len(audio)
+    pos = 0
+    is_first = True
+    while pos < total:
+        n = n_first if is_first else n_per
+        required_frames = frames_first if is_first else frames_per
+        chunk_audio = audio[pos:pos + n]
+        if len(chunk_audio) < n:
+            chunk_audio = np.pad(chunk_audio, (0, n - len(chunk_audio)))
+        inputs = processor(
+            chunk_audio, sampling_rate=sampling_rate, language=language,
+            is_streaming=True, is_first_audio_chunk=is_first,
+        )
+        mel = inputs["input_features"]
+        actual_frames = mel.shape[1]
+        if actual_frames > required_frames:
+            mel = mel[:, :required_frames]
+        elif actual_frames < required_frames:
+            mel = torch.nn.functional.pad(mel, (0, 0, 0, required_frames - actual_frames))
+        yield mel
+        pos += n
+        is_first = False
+
+
+def _run_streaming_inference(
+    processor, model, audio_path: str, num_lookahead_tokens: int, language: str,
+) -> dict:
+    """cache-aware streaming推論(chunked_limited方式)で1音声を一括処理する
+    (tc-ops #546 Phase2、350秒超の音声向け)。
+
+    実験的API(transformers公式ドキュメントに明記)への依存は本関数に閉じ込める
+    (`core/nemotron_engine.py`側は既存の抽象化=サブプロセス呼び出しを維持する
+    設計、指示書§2)。1回の`model.generate()`呼び出しで音声全体を処理するため、
+    既存のオフラインバッチ経路(チャンク分割・複数ファイル)とは異なり、
+    `audio_path`は常に1件のみを受け取る。
+
+    `language`は`main()`で解決済みの`language_arg`(`resolve_processor_language()`の
+    戻り値)をそのまま受け取り、`_build_streaming_chunk_generator()`経由で
+    `processor(...)`呼び出しへ明示的に渡す(査sa是正指摘、2026-09-27: 当初の実装は
+    この値を渡しておらず、`--language`明示指定時でもstreaming経路のみ常に
+    Nemotronの既定値"auto"に落ちる欠落があった。オフラインバッチ経路は
+    従来からlanguage_argを正しく渡しており、streaming経路固有の欠落だった)。
+    """
+    import torch
+    from transformers.audio_utils import load_audio
+
+    chunk_result = {"audio_path": audio_path}
+    sampling_rate = processor.feature_extractor.sampling_rate
+    audio = load_audio(audio_path, sampling_rate=sampling_rate)
+    audio_duration_sec = len(audio) / sampling_rate
+    chunk_result["audio_duration_sec"] = audio_duration_sec
+
+    processor.set_num_lookahead_tokens(num_lookahead_tokens)
+    generator = _build_streaming_chunk_generator(audio, processor, sampling_rate, language)
+
+    _log(f"Running streaming inference (num_lookahead_tokens={num_lookahead_tokens})...")
+    t0 = time.time()
+    with torch.no_grad():
+        output = model.generate(
+            input_features=generator,
+            num_lookahead_tokens=num_lookahead_tokens,
+            return_dict_in_generate=True,
+        )
+    infer_elapsed = time.time() - t0
+    chunk_result["infer_elapsed_sec"] = infer_elapsed
+    chunk_result["rtf"] = infer_elapsed / audio_duration_sec if audio_duration_sec > 0 else None
+    _log(f"Streaming inference done in {infer_elapsed:.2f}s")
+
+    text = processor.decode(output.sequences, skip_special_tokens=True)
+    if isinstance(text, list):
+        text = "".join(text)
+    chunk_result["transcription"] = text
+
+    del generator, output
+    return chunk_result
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Nemotron-3.5-ASR-Streaming 単体推論")
     parser.add_argument(
@@ -103,7 +198,21 @@ def main() -> int:
         "--device", default="auto", choices=["auto", "cuda", "cpu"],
         help="推論デバイス。既定はauto(Accelerateによる自動配置)。",
     )
+    parser.add_argument(
+        "--streaming", action="store_true",
+        help="cache-aware streaming推論(chunked_limited方式)を使う(tc-ops #546 Phase2、"
+             "350秒超の音声向け)。audio_pathsは1件のみ対応。",
+    )
+    parser.add_argument(
+        "--num-lookahead-tokens", type=int, default=13,
+        help="ストリーミング時のlookahead(既定13、ストリーミング推論スパイクで最良だった値)。"
+             "--streaming未指定時は無視される。",
+    )
     args = parser.parse_args()
+
+    if args.streaming and len(args.audio_paths) != 1:
+        _log(f"ERROR: --streaming supports exactly 1 audio_path, got {len(args.audio_paths)}")
+        return 1
 
     result = {"language": args.language, "device": args.device}
 
@@ -133,42 +242,65 @@ def main() -> int:
         language_arg = resolve_processor_language(args.language)
         chunks = []
 
-        for i, audio_path in enumerate(args.audio_paths):
-            chunk_result = {"audio_path": audio_path}
+        if args.streaming:
+            # ストリーミング経路: 既存のオフラインバッチ用ループ(下記)は通さず、
+            # 音声全体を1回のmodel.generate()で処理する。結果は既存の
+            # chunks配列形式(要素数1)へ揃え、core/nemotron_engine.py側の
+            # パース処理(data.get("chunks", []))をそのまま再利用できるようにする。
+            chunk_result = {"audio_path": args.audio_paths[0]}
             try:
-                audio = load_audio(audio_path, sampling_rate=processor.feature_extractor.sampling_rate)
-                audio_duration_sec = len(audio) / processor.feature_extractor.sampling_rate
-                chunk_result["audio_duration_sec"] = audio_duration_sec
-
-                inputs = processor(
-                    audio, sampling_rate=processor.feature_extractor.sampling_rate, language=language_arg
+                chunk_result.update(
+                    _run_streaming_inference(
+                        processor, model, args.audio_paths[0], args.num_lookahead_tokens, language_arg,
+                    )
                 )
-                inputs = inputs.to(model.device, dtype=model.dtype)
-
-                _log(f"Chunk {i + 1}/{len(args.audio_paths)}: running inference...")
-                t1 = time.time()
-                output = model.generate(**inputs, return_dict_in_generate=True)
-                infer_elapsed = time.time() - t1
-                chunk_result["infer_elapsed_sec"] = infer_elapsed
-                chunk_result["rtf"] = infer_elapsed / audio_duration_sec if audio_duration_sec > 0 else None
-                _log(f"Chunk {i + 1}/{len(args.audio_paths)}: done in {infer_elapsed:.2f}s")
-
-                text = processor.decode(output.sequences, skip_special_tokens=True)
-                if isinstance(text, list):
-                    text = "".join(text)
-                chunk_result["transcription"] = text
-
-                del inputs, output
-            except Exception as chunk_e:  # noqa: BLE001 - このチャンクだけ失敗として記録し、後続チャンクは継続する
+            except Exception as chunk_e:  # noqa: BLE001 - 呼び出し元(core/nemotron_engine.py)が
+                # 分割方式へのフォールバック判断に使うため、例外は個別チャンクの
+                # "error"として記録し、プロセス全体は正常終了させる。
                 chunk_result["error"] = f"{type(chunk_e).__name__}: {chunk_e}"
-                _log(f"Chunk {i + 1}/{len(args.audio_paths)} failed: {chunk_e}")
+                _log(f"Streaming inference failed: {chunk_e}")
                 traceback.print_exc(file=sys.stderr)
             finally:
-                # 査sa指摘: 1プロセス内で複数チャンクを処理する分、チャンクごとに
-                # 明示的なVRAM後処理を行い、チャンク数に応じたメモリ累積を防ぐ。
                 torch.cuda.empty_cache()
-
             chunks.append(chunk_result)
+
+        else:
+            for i, audio_path in enumerate(args.audio_paths):
+                chunk_result = {"audio_path": audio_path}
+                try:
+                    audio = load_audio(audio_path, sampling_rate=processor.feature_extractor.sampling_rate)
+                    audio_duration_sec = len(audio) / processor.feature_extractor.sampling_rate
+                    chunk_result["audio_duration_sec"] = audio_duration_sec
+
+                    inputs = processor(
+                        audio, sampling_rate=processor.feature_extractor.sampling_rate, language=language_arg
+                    )
+                    inputs = inputs.to(model.device, dtype=model.dtype)
+
+                    _log(f"Chunk {i + 1}/{len(args.audio_paths)}: running inference...")
+                    t1 = time.time()
+                    output = model.generate(**inputs, return_dict_in_generate=True)
+                    infer_elapsed = time.time() - t1
+                    chunk_result["infer_elapsed_sec"] = infer_elapsed
+                    chunk_result["rtf"] = infer_elapsed / audio_duration_sec if audio_duration_sec > 0 else None
+                    _log(f"Chunk {i + 1}/{len(args.audio_paths)}: done in {infer_elapsed:.2f}s")
+
+                    text = processor.decode(output.sequences, skip_special_tokens=True)
+                    if isinstance(text, list):
+                        text = "".join(text)
+                    chunk_result["transcription"] = text
+
+                    del inputs, output
+                except Exception as chunk_e:  # noqa: BLE001 - このチャンクだけ失敗として記録し、後続チャンクは継続する
+                    chunk_result["error"] = f"{type(chunk_e).__name__}: {chunk_e}"
+                    _log(f"Chunk {i + 1}/{len(args.audio_paths)} failed: {chunk_e}")
+                    traceback.print_exc(file=sys.stderr)
+                finally:
+                    # 査sa指摘: 1プロセス内で複数チャンクを処理する分、チャンクごとに
+                    # 明示的なVRAM後処理を行い、チャンク数に応じたメモリ累積を防ぐ。
+                    torch.cuda.empty_cache()
+
+                chunks.append(chunk_result)
 
         del model
         torch.cuda.empty_cache()

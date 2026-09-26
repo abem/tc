@@ -31,8 +31,18 @@ cd "${ROOT_DIR}"
 
 uv venv "${VENV_DIR}" --python 3.12
 
+# torch は PyTorch 公式wheelインデックス(cu130)から取得する。--index-url は
+# 指定した呼び出し内の全パッケージの取得元を置き換えてしまうため、
+# transformers 等のPyPI専用パッケージとはインストール呼び出しを分ける
+# (tc-ops #546是正: 1回のuv pip installにまとめていたため、torch向けの
+# --index-url がtransformersの取得先も上書きし
+# 「transformers==5.17.0 was not found in the package registry」で
+# 解決不能になっていた。実際にvenv-nemotron構築時に再現・原因確定済み)。
 uv pip install --python "${VENV_DIR}/bin/python" \
-  "transformers==5.17.0" "torch==2.14.0" --index-url https://download.pytorch.org/whl/cu130 \
-  accelerate librosa soundfile
+  "torch==2.14.0" --index-url https://download.pytorch.org/whl/cu130
+
+# transformers・accelerate・librosa・soundfile は通常のPyPIから取得する。
+uv pip install --python "${VENV_DIR}/bin/python" \
+  "transformers==5.17.0" accelerate librosa soundfile
 
 echo "Nemotron隔離venvを構築しました: ${VENV_DIR}"

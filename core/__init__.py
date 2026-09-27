@@ -91,9 +91,23 @@ __all__ = [
 ]
 
 # Initialize logging system
+#
+# pytest実行時は本番ログファイル(logs/transcription.log)へ書き込まない
+# (tc-ops #548是正、2026-09-27)。core.__init__は`import core`されるだけで
+# 無条件にこのUnifiedLogger.configure()を実行する副作用を持つため、テスト実行時にも
+# 本番ログへテスト由来の行が混入していた。"pytest" in sys.modules はpytest実行時に
+# 必ずTrueになる(pytest自身がインポートされて実行されているため)標準的な判定方法。
+# テスト時のログ出力先は既存パターン(core/logging.py L188、__main__ブロックの
+# logs/transcription_test.log)に倣う。
+import sys as _sys
+
+_TRANSCRIPTION_LOG_FILE = (
+    "logs/transcription_test.log" if "pytest" in _sys.modules else "logs/transcription.log"
+)
+
 UnifiedLogger.configure(
     log_level="INFO",
-    log_file="logs/transcription.log",
+    log_file=_TRANSCRIPTION_LOG_FILE,
     enable_console=True,
     enable_file=True
 )

@@ -7,7 +7,7 @@ Consolidates all transcribe() method implementations into a single, consistent A
 """
 
 from abc import ABC, abstractmethod
-from typing import Any, Dict, List, Optional, Union, Callable
+from typing import Any, Dict, List, Optional, Tuple, Union, Callable
 from dataclasses import dataclass
 from types import SimpleNamespace
 import os
@@ -704,9 +704,15 @@ class Qwen3ASREngine(TranscriptionEngine):
         戻り値: (結合テキスト, 検出言語コード, 失敗チャンク数, 反復検出チャンク数,
         アライメントアイテムのリスト[config.include_timestamps=False時は空リスト])
         チャンクが失敗した場合は結果テキストに [チャンクN失敗] プレースホルダを
-        挿入し、ユーザーが欠落に気づけるようにする。反復ループを検出した
-        チャンクは1回だけ再試行し、再試行後も反復する場合は
-        [チャンクN反復検出のため破棄] プレースホルダを挿入する。
+        挿入し、ユーザーが欠落に気づけるようにする。
+
+        反復ループの是正(tc-ops #547是正、2026-09-27、真因未確定のまま無条件採用の
+        采決定による)は`_transcribe_chunk_with_fallback()`に委譲する。1回目・再試行
+        とも反復する場合、旧実装ではチャンク全体を[チャンクN反復検出のため破棄]に
+        置換していたが、これは反復開始位置より前の正常な発話まで失う欠点があった。
+        新実装は(c)反復開始位置以前の正常テキストを残して以降を切り詰める方式と、
+        (d)チャンクを無音区間で2分割して再文字起こしするフォールバックを組み合わせ、
+        正常チャンクの処理フロー・実行回数には影響を与えない。
         """
         import numpy as np
         from tqdm import tqdm
@@ -740,53 +746,22 @@ class Qwen3ASREngine(TranscriptionEngine):
             # (副作用: 2チャンク目以降で固有名詞ヒントの効果は失われる。既知のトレードオフとして採用)。
             chunk_context = context if i == 0 else ""
             try:
-                results = self._model.transcribe(
-                    audio=(chunk, sr),
-                    context=chunk_context,
-                    language=language,
-                    return_time_stamps=False,
+                chunk_text, was_repeated, detected_lang_name = self._transcribe_chunk_with_fallback(
+                    chunk, sr, chunk_context, language, chunk_label=str(i + 1), total_chunks=total_chunks,
                 )
-                if results:
-                    r = results[0]
-                    chunk_text = r.text.strip()
+                if was_repeated:
+                    repeated_chunks += 1
 
-                    # 反復ループ検出(bugfix 2026-08-03): 同一文/単語がチャンク末尾まで
-                    # 異常反復し意味的に破壊される事象への事後対策。予防策
-                    # (generation_config、_load_model参照)を適用済みでも反復に
-                    # 至った場合の安全網として、1回だけ同一チャンクを再試行する。
-                    if chunk_text and self._detect_repetition(chunk_text):
-                        repeated_chunks += 1
-                        self.logger.warning(
-                            f"Chunk {i+1}/{total_chunks}: repetition loop detected "
-                            f"({len(chunk_text)} chars), retrying once"
+                if chunk_text:
+                    raw_texts.append(chunk_text)
+                    if self.config.include_timestamps and not chunk_text.startswith("\n[チャンク"):
+                        offset_sec = start_sample / sr
+                        align_items_all.extend(
+                            self._align_chunk((chunk, sr), chunk_text, language, offset_sec)
                         )
-                        retry_results = self._model.transcribe(
-                            audio=(chunk, sr),
-                            context=chunk_context,
-                            language=language,
-                            return_time_stamps=False,
-                        )
-                        retry_text = retry_results[0].text.strip() if retry_results else ""
-                        if retry_text and not self._detect_repetition(retry_text):
-                            self.logger.info(f"Chunk {i+1}/{total_chunks}: retry succeeded")
-                            r = retry_results[0]
-                            chunk_text = retry_text
-                        else:
-                            self.logger.warning(
-                                f"Chunk {i+1}/{total_chunks}: retry still repetitive, discarding chunk"
-                            )
-                            chunk_text = f"\n[チャンク{i+1}反復検出のため破棄]\n"
-
-                    if chunk_text:
-                        raw_texts.append(chunk_text)
-                        if self.config.include_timestamps and not chunk_text.startswith("\n[チャンク"):
-                            offset_sec = start_sample / sr
-                            align_items_all.extend(
-                                self._align_chunk((chunk, sr), chunk_text, language, offset_sec)
-                            )
-                    # 最初のチャンクの検出言語を使う
-                    if i == 0 and r.language:
-                        detected_lang = self._language_name_to_code(r.language)
+                # 最初のチャンクの検出言語を使う
+                if i == 0 and detected_lang_name:
+                    detected_lang = self._language_name_to_code(detected_lang_name)
 
                 chunk_elapsed = time.time() - chunk_start_time
                 self.logger.info(
@@ -825,8 +800,120 @@ class Qwen3ASREngine(TranscriptionEngine):
             )
         return text, detected_lang, failed_chunks, repeated_chunks, align_items_all
 
+    # 無音分割フォールバック(d)を試みる最小チャンク長。これ未満では
+    # find_silence_boundary()の探索窓(片側SILENCE_SEARCH_RADIUS_SEC秒)を
+    # 確保できず、分割してもどちらかの半分がほぼ空になり得るため、
+    # 分割を試みずに(c)の切り詰め/全体破棄に直接進む。
+    _MIN_SPLIT_DURATION_SEC = 40.0
+
+    def _split_audio_at_silence(self, chunk_audio: "np.ndarray", sr: int) -> Tuple["np.ndarray", "np.ndarray"]:
+        """チャンク音声(np.ndarray)を、中間点付近の最も静かな位置で前半/後半に2分割する。
+
+        tc-ops #546で実装した`core.nemotron_engine.find_silence_boundary()`
+        (無音区間へ分割点を寄せる純粋関数)をそのまま転用する。両半分が空に
+        ならないよう分割サンプル位置は[1, len-1]にクランプする。
+        """
+        from core.nemotron_engine import find_silence_boundary
+
+        total_duration_sec = len(chunk_audio) / sr
+        split_sec = find_silence_boundary(chunk_audio, sr, total_duration_sec / 2, total_duration_sec)
+        split_sample = int(split_sec * sr)
+        split_sample = max(1, min(split_sample, len(chunk_audio) - 1))
+        return chunk_audio[:split_sample], chunk_audio[split_sample:]
+
+    def _transcribe_chunk_with_fallback(
+        self,
+        chunk_audio: "np.ndarray",
+        sr: int,
+        context: str,
+        language: Optional[str],
+        chunk_label: str,
+        total_chunks: int,
+        allow_split: bool = True,
+    ) -> Tuple[str, bool, Optional[str]]:
+        """チャンク単体を文字起こしし、反復ループ検出時の是正(tc-ops #547是正、
+        2026-09-27、真因未確定のまま無条件採用の采決定による)を適用する。
+
+        1回目が反復していれば同一チャンクを1回だけ再試行する(既存の安全網、
+        bugfix 2026-08-03を踏襲)。再試行後も反復する場合、以下を順に試みる:
+
+        (d) 無音区間2分割フォールバック(新規、采指示): `allow_split=True`かつ
+            チャンク長が`_MIN_SPLIT_DURATION_SEC`以上の場合、チャンクを無音区間で
+            前半/後半に2分割し、それぞれを独立に(`allow_split=False`で再帰的に)
+            本メソッドへかける。正常チャンクの処理フローには影響しない
+            (反復検出チャンクに限定した処理のため)。
+        (c) 反復部分のみ除去(新規、采指示): (d)を適用できない場合(分割不可、
+            または`allow_split=False`の再帰呼び出し自体が反復)、反復が開始する
+            文字位置を`_detect_repetition()`で特定し、それ以前の正常テキストを
+            残して以降を切り詰める。開始位置が先頭(0)で残せるテキストが無い場合は、
+            旧実装と同じくチャンク全体を[チャンクN反復検出のため破棄]に置換する
+            (フォールバックの最終段。既存の全体破棄方式を維持)。
+
+        戻り値: (採用テキスト, 反復検出の有無, 検出言語名[Qwen3-ASRの生の言語名、
+        検出失敗時はNone])
+        """
+        results = self._model.transcribe(
+            audio=(chunk_audio, sr), context=context, language=language, return_time_stamps=False,
+        )
+        if not results:
+            return "", False, None
+        r = results[0]
+        text = r.text.strip()
+        is_repeated, _ = self._detect_repetition(text) if text else (False, None)
+        if not is_repeated:
+            return text, False, r.language
+
+        self.logger.warning(
+            f"Chunk {chunk_label}/{total_chunks}: repetition loop detected "
+            f"({len(text)} chars), retrying once"
+        )
+        retry_results = self._model.transcribe(
+            audio=(chunk_audio, sr), context=context, language=language, return_time_stamps=False,
+        )
+        retry_text = retry_results[0].text.strip() if retry_results else ""
+        retry_is_repeated, retry_pos = (
+            self._detect_repetition(retry_text) if retry_text else (False, None)
+        )
+        if retry_text and not retry_is_repeated:
+            self.logger.info(f"Chunk {chunk_label}/{total_chunks}: retry succeeded")
+            return retry_text, True, retry_results[0].language
+
+        # (d) 無音区間2分割フォールバック
+        min_split_samples = int(self._MIN_SPLIT_DURATION_SEC * sr)
+        if allow_split and len(chunk_audio) >= min_split_samples:
+            self.logger.warning(
+                f"Chunk {chunk_label}/{total_chunks}: retry still repetitive, "
+                f"attempting silence-split fallback"
+            )
+            left_audio, right_audio = self._split_audio_at_silence(chunk_audio, sr)
+            left_text, _, left_lang = self._transcribe_chunk_with_fallback(
+                left_audio, sr, context, language, f"{chunk_label}前半", total_chunks, allow_split=False,
+            )
+            right_text, _, right_lang = self._transcribe_chunk_with_fallback(
+                right_audio, sr, "", language, f"{chunk_label}後半", total_chunks, allow_split=False,
+            )
+            combined = " ".join(t for t in (left_text, right_text) if t)
+            return combined, True, (left_lang or right_lang)
+
+        # (c) 反復部分のみ除去(分割不可、または分割後の半分自体が反復した場合の最終段)
+        source_text = retry_text or text
+        is_rep, pos = self._detect_repetition(source_text)
+        if is_rep and pos:
+            salvaged = source_text[:pos].strip()
+            self.logger.warning(
+                f"Chunk {chunk_label}/{total_chunks}: retry still repetitive, "
+                f"truncating at repetition start (kept {len(salvaged)} chars)"
+            )
+            return salvaged, True, (retry_results[0].language if retry_text else r.language)
+
+        self.logger.warning(
+            f"Chunk {chunk_label}/{total_chunks}: retry still repetitive, "
+            f"no salvageable prefix, discarding chunk"
+        )
+        return f"\n[チャンク{chunk_label}反復検出のため破棄]\n", True, None
+
     @staticmethod
-    def _detect_repetition(text: str, max_cycle: int = 40, min_repeats: int = 3) -> bool:
+    def _detect_repetition(text: str, max_cycle: int = 40, min_repeats: int = 3) -> Tuple[bool, Optional[int]]:
         """句読点区切りの文節列に、同一の文節シーケンス(長さ1〜max_cycle)が
         min_repeats回以上連続して繰り返される箇所がないかを検出する。
 
@@ -835,13 +922,18 @@ class Qwen3ASREngine(TranscriptionEngine):
         検知するための軽量ヒューリスティック。正規表現の後方参照
         (`(.+)\\1{2,}`)はバックトラック爆発のリスクがあるため使わず、
         文節リストに対する固定長スライド窓比較で実装する。
+
+        戻り値: (反復を検出したか, 反復が開始する文字インデックス[検出時のみ、
+        テキスト先頭からの文字オフセット。未検出時はNone])。反復開始位置は
+        tc-ops #547是正(2026-09-27、(c)反復部分のみ除去)で追加した。呼び出し元は
+        `text[:pos]`で反復開始前の正常テキストのみを残せる。
         """
         import re
 
         fragments = [s for s in re.split(r'(?<=[。、！？!?])', text) if s.strip()]
         n = len(fragments)
         if n < min_repeats:
-            return False
+            return False, None
 
         for cycle in range(1, max_cycle + 1):
             window_span = cycle * min_repeats
@@ -853,8 +945,9 @@ class Qwen3ASREngine(TranscriptionEngine):
                     fragments[i + k * cycle:i + (k + 1) * cycle] == unit
                     for k in range(1, min_repeats)
                 ):
-                    return True
-        return False
+                    position = sum(len(f) for f in fragments[:i])
+                    return True, position
+        return False, None
 
     @staticmethod
     def _format_text_with_breaks(text: str) -> str:
@@ -931,8 +1024,17 @@ class UnifiedTranscriber:
         self.perf_logger = PerformanceLogger(self.__class__.__name__)
 
         # Initialize engines
-        # モデル名でエンジンを切替(Qwen3-ASR 系は専用エンジン、それ以外は Whisper)
-        if Qwen3ASREngine.is_qwen3_model(transcription_config.model):
+        # モデル名でエンジンを切替(Nemotron系→専用サブプロセスエンジン、
+        # Qwen3-ASR系→専用エンジン、それ以外はWhisper)。
+        # nemotron判定はqwen3判定より前に置く(tc-ops #546 Phase2設計report§2)。
+        # is_nemotron_model/is_qwen3_modelの判定文字列は互いに排他的なため、
+        # この順序自体は既存モデル名の解決結果に影響しない。
+        # core.nemotron_engineはローカルimportとする(循環import回避。
+        # nemotron_engine.py側がTranscriptionEngine等を本モジュールからimportするため)。
+        from core.nemotron_engine import is_nemotron_model, NemotronSubprocessEngine
+        if is_nemotron_model(transcription_config.model):
+            self.transcription_engine = NemotronSubprocessEngine(transcription_config)
+        elif Qwen3ASREngine.is_qwen3_model(transcription_config.model):
             self.transcription_engine = Qwen3ASREngine(transcription_config)
         else:
             self.transcription_engine = WhisperTranscriptionEngine(transcription_config)

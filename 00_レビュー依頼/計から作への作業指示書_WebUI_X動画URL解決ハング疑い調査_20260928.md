@@ -31,8 +31,17 @@ grep -q "タイムアウト" <完了報告書パス> && echo OK_TIMEOUT_SECTION_
 #    "youtube"分岐）の挙動・既存テストが壊れていないこと
 uv run python -m pytest tests -q 2>&1 | tail -5
 
-# 4. 生産用 .venv/pyproject.toml/uv.lock が変更されていないことの機械確認
-git diff --name-only -- .venv pyproject.toml uv.lock | wc -l | grep -qx 0 && echo OK_NO_ENV_CHANGE || echo FAIL_ENV_CHANGED
+# 4a. 生産用 pyproject.toml/uv.lock が変更されていないことの機械確認
+#     (作業ツリーとHEADの単純比較ではsaku側でコミット済みの変更がHEADへ取り込まれた時点で
+#     差分ゼロになり検知できない。分岐点=origin/devとの比較で判定する。査sa是正指摘)
+git diff --name-only origin/dev...HEAD -- pyproject.toml uv.lock | wc -l | grep -qx 0 && echo OK_NO_LOCKFILE_CHANGE || echo FAIL_LOCKFILE_CHANGED
+
+# 4b. 生産用 .venv/ が変更されていないことの機械確認
+#     (.venv/は.gitignore対象のためgit diffでは検知不能。git以外の手段=ファイル一覧+サイズ+
+#     更新日時のハッシュ比較で判定する。査sa是正指摘)
+#     ベースライン(計が着手前2026-09-28に記録): bb9dafd582d867d5de3c5af2f60221f269e05124b77a197aeac9ecd1f672a38e
+#     完了報告時、以下と同じコマンドを再実行しベースラインと一致することを確認・記載する
+find .venv -type f -printf '%p %s %T@\n' 2>/dev/null | sort | sha256sum
 ```
 
 ## 4. 成果物の仕様・要件

@@ -31,7 +31,8 @@ core/                    # 統一アーキテクチャ（新機能はここに�
 ├── model_manager.py    # モデル管理
 └── transcription_interface.py  # 転写インターフェース
 
-tc / transcribe         # メインエントリーポイント（./transcribe.py への薄いラッパー）
+tc                      # メインCLI（config/config.yaml 連携、argparse ベース）
+transcribe / transcribe.py  # 対話型CLI（transcribe は transcribe.py を起動するシェルラッパー）
 ```
 
 ### 重要な設定
@@ -48,8 +49,12 @@ credentials.json        # Google Drive認証
 # 基本的な転写テスト
 ./tc "https://www.youtube.com/watch?v=gjWPtgafPMA" --language ja
 
-# デバッグモード
-./tc "URL" --verbose --device cpu
+# CPU 実行（GPU 問題の切り分け）
+./tc "URL" --device cpu
+
+# 開発中の検査
+uv run python -m pytest tests -q
+uv run ruff check .
 
 # 設定確認 (uv 経由)
 uv run python3 -c "from core.config import UnifiedConfig; UnifiedConfig.load(); print(UnifiedConfig.get('whisper'))"
@@ -61,7 +66,7 @@ uv run python3 -c "from core.config import UnifiedConfig; UnifiedConfig.load(); 
 uv pip list | grep -E "(torch|transformers|google)"
 
 # ログ確認
-tail -f logs/transcribe_*.log
+tail -f logs/transcription.log
 
 # 設定リセット
 git checkout config/config.yaml
@@ -81,8 +86,7 @@ git push --force            # ❌ 強制プッシュ
 ### 注意が必要な操作
 ```bash
 # これらは事前確認が必要です
-uv pip uninstall torch       # ⚠️ 依存関係確認必要
-rm *.py.legacy              # ⚠️ 使用状況確認必要
+uv remove torch              # ⚠️ pyproject.toml / uv.lock を書き換える。依存関係確認必要
 git merge main              # ⚠️ 競合解決準備必要
 ```
 
@@ -99,13 +103,6 @@ uv sync
 # 統一システムに問題がある場合
 # core/transcription_interface.py の _transcribe_with_original_logic() を確認
 # max_new_tokens パラメータを調整（通常400）
-```
-
-### 設定エラー
-```bash
-# AppConfig -> UnifiedConfig移行問題
-grep -r "AppConfig" . --include="*.py" --include="*.sh"
-# 見つかった箇所をUnifiedConfigに変更
 ```
 
 ## 📊 品質チェック
@@ -130,9 +127,10 @@ grep -r "AppConfig" . --include="*.py" --include="*.sh"
 
 ### 重要ファイル復旧
 ```bash
-# .venv 復旧 (uv が pyproject.toml/uv.lock から復元)
-rm -rf .venv
+# .venv 復旧 (uv が pyproject.toml/uv.lock から復元。.venv は削除しない)
 uv sync
+# それでも直らない場合は、パッケージを入れ直す
+uv sync --reinstall
 
 # 設定ファイル復旧
 git checkout HEAD -- config/config.yaml

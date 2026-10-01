@@ -47,8 +47,8 @@ dist/
 downloads/
 eggs/
 .eggs/
-lib/
-lib64/
+/lib/
+/lib64/
 parts/
 sdist/
 var/
@@ -141,6 +141,29 @@ experimental_*
 test_*
 !tests/
 !tests/**
+# 上の !tests/** は冒頭の __pycache__/ の除外も打ち消すため、ここで除外し直す
+__pycache__/
 *_test.py
 quick_*.py
 snapshots/
+
+# =============================================
+# 運用ツールの資産・生成物（プロジェクトの成果物ではない）
+# =============================================
+
+# ccc（ロール間連携）の運用資産
+/agent_common.py
+/agmsg_bridge.py
+/agmsg_send.py
+/herdr_common.py
+/01_ロール定義/
+/.takt/
+
+# 作業規律による改変前バックアップと作業ディレクトリ
+/backup/
+/WORK_*/
+
+# claude-code-harness の実行時生成物
+/.harness/
+/.harness-worktrees/
+/out/progress-snapshot.html

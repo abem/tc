@@ -17,7 +17,6 @@ CLI と WebUI の後処理共通化)の前に、tc の現在の挙動を固定�
 import importlib.util
 from importlib.machinery import SourceFileLoader
 from pathlib import Path
-from types import SimpleNamespace
 
 import pytest
 import yaml

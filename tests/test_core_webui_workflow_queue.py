@@ -9,7 +9,7 @@ Tests for core.webui_workflow.TranscriptionJobQueue / QueueItem
 
 from unittest.mock import MagicMock
 
-from core.webui_workflow import QueueItem, QueueItemState, TranscriptionJob, TranscriptionJobQueue
+from core.webui_workflow import QueueItemState, TranscriptionJob, TranscriptionJobQueue
 
 
 def _resolution(name: str):

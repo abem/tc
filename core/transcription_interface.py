@@ -7,7 +7,7 @@ Consolidates all transcribe() method implementations into a single, consistent A
 """
 
 from abc import ABC, abstractmethod
-from typing import Any, Dict, List, Optional, Tuple, Union, Callable
+from typing import Any, Dict, List, Optional, Tuple, Callable, TYPE_CHECKING
 from dataclasses import dataclass
 from types import SimpleNamespace
 import os
@@ -17,6 +17,9 @@ import time
 import traceback
 from pathlib import Path
 import torch
+
+if TYPE_CHECKING:
+    import numpy as np
 
 from core.config import TranscriptionConfig
 from core.logging import UnifiedLogger, PerformanceLogger
@@ -144,8 +147,7 @@ class WhisperTranscriptionEngine(TranscriptionEngine):
     def transcribe(self, audio_path: str, **kwargs) -> TranscriptionResult:
         """Transcribe audio using Whisper model with full functionality."""
         self.validate_audio_file(audio_path)
-        
-        start_time = time.time()
+
         self.perf_logger.start_timing(f"transcribe_{Path(audio_path).name}")
         
         try:
@@ -231,8 +233,6 @@ class WhisperTranscriptionEngine(TranscriptionEngine):
     
     def _transcribe_with_original_logic(self, audio_path: str) -> str:
         """Transcribe using the original WhisperTranscriber logic for quality."""
-        import soundfile as sf
-        import numpy as np
         from tqdm import tqdm
         
         # Audio preprocessing
@@ -333,7 +333,7 @@ class WhisperTranscriptionEngine(TranscriptionEngine):
                 # Use librosa for stable resampling
                 import librosa
                 audio = librosa.resample(audio, orig_sr=sr, target_sr=16000)
-            except (ImportError, Exception) as e:
+            except (ImportError, Exception):
                 # Fallback: scipy resampling
                 try:
                     import scipy.signal
@@ -599,7 +599,6 @@ class Qwen3ASREngine(TranscriptionEngine):
         """Qwen3-ASR で文字起こし。長音声は自動的に分割して処理。"""
         self.validate_audio_file(audio_path)
 
-        start_time = time.time()
         self.perf_logger.start_timing(f"transcribe_{Path(audio_path).name}")
 
         try:

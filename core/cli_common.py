@@ -12,9 +12,19 @@ from core.config import UnifiedConfig
 from core.utils import (
     detect_input_type,
     extract_gdrive_file_id,
-    is_google_drive_url,
     resolve_device,
 )
+
+__all__ = [
+    "select_model",
+    "update_whisper_config",
+    "build_output_file",
+    "upload_text_to_gdrive_sibling",
+    # core.utils からの再エクスポート（webui.py / tc / core/cli_workflow.py が
+    # core.cli_common 経由で import している公開名）
+    "detect_input_type",
+    "resolve_device",
+]
 
 
 def select_model(language: str, override_model: Optional[str] = None) -> str:

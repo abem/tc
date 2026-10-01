@@ -15,8 +15,6 @@ import os
 from pathlib import Path
 from unittest.mock import patch
 
-import pytest
-
 from core.cli_workflow import resolve_input_audio
 
 SAME_URL = "https://www.youtube.com/watch?v=abc123"

@@ -1,10 +1,7 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 import os
-from pathlib import Path
-from typing import Final, Dict, Any
-import logging
-from google.oauth2.credentials import Credentials
+from typing import Dict, Any
 from google_auth_oauthlib.flow import InstalledAppFlow
 from google.auth.transport.requests import Request
 from googleapiclient.discovery import build

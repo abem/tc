@@ -2,8 +2,6 @@
 Tests for core.utils module.
 """
 
-import pytest
-
 
 class TestYouTubeUrlDetection:
     """Tests for YouTube URL detection."""
@@ -219,7 +217,6 @@ class TestResolveDevice:
         result = resolve_device("cpu")
         assert result == "cpu"
 
-    @pytest.mark.skip(reason="Requires torch which may not be installed")
     def test_resolve_auto(self):
         """Test auto device resolution."""
         from core.utils import resolve_device

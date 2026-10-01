@@ -129,19 +129,20 @@
 - `config/`: システム設定（変更は慎重に）
 - `core/`: 統一アーキテクチャ（新機能の基盤）
   - `core/logging.py`: 統一ロガー（`from core.logging import get_logger`）
-  - `core/config.py`: TranscriptionConfig, DiarizationConfig, UnifiedConfig
-  - `core/transcription_interface.py`: UnifiedTranscriber（デュアルエンジン: Qwen3ASREngine / WhisperTranscriptionEngine をモデル名で自動切替）
+  - `core/config.py`: TranscriptionConfig, SystemConfig, UnifiedConfig
+  - `core/transcription_interface.py`: UnifiedTranscriber（3エンジン構成: NemotronSubprocessEngine / Qwen3ASREngine / WhisperTranscriptionEngine をモデル名で自動切替）
+  - `core/nemotron_engine.py`: Nemotron系モデル用サブプロセスエンジン
   - `core/utils.py`: URL検出・デバイス解決ユーティリティ
 - `handlers/`: 外部サービスハンドラー
   - `handlers/gdrive.py`: GDriveClient（Google Drive操作）
   - `handlers/youtube.py`: YouTubeClient（YouTube音声抽出）
-- `transcribe.py` / `tc`: モダンなCLIローダー（推奨）
-- `speaker_diarization.py`: 話者分離機能
+- `transcribe.py`: Rich UI対話型CLI（プロファイル選択式）
+- `tc`: config/config.yaml連携の推奨CLI（argparseベース、オプション指定可）
 
 ### 新CLI (transcribe.py / tc コマンド)
 - **推奨実行方法**: `./tc` コマンドでシンプル実行
 - **デフォルトモデル**: Qwen/Qwen3-ASR-1.7B（最高精度・2026年ベンチマークトップ）
-  - モデル名に `qwen3-asr` を含む場合は Qwen3ASREngine、それ以外は WhisperTranscriptionEngine が自動選択
+  - モデル名に `nemotron` を含む場合は NemotronSubprocessEngine、`qwen3-asr`（または `qwen3_asr`）を含む場合は Qwen3ASREngine、それ以外は WhisperTranscriptionEngine が自動選択
   - 長音声は5分単位でチャンク分割して処理（CUBLASエラー回避）
 - **自動設定読み込み**: config.yamlから自動でURL取得
 - **同一フォルダアップロード**: 元音声ファイルと同じGoogle Driveフォルダに結果保存
@@ -155,7 +156,7 @@ from core.logging import get_logger
 logger = get_logger(__name__)
 
 # 設定
-from core.config import TranscriptionConfig, DiarizationConfig, UnifiedConfig
+from core.config import TranscriptionConfig, UnifiedConfig
 config = TranscriptionConfig.for_language("ja", "high")
 
 # 文字起こし
@@ -190,8 +191,8 @@ audio_path, metadata = yt_client.download_audio(youtube_url)
 - GPU/CPUの切り替えは環境確認してから
 
 ## 📚 参考資料
-- システム概要: `docs/system_overview_2025.md`
-- 設定方法: `docs/configuration.md`  
+- システム概要: `docs/system-docs/system_overview_2025.md`
+- 設定方法: `docs/user-guides/configuration.md`  
 - トラブルシューティング: `docs/`配下の各種ドキュメント
 
 ## 🎯 重要原則

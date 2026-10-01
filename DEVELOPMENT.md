@@ -134,11 +134,9 @@ docs/
 └── obsolete/
 
 scripts/
-├── pre_check.sh                # 品質チェックスクリプト
 ├── gpu_monitor.py              # GPU監視
 ├── simple_gpu_monitor.sh       # GPU監視(簡易版)
-├── e2e_local.sh                # E2Eテスト(ローカル実行)
-└── cleanup_transcriptions.sh   # 出力クリーンアップ
+└── e2e_local.sh                # E2Eテスト(ローカル実行)
 ```
 
 ## 🔄 開発フロー
@@ -150,9 +148,6 @@ git checkout -b feature/new-awesome-feature
 
 # 開発作業
 # ... コーディング ...
-
-# 品質チェック実行
-./scripts/pre_check.sh
 
 # テスト実行
 uv run pytest tests/ -v
@@ -221,19 +216,6 @@ extend-ignore = ["E203", "W503"]
 python_version = "3.11"
 warn_return_any = true
 disallow_untyped_defs = true
-```
-
-### 事前チェックスクリプト
-```bash
-# 包括的品質チェック
-./scripts/pre_check.sh
-
-# 実行内容:
-# 1. テスト実行
-# 2. ドキュメント整合性チェック  
-# 3. コーディング規約チェック
-# 4. Git操作チェック
-# 5. CI設定チェック
 ```
 
 ## 🧪 テスト実行

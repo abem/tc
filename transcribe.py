@@ -274,6 +274,7 @@ class TranscribeLoader:
         # 入力タイプ表示
         type_names = {
             "youtube": "YouTube",
+            "twitter": "X(Twitter)",
             "gdrive": "Google Drive",
             "local": "ローカルファイル"
         }

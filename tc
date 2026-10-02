@@ -26,6 +26,7 @@ from core.cli_common import build_output_file, resolve_device, update_whisper_co
 from core.cli_workflow import record_transcription_history, resolve_input_audio, upload_transcription_result
 from core.config import TranscriptionConfig
 from core.logging import get_logger
+from core.progress import throttled
 from core.transcription_interface import TranscriptionResult, UnifiedTranscriber
 from core.utils import load_context_hints
 
@@ -142,7 +143,7 @@ def main():
 
     try:
         resolution = resolve_input_audio(
-            input_source, Path(args.output_dir), ensure_yt_dlp=True, on_status=print
+            input_source, Path(args.output_dir), ensure_yt_dlp=True, on_status=throttled(print)
         )
     except ValueError as error:
         logger.error(str(error))

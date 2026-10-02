@@ -43,7 +43,10 @@ from core.webui_workflow import (
     QueueItemState,
     TranscriptionJob,
     TranscriptionJobQueue,
+    apply_progress,
     drain_progress,
+    estimate_remaining,
+    format_elapsed,
     segments_to_srt,
     start_transcription_job,
 )
@@ -237,7 +240,8 @@ def _start_resolution_job(
     """
 
     def _on_status(message: str) -> None:
-        item.log.append(message)
+        if not apply_progress(item, message):
+            item.log.append(message)
 
     def _run() -> None:
         logger.info("_resolve_input開始(background) token=%s item_id=%s", token, item.item_id)
@@ -422,6 +426,20 @@ def _render_result_detail(item: QueueItem) -> None:
         st.caption("SRTプレビューを表示するには、設定パネルでタイムスタンプ付与を有効にしてください。")
 
 
+def _render_item_progress(item: QueueItem, *, since: float, idle_text: str) -> None:
+    """進捗バー(進捗率が分かる間)または経過時間つきの処理中表示。1秒ごとの再描画で経過時間が動くため、
+    進捗率が取れない処理(短い音声・Nemotron等)でも画面が止まって見えない。"""
+    elapsed = time.time() - since
+    if item.progress is not None:
+        remaining = estimate_remaining(elapsed, item.progress)
+        text = f"{item.progress_text}  経過 {format_elapsed(elapsed)}"
+        if remaining is not None:
+            text += f" / 残り約 {format_elapsed(remaining)}"
+        st.progress(item.progress, text=text)
+    else:
+        st.info(f"{item.progress_text or idle_text}  経過 {format_elapsed(elapsed)}")
+
+
 @st.fragment(run_every="1s")
 def _render_queue_and_result() -> None:
     """リアルタイム進捗表示・結果プレビュー・キュー状態表示(設計書§3-3・§3-4、非同期方式は§5、
@@ -431,7 +449,8 @@ def _render_queue_and_result() -> None:
     current = job_queue.current
     if current is not None and current.job is not None:
         for message in drain_progress(current.job):
-            current.log.append(message)
+            if not apply_progress(current, message):
+                current.log.append(message)
 
         if current.job.done:
             if current.job.error is not None:
@@ -450,6 +469,7 @@ def _render_queue_and_result() -> None:
     if resolving:
         for item in resolving:
             st.write(f"解決中(ダウンロード等): {item.label}")
+            _render_item_progress(item, since=item.submitted_at, idle_text="取得の準備中です...")
             if item.log:
                 st.text("\n".join(item.log[-5:]))
 
@@ -462,7 +482,9 @@ def _render_queue_and_result() -> None:
         st.write(f"処理中: {current.label}")
         if current.log:
             st.text("\n".join(current.log[-10:]))
-        st.info("処理中です...")
+        _render_item_progress(
+            current, since=current.started_at or current.submitted_at, idle_text="処理中です..."
+        )
 
     finished = _sorted_finished_items(job_queue)
     if finished:

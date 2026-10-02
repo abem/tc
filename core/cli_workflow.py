@@ -52,7 +52,10 @@ def resolve_input_audio(
             install_yt_dlp()
 
         youtube_handler = YouTubeClient(output_dir=str(output_dir))
-        local_audio_path, metadata = youtube_handler.download_audio(source)
+        if on_status:
+            local_audio_path, metadata = youtube_handler.download_audio(source, progress_callback=on_status)
+        else:
+            local_audio_path, metadata = youtube_handler.download_audio(source)
         return InputResolution(
             source_type=source_type,
             original_source=source,

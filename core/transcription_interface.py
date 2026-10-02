@@ -24,6 +24,7 @@ if TYPE_CHECKING:
 from core.config import TranscriptionConfig
 from core.logging import UnifiedLogger, PerformanceLogger
 from core.model_manager import get_global_model_manager
+from core.progress import emit_progress
 from core.utils import DEFAULT_AUDIO_DURATION_SEC, get_audio_duration
 
 
@@ -113,7 +114,9 @@ class WhisperTranscriptionEngine(TranscriptionEngine):
             self._load_model()
             
             # Get full transcription with original functionality
-            full_text = self._transcribe_with_original_logic(audio_path)
+            full_text = self._transcribe_with_original_logic(
+                audio_path, progress_callback=kwargs.get("progress_callback")
+            )
             
             processing_time = self.perf_logger.end_timing(f"transcribe_{Path(audio_path).name}")
             
@@ -178,7 +181,7 @@ class WhisperTranscriptionEngine(TranscriptionEngine):
         """Get audio file duration."""
         return get_audio_duration(audio_path)
     
-    def _transcribe_with_original_logic(self, audio_path: str) -> str:
+    def _transcribe_with_original_logic(self, audio_path: str, progress_callback: Optional[Callable] = None) -> str:
         """Transcribe using the original WhisperTranscriber logic for quality."""
         from tqdm import tqdm
         
@@ -197,6 +200,7 @@ class WhisperTranscriptionEngine(TranscriptionEngine):
         # Process each chunk with timestamps
         for i, chunk in enumerate(tqdm(chunks, desc="音声文字起こし")):
             chunk_start_seconds = i * 30
+            emit_progress(progress_callback, f"文字起こし中 {i + 1}/{len(chunks)}", i / len(chunks))
 
             # Process single chunk with proper attention mask
             inputs = self._processor(
@@ -566,7 +570,8 @@ class Qwen3ASREngine(TranscriptionEngine):
                     f"splitting into chunks for stable processing"
                 )
                 text, detected_language, failed_chunks, repeated_chunks, align_items = self._transcribe_long_audio(
-                    audio_path, duration, language, self.config.context
+                    audio_path, duration, language, self.config.context,
+                    progress_callback=kwargs.get("progress_callback"),
                 )
             else:
                 # 短音声: そのまま処理
@@ -635,7 +640,14 @@ class Qwen3ASREngine(TranscriptionEngine):
             self.logger.error(f"Transcription failed: {str(e)}")
             raise
 
-    def _transcribe_long_audio(self, audio_path: str, duration: float, language: Optional[str], context: str = ""):
+    def _transcribe_long_audio(
+        self,
+        audio_path: str,
+        duration: float,
+        language: Optional[str],
+        context: str = "",
+        progress_callback: Optional[Callable] = None,
+    ):
         """長音声を CHUNK_THRESHOLD_SEC 毎に分割して文字起こし、結果を結合する。
 
         Qwen3-ASR の内部チャンク処理でも長音声に対応しているが、
@@ -676,6 +688,7 @@ class Qwen3ASREngine(TranscriptionEngine):
         repeated_chunks = 0
         align_items_all: List[Any] = []
 
+        emit_progress(progress_callback, f"文字起こし開始(全{total_chunks}チャンク)", 0.0)
         for i in tqdm(range(total_chunks), desc="音声文字起こし(分割)"):
             start_sample = i * chunk_samples
             end_sample = min(start_sample + chunk_samples, len(audio))
@@ -714,11 +727,13 @@ class Qwen3ASREngine(TranscriptionEngine):
                     f"Chunk {i+1}/{total_chunks} done in {chunk_elapsed:.1f}s "
                     f"(lang={detected_lang})"
                 )
+                emit_progress(progress_callback, f"文字起こし中 {i + 1}/{total_chunks} チャンク完了", (i + 1) / total_chunks)
             except Exception as e:
                 failed_chunks += 1
                 self.logger.warning(f"Chunk {i+1}/{total_chunks} failed: {e}, inserting placeholder")
                 # プレースホルダは前後で改行を強制(自然文ではないため)
                 raw_texts.append(f"\n[チャンク{i+1}失敗]\n")
+                emit_progress(progress_callback, f"文字起こし中 {i + 1}/{total_chunks} チャンク完了(失敗あり)", (i + 1) / total_chunks)
                 continue
 
         # 生テキストを全チャンク結合してから、最後に1回だけ文節改行を適用
@@ -992,7 +1007,7 @@ class UnifiedTranscriber:
         if progress_callback:
             progress_callback("Starting transcription...")
 
-        result = self.transcription_engine.transcribe(audio_path, **kwargs)
+        result = self.transcription_engine.transcribe(audio_path, progress_callback=progress_callback, **kwargs)
 
         if progress_callback:
             progress_callback("Transcription completed")

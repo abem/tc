@@ -6,16 +6,24 @@ YouTube audio extraction client.
 import json
 import os
 import re
+import selectors
 import subprocess
 import tempfile
 from pathlib import Path
-from typing import Dict, Optional, Tuple
+from typing import Callable, Dict, Optional, Tuple
 
 from core.logging import get_logger
+from core.progress import emit_progress, parse_ytdlp_progress
 from core.utils import is_youtube_url as check_is_youtube_url
 from core.utils import is_twitter_url as check_is_twitter_url
 
 logger = get_logger(__name__)
+
+# tc-ops #550是正: yt-dlp呼び出しはtimeout未設定だとフラグメント取得等の単発通信が停止した際に
+# 無期限に待機してしまう(WebUI「解決中」ハングの原因候補)。
+SOCKET_TIMEOUT_SECONDS = 30  # yt-dlp --socket-timeout。単発通信の無応答をyt-dlp自身に検知させる。
+INFO_TIMEOUT_SECONDS = 60  # extract_video_info()のsubprocess.run全体タイムアウト。メタデータ取得は実測0.9秒程度のため十分な余裕を持たせた値。
+DOWNLOAD_STALL_TIMEOUT_SECONDS = 300  # download_audio()の出力停止監視。--socket-timeoutでは捕捉できない非ネットワーク要因(後段処理のハング等)への保険。
 
 
 class YouTubeClient:
@@ -65,16 +73,22 @@ class YouTubeClient:
                 self.yt_dlp_path,
                 "--dump-json",
                 "--no-playlist",
+                "--socket-timeout", str(SOCKET_TIMEOUT_SECONDS),
                 url
             ]
 
-            result = subprocess.run(cmd, capture_output=True, text=True)
+            result = subprocess.run(
+                cmd, capture_output=True, text=True, timeout=INFO_TIMEOUT_SECONDS
+            )
             if result.returncode == 0:
                 return json.loads(result.stdout)
             else:
                 logger.error(f"Failed to get video info: {result.stderr}")
                 return {}
 
+        except subprocess.TimeoutExpired:
+            logger.error(f"Timed out getting video info ({INFO_TIMEOUT_SECONDS}s): {url}")
+            return {}
         except Exception as e:
             logger.error(f"Error extracting video info: {e}")
             return {}
@@ -82,7 +96,8 @@ class YouTubeClient:
     def download_audio(
         self,
         url: str,
-        output_path: Optional[str] = None
+        output_path: Optional[str] = None,
+        progress_callback: Optional[Callable[[str], None]] = None,
     ) -> Tuple[str, Dict]:
         """
         Download and extract audio from a YouTube or X(Twitter) video.
@@ -120,10 +135,12 @@ class YouTubeClient:
             "--audio-format", "wav",
             "--audio-quality", "0",
             "--no-playlist",
+            "--socket-timeout", str(SOCKET_TIMEOUT_SECONDS),
             "-o", output_path,
             "--quiet",
             "--no-warnings",
             "--progress",
+            "--newline",
             url
         ]
 
@@ -137,13 +154,36 @@ class YouTubeClient:
                 text=True
             )
 
+            last_percent = -1
+            notified_converting = False
+            sel = selectors.DefaultSelector()
+            sel.register(process.stdout, selectors.EVENT_READ)
+
             while True:
+                events = sel.select(timeout=DOWNLOAD_STALL_TIMEOUT_SECONDS)
+                if not events:
+                    process.kill()
+                    process.wait()
+                    raise TimeoutError(
+                        f"yt-dlp出力が{DOWNLOAD_STALL_TIMEOUT_SECONDS}秒間停止したため中断: {url}"
+                    )
                 output = process.stdout.readline()
                 if output == '' and process.poll() is not None:
                     break
                 if output:
                     if "[download]" in output and "%" in output:
                         print(f"\r{output.strip()}", end='', flush=True)
+                    parsed = parse_ytdlp_progress(output)
+                    if parsed is not None:
+                        fraction, eta = parsed
+                        percent = int(fraction * 100)
+                        if percent != last_percent:
+                            last_percent = percent
+                            suffix = f"(残り {eta})" if eta else ""
+                            emit_progress(progress_callback, f"ダウンロード中 {percent}%{suffix}", fraction)
+                        if fraction >= 1.0 and not notified_converting:
+                            notified_converting = True
+                            emit_progress(progress_callback, "音声をwavに変換中(長い動画は数分かかります)")
 
             stdout, stderr = process.communicate()
 

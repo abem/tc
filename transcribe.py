@@ -23,6 +23,7 @@ from core.cli_common import (
 )
 from core.cli_workflow import record_transcription_history, resolve_input_audio, upload_transcription_result
 from core.config import UnifiedConfig, TranscriptionConfig
+from core.progress import throttled
 from core.transcription_interface import UnifiedTranscriber
 from core.utils import load_context_hints
 
@@ -130,7 +131,7 @@ class TranscribeLoader:
                 input_info["source"],
                 Path("output"),
                 ensure_yt_dlp=True,
-                on_status=console.print,
+                on_status=throttled(console.print),
             )
 
             if resolution.source_type == "youtube" and resolution.metadata:

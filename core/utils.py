@@ -16,10 +16,6 @@ YOUTUBE_URL_PATTERNS = [
     r'(?:https?://)?(?:www\.)?youtube\.com/shorts/[\w-]+',
 ]
 
-YOUTUBE_URL_PATTERN = re.compile(
-    r"https?://(?:www\.)?(?:youtube\.com/watch|youtu\.be/)"
-)
-
 GDRIVE_URL_PATTERN = re.compile(r"^https://drive\.google\.com/")
 GDRIVE_FILE_ID_PATTERN = re.compile(r"/file/d/([a-zA-Z0-9_-]+)")
 GDRIVE_OPEN_ID_PATTERN = re.compile(r"[?&]id=([a-zA-Z0-9_-]+)")

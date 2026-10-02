@@ -98,23 +98,6 @@ class TranscriptionConfig:
             config.temperature = 0.2
             
         return config
-    
-    @classmethod
-    def for_device(cls, device: str) -> 'TranscriptionConfig':
-        """Create optimized config for specific device."""
-        config = cls(device=device)
-        
-        if device == "cuda":
-            config.optimal_batch_size = 8
-            config.enable_multi_stream = True
-            config.memory_pool_size = 12
-        elif device == "cpu":
-            config.optimal_batch_size = 2
-            config.enable_multi_stream = False
-            config.memory_pool_size = 4
-            config.compute_type = "float32"
-            
-        return config
 
 
 @dataclass
@@ -147,26 +130,6 @@ class UnifiedConfig:
     
     transcription: TranscriptionConfig = field(default_factory=TranscriptionConfig)
     system: SystemConfig = field(default_factory=SystemConfig)
-
-    @classmethod
-    def create_for_use_case(cls, use_case: str) -> 'UnifiedConfig':
-        """Create configuration optimized for specific use case."""
-        config = cls()
-
-        if use_case == "japanese_high_quality":
-            config.transcription = TranscriptionConfig.for_language("ja", "high")
-
-        elif use_case == "english_fast":
-            config.transcription = TranscriptionConfig.for_language("en", "fast")
-
-        elif use_case == "multi_speaker_meeting":
-            config.transcription = TranscriptionConfig.for_language("ja", "high")
-
-        elif use_case == "gpu_optimized":
-            config.transcription = TranscriptionConfig.for_device("cuda")
-            config.transcription.performance_monitoring = True
-            
-        return config
     
     _config_data: Optional[Dict[str, Any]] = None
     
@@ -189,22 +152,3 @@ class UnifiedConfig:
             else:
                 return default
         return d
-    
-    def to_dict(self) -> Dict[str, Any]:
-        """Convert to dictionary for serialization."""
-        return {
-            "transcription": self.transcription.__dict__,
-            "system": self.system.__dict__
-        }
-
-    @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> 'UnifiedConfig':
-        """Create from dictionary."""
-        config = cls()
-
-        if "transcription" in data:
-            config.transcription = TranscriptionConfig(**data["transcription"])
-        if "system" in data:
-            config.system = SystemConfig(**data["system"])
-
-        return config

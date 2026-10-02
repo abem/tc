@@ -12,12 +12,11 @@ import tempfile
 from abc import ABC, abstractmethod
 from datetime import datetime
 from pathlib import Path
-from typing import Generator, Optional, Dict, Any, Union
+from typing import Optional, Dict, Any, Union
 
 from googleapiclient.http import MediaIoBaseDownload, MediaIoBaseUpload, MediaFileUpload
 
 from config import get_drive_service
-from core.config import UnifiedConfig
 from core.logging import get_logger
 
 logger = get_logger(__name__)
@@ -77,17 +76,6 @@ class GDriveClient(StorageBackend):
     # =====================
     # Basic File Operations
     # =====================
-
-    def get_file_metadata(self, file_id: str) -> Dict[str, Any]:
-        """Get file metadata."""
-        try:
-            return self.service.files().get(
-                fileId=file_id,
-                fields="id, name, size, parents"
-            ).execute()
-        except Exception as e:
-            logger.error(f"Failed to get metadata: {e}")
-            raise
 
     def get_file_url(self, file_id: str) -> Optional[str]:
         """Get file URL."""
@@ -185,36 +173,6 @@ class GDriveClient(StorageBackend):
             logger.error(f"Upload failed: {e}")
             raise UploadError(f"Failed to upload file: {e}")
 
-    def stream_file_chunks(
-        self,
-        file_id: str,
-        chunk_size_mb: Optional[int] = None
-    ) -> Generator[bytes, None, None]:
-        """Stream file in chunks."""
-        if chunk_size_mb is None:
-            chunk_size_mb = UnifiedConfig.get('gdrive', 'chunk_size', default=100)
-
-        try:
-            request = self.service.files().get_media(fileId=file_id)
-            fh = io.BytesIO()
-            downloader = MediaIoBaseDownload(fh, request)
-            done = False
-
-            while not done:
-                status, done = downloader.next_chunk()
-                if status:
-                    logger.debug(f"Download progress: {int(status.progress() * 100)}%")
-
-                if fh.getbuffer().nbytes >= chunk_size_mb * 1024 * 1024 or done:
-                    fh.seek(0)
-                    chunk_data = fh.getvalue()
-                    fh = io.BytesIO()
-                    yield chunk_data
-
-        except Exception as e:
-            logger.error(f"Streaming error: {e}")
-            raise
-
     # =====================
     # Folder Operations
     # =====================
@@ -275,17 +233,6 @@ class GDriveClient(StorageBackend):
         except Exception as e:
             logger.error(f"Folder creation error: {e}")
             return None
-
-    def find_or_create_folder(
-        self,
-        folder_name: str,
-        parent_id: Optional[str] = None
-    ) -> Optional[str]:
-        """Find or create folder."""
-        folder_id = self.find_folder_by_name(folder_name, parent_id)
-        if not folder_id:
-            folder_id = self.create_folder(folder_name, parent_id)
-        return folder_id
 
     # =====================
     # YouTube-Specific Operations

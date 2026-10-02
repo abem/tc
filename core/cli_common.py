@@ -8,7 +8,6 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, Optional
 
-from core.config import UnifiedConfig
 from core.utils import (
     detect_input_type,
     extract_gdrive_file_id,
@@ -16,7 +15,6 @@ from core.utils import (
 )
 
 __all__ = [
-    "select_model",
     "update_whisper_config",
     "build_output_file",
     "upload_text_to_gdrive_sibling",
@@ -25,20 +23,6 @@ __all__ = [
     "detect_input_type",
     "resolve_device",
 ]
-
-
-def select_model(language: str, override_model: Optional[str] = None) -> str:
-    """Select model using config defaults and language fallback."""
-    if override_model:
-        return override_model
-
-    language_models = UnifiedConfig.get("whisper", "language_models", default={})
-    language_config = language_models.get(language, {})
-    selected = language_config.get("default")
-    if selected:
-        return selected
-
-    return "openai/whisper-large-v3" if language == "en" else "kotoba-tech/kotoba-whisper-v2.2"
 
 
 def update_whisper_config(base_config: Dict[str, Any], **overrides: Optional[str]) -> Dict[str, Any]:

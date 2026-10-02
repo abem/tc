@@ -48,29 +48,6 @@ class TranscriptionResult:
     model_name: str
     has_speakers: bool = False
     metadata: Optional[Dict[str, Any]] = None
-    
-    def to_dict(self) -> Dict[str, Any]:
-        """Convert to dictionary for serialization."""
-        return {
-            "text": self.text,
-            "segments": [
-                {
-                    "start": seg.start,
-                    "end": seg.end,
-                    "text": seg.text,
-                    "speaker": seg.speaker,
-                    "confidence": seg.confidence,
-                    "language": seg.language
-                }
-                for seg in self.segments
-            ],
-            "language": self.language,
-            "duration": self.duration,
-            "processing_time": self.processing_time,
-            "model_name": self.model_name,
-            "has_speakers": self.has_speakers,
-            "metadata": self.metadata or {}
-        }
 
 
 class TranscriptionEngine(ABC):
@@ -100,26 +77,6 @@ class TranscriptionEngine(ABC):
         if not path.is_file():
             raise ValueError(f"Path is not a file: {audio_path}")
         return True
-    
-    def _create_segments_from_result(self, 
-                                   raw_result: Dict[str, Any],
-                                   has_speakers: bool = False) -> List[TranscriptionSegment]:
-        """Convert raw transcription result to structured segments."""
-        segments = []
-        
-        if "segments" in raw_result:
-            for seg_data in raw_result["segments"]:
-                segment = TranscriptionSegment(
-                    start=seg_data.get("start", 0.0),
-                    end=seg_data.get("end", 0.0),
-                    text=seg_data.get("text", ""),
-                    speaker=seg_data.get("speaker") if has_speakers else None,
-                    confidence=seg_data.get("confidence"),
-                    language=seg_data.get("language", self.config.language)
-                )
-                segments.append(segment)
-        
-        return segments
 
 
 class WhisperTranscriptionEngine(TranscriptionEngine):
@@ -215,12 +172,6 @@ class WhisperTranscriptionEngine(TranscriptionEngine):
     def _get_audio_duration_fallback(self) -> float:
         """Fallback audio duration."""
         return 600.0  # Default 10 minutes
-    
-    def _load_audio(self, audio_path: str):
-        """Load audio file for processing."""
-        import librosa
-        audio, _ = librosa.load(audio_path, sr=16000)
-        return audio
     
     def _get_audio_duration(self, audio_path: str) -> float:
         """Get audio file duration."""
@@ -965,31 +916,6 @@ class Qwen3ASREngine(TranscriptionEngine):
             return text.strip()
 
         return "\n".join(sentences)
-
-    def _results_to_segments(self, result, language: str, audio_path: str) -> List[TranscriptionSegment]:
-        """Qwen3-ASR の結果を TranscriptionSegment に変換。
-
-        return_time_stamps=False(デフォルト)の場合は time_stamps が None になるため、
-        フォールバックで音声全体を1セグメントとする。この際 segment.end には
-        _get_audio_duration_fallback() の固定値(600s)ではなく、実音声長を使う。
-        """
-        segments = []
-        if getattr(result, "time_stamps", None):
-            for ts in result.time_stamps:
-                segments.append(TranscriptionSegment(
-                    start=ts.start_time,
-                    end=ts.end_time,
-                    text=ts.text,
-                    language=language,
-                ))
-        if not segments and result.text.strip():
-            segments = [TranscriptionSegment(
-                start=0.0,
-                end=self._get_audio_duration(audio_path),
-                text=result.text.strip(),
-                language=language,
-            )]
-        return segments
 
     @staticmethod
     def _language_name_to_code(name: Optional[str]) -> str:

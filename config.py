@@ -1,12 +1,11 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 import os
-from typing import Dict, Any
+from typing import Any
 from google_auth_oauthlib.flow import InstalledAppFlow
 from google.auth.transport.requests import Request
 from googleapiclient.discovery import build
 import pickle
-import yaml
 from core.logging import get_logger
 
 # ローカル開発環境でのHTTP使用を許可（localhostのみ）
@@ -94,10 +93,6 @@ def get_drive_service(credentials_path: str = "credentials.json", token_path: st
         raise RuntimeError(f"Google Drive APIサービスの初期化に失敗しました: {e}")
 
 # 設定関連
-def load_config(config_path: str = "config.yaml") -> Dict[str, Any]:
-    """設定ファイルを読み込む"""
-    with open(config_path, 'r') as f:
-        return yaml.safe_load(f)
 
 # AppConfigクラスは廃止されました。
 # UnifiedConfig (core.config.UnifiedConfig) を使用してください。

@@ -7,7 +7,7 @@ Consolidates all transcribe() method implementations into a single, consistent A
 """
 
 from abc import ABC, abstractmethod
-from typing import Any, Dict, List, Optional, Tuple, Union, Callable
+from typing import Any, Dict, List, Optional, Tuple, Callable, TYPE_CHECKING
 from dataclasses import dataclass
 from types import SimpleNamespace
 import os
@@ -18,9 +18,13 @@ import traceback
 from pathlib import Path
 import torch
 
+if TYPE_CHECKING:
+    import numpy as np
+
 from core.config import TranscriptionConfig
 from core.logging import UnifiedLogger, PerformanceLogger
 from core.model_manager import get_global_model_manager
+from core.utils import DEFAULT_AUDIO_DURATION_SEC, get_audio_duration
 
 
 @dataclass
@@ -45,29 +49,6 @@ class TranscriptionResult:
     model_name: str
     has_speakers: bool = False
     metadata: Optional[Dict[str, Any]] = None
-    
-    def to_dict(self) -> Dict[str, Any]:
-        """Convert to dictionary for serialization."""
-        return {
-            "text": self.text,
-            "segments": [
-                {
-                    "start": seg.start,
-                    "end": seg.end,
-                    "text": seg.text,
-                    "speaker": seg.speaker,
-                    "confidence": seg.confidence,
-                    "language": seg.language
-                }
-                for seg in self.segments
-            ],
-            "language": self.language,
-            "duration": self.duration,
-            "processing_time": self.processing_time,
-            "model_name": self.model_name,
-            "has_speakers": self.has_speakers,
-            "metadata": self.metadata or {}
-        }
 
 
 class TranscriptionEngine(ABC):
@@ -97,26 +78,6 @@ class TranscriptionEngine(ABC):
         if not path.is_file():
             raise ValueError(f"Path is not a file: {audio_path}")
         return True
-    
-    def _create_segments_from_result(self, 
-                                   raw_result: Dict[str, Any],
-                                   has_speakers: bool = False) -> List[TranscriptionSegment]:
-        """Convert raw transcription result to structured segments."""
-        segments = []
-        
-        if "segments" in raw_result:
-            for seg_data in raw_result["segments"]:
-                segment = TranscriptionSegment(
-                    start=seg_data.get("start", 0.0),
-                    end=seg_data.get("end", 0.0),
-                    text=seg_data.get("text", ""),
-                    speaker=seg_data.get("speaker") if has_speakers else None,
-                    confidence=seg_data.get("confidence"),
-                    language=seg_data.get("language", self.config.language)
-                )
-                segments.append(segment)
-        
-        return segments
 
 
 class WhisperTranscriptionEngine(TranscriptionEngine):
@@ -144,8 +105,7 @@ class WhisperTranscriptionEngine(TranscriptionEngine):
     def transcribe(self, audio_path: str, **kwargs) -> TranscriptionResult:
         """Transcribe audio using Whisper model with full functionality."""
         self.validate_audio_file(audio_path)
-        
-        start_time = time.time()
+
         self.perf_logger.start_timing(f"transcribe_{Path(audio_path).name}")
         
         try:
@@ -212,27 +172,14 @@ class WhisperTranscriptionEngine(TranscriptionEngine):
     
     def _get_audio_duration_fallback(self) -> float:
         """Fallback audio duration."""
-        return 600.0  # Default 10 minutes
-    
-    def _load_audio(self, audio_path: str):
-        """Load audio file for processing."""
-        import librosa
-        audio, _ = librosa.load(audio_path, sr=16000)
-        return audio
-    
+        return DEFAULT_AUDIO_DURATION_SEC
+
     def _get_audio_duration(self, audio_path: str) -> float:
         """Get audio file duration."""
-        import librosa
-        try:
-            audio, sr = librosa.load(audio_path, sr=None)
-            return len(audio) / sr
-        except:
-            return self._get_audio_duration_fallback()
+        return get_audio_duration(audio_path)
     
     def _transcribe_with_original_logic(self, audio_path: str) -> str:
         """Transcribe using the original WhisperTranscriber logic for quality."""
-        import soundfile as sf
-        import numpy as np
         from tqdm import tqdm
         
         # Audio preprocessing
@@ -333,7 +280,7 @@ class WhisperTranscriptionEngine(TranscriptionEngine):
                 # Use librosa for stable resampling
                 import librosa
                 audio = librosa.resample(audio, orig_sr=sr, target_sr=16000)
-            except (ImportError, Exception) as e:
+            except (ImportError, Exception):
                 # Fallback: scipy resampling
                 try:
                     import scipy.signal
@@ -599,7 +546,6 @@ class Qwen3ASREngine(TranscriptionEngine):
         """Qwen3-ASR で文字起こし。長音声は自動的に分割して処理。"""
         self.validate_audio_file(audio_path)
 
-        start_time = time.time()
         self.perf_logger.start_timing(f"transcribe_{Path(audio_path).name}")
 
         try:
@@ -967,50 +913,15 @@ class Qwen3ASREngine(TranscriptionEngine):
 
         return "\n".join(sentences)
 
-    def _results_to_segments(self, result, language: str, audio_path: str) -> List[TranscriptionSegment]:
-        """Qwen3-ASR の結果を TranscriptionSegment に変換。
-
-        return_time_stamps=False(デフォルト)の場合は time_stamps が None になるため、
-        フォールバックで音声全体を1セグメントとする。この際 segment.end には
-        _get_audio_duration_fallback() の固定値(600s)ではなく、実音声長を使う。
-        """
-        segments = []
-        if getattr(result, "time_stamps", None):
-            for ts in result.time_stamps:
-                segments.append(TranscriptionSegment(
-                    start=ts.start_time,
-                    end=ts.end_time,
-                    text=ts.text,
-                    language=language,
-                ))
-        if not segments and result.text.strip():
-            segments = [TranscriptionSegment(
-                start=0.0,
-                end=self._get_audio_duration(audio_path),
-                text=result.text.strip(),
-                language=language,
-            )]
-        return segments
-
     @staticmethod
     def _language_name_to_code(name: Optional[str]) -> str:
         """'Japanese' -> 'ja' のように言語名をコードに変換。"""
         mapping = {"japanese": "ja", "english": "en"}
         return mapping.get((name or "").lower(), name or "ja")
 
-    @staticmethod
-    def _get_audio_duration_fallback() -> float:
-        """音声長取得失敗時のフォールバック。"""
-        return 600.0  # デフォルト 10 分
-
     def _get_audio_duration(self, audio_path: str) -> float:
         """音声ファイルの長さを取得。"""
-        import soundfile as sf
-        try:
-            info = sf.info(audio_path)
-            return info.duration
-        except Exception:
-            return self._get_audio_duration_fallback()
+        return get_audio_duration(audio_path)
 
 
 class UnifiedTranscriber:
@@ -1087,38 +998,3 @@ class UnifiedTranscriber:
             progress_callback("Transcription completed")
 
         return result
-
-    def get_stats(self) -> Dict[str, Any]:
-        """Get transcription system statistics."""
-        return {
-            "transcription_engine": self.transcription_engine.get_engine_name(),
-            "model_cache_stats": self.transcription_engine.model_manager.get_cache_stats()
-        }
-
-
-# Factory functions for backward compatibility
-def create_transcriber(config: TranscriptionConfig) -> UnifiedTranscriber:
-    """Create a unified transcriber with the specified configuration."""
-    return UnifiedTranscriber(config)
-
-
-def create_japanese_transcriber(quality: str = "high") -> UnifiedTranscriber:
-    """Create a transcriber optimized for Japanese."""
-    config = TranscriptionConfig.for_language("ja", quality)
-    return UnifiedTranscriber(config)
-
-
-def create_english_transcriber(quality: str = "high") -> UnifiedTranscriber:
-    """Create a transcriber optimized for English."""
-    config = TranscriptionConfig.for_language("en", quality)
-    return UnifiedTranscriber(config)
-
-
-# Testing
-if __name__ == "__main__":
-    from core.config import TranscriptionConfig
-    
-    config = TranscriptionConfig.for_language("ja", "high")
-    transcriber = UnifiedTranscriber(config)
-    
-    print(f"Transcriber created: {transcriber.get_stats()}")

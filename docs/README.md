@@ -1,57 +1,35 @@
 # 📚 Documentation Index - transcribe_audio
 
-## 📖 User Guides
-Essential documentation for end users:
+実装の現状に合わせた文書の索引です。記載内容と実装が食い違う場合は、実装(コード)を正とし、文書側を直してください。
 
-- **[🚀 Tutorial](user-guides/TUTORIAL.md)** - Step-by-step beginner guide
-- **[🔧 Configuration](user-guides/configuration.md)** - System configuration reference
-- **[🆘 Troubleshooting](user-guides/TROUBLESHOOTING.md)** - Problem resolution guide
-- **[🌐 Language Support](user-guides/language_support_guide.md)** - Multi-language setup
-- **[💻 Modern CLI Usage](user-guides/new_cli_usage.md)** - New tc command guide
-- **[⚡ Optimization Features](user-guides/optimization_features.md)** - Performance optimization
+## 📖 User Guides
+利用者向け(`docs/user-guides/`):
+
+- **[🚀 Tutorial](user-guides/TUTORIAL.md)** - 初めての文字起こし
+- **[🔧 Configuration](user-guides/configuration.md)** - 設定リファレンス
+- **[🆘 Troubleshooting](user-guides/TROUBLESHOOTING.md)** - 困ったとき
+- **[🌐 Language Support](user-guides/language_support_guide.md)** - 言語とエンジンごとの扱い
+- **[💻 Modern CLI Usage](user-guides/new_cli_usage.md)** - `tc` / `transcribe.py` の使い方
 
 ## 👨‍💻 Developer Guides
-Technical documentation for developers:
+開発者向け(`docs/developer-guides/`):
 
-- **[🔌 API Reference](developer-guides/API.md)** - Complete API documentation
-- **[📋 Coding Standards](developer-guides/coding_standards.md)** - Development guidelines
+- **[🔌 API Reference](developer-guides/API.md)** - 公開 API
+- **[📋 Coding Standards](developer-guides/coding_standards.md)** - 開発指針
 
-## 🔧 System Documentation
-Current system status and architecture:
+リポジトリ直下の `CONTRIBUTING.md`、`DEVELOPMENT.md`、`DEVELOPMENT_QUICKREF.md` も参照してください。
 
-- **[📊 System Overview 2025](system-docs/system_overview_2025.md)** - Complete system architecture
-- **[📈 Current Status (July 2025)](system-docs/current_status_2025_july.md)** - Latest system state
-- **[📦 Dependency Migration](system-docs/dependency_migration.md)** - Package management structure
+## 🔧 System / Feature Documentation
+- **[📊 System Overview](system-docs/system_overview_2025.md)** - システム構成
+- **[🖥️ WebUI Architecture](system-docs/webui_architecture.md)** - WebUI の構成と運用
+- **[⏱️ Timestamp Feature](feature/timestamp_feature.md)** - タイムスタンプ機能
 
 ## 📜 Historical Records
-Historical documentation and analysis:
+過去の状態を記録した文書です(現行の手順としては使わないでください):
 
-- **[📝 Change History](historical-records/change_history.md)** - System evolution log
-- **[🔍 Incident Reports](historical-records/incident_report.md)** - Past issues and resolutions
-- **[🏗️ Architecture Refactoring](historical-records/transcriber_refactoring.md)** - System redesign history
-
-## 🗃️ Archive Folders
-
-- **`obsolete/`** - Deprecated documentation (17 files moved here)
-- **`feature/`** - Legacy feature plans (2 files)
-- **`kaizen/`** - Improvement proposals (1 file)
-
-## 📋 Summary of Changes
-
-### ✅ Organized (26 files total)
-- **User Guides**: 7 files - Current user documentation
-- **Developer Guides**: 2 files - Technical API & standards
-- **System Docs**: 3 files - Current system state
-- **Historical Records**: 10 files - Past documentation with archival value
-- **Obsolete**: 17 files - Deprecated content moved but preserved
-- **Legacy Folders**: 3 files in feature/ and kaizen/
-
-### 🧹 Cleanup Results
-- **Removed duplicates**: 5 status documents → 1 current
-- **Archived obsolete**: 17 planning documents from 2025 projects
-- **Categorized by purpose**: Clear user vs developer vs system distinction
-- **Maintained history**: Important incident reports and refactoring docs preserved
-
----
-*Documentation reorganized: 2025-08-11*  
-*Total files: 43 → 26 active + 17 archived*
+- `historical-records/` - 変更履歴、障害報告、設計の経緯、2025年7月時点の状態(`current_status_2025_july.md`)、依存関係の移行記録(`dependency_migration.md`)
+- `REFACTORING_LOG.md` - 2026年3月のリファクタリング履歴
+- `INVESTIGATION_REPORT.md` - 調査報告
+- `notebooklm/` - 運用の要約と NotebookLM とのやりとりの記録
+- `kaizen/` - 改善提案
+- `obsolete/` - 廃止した文書(`optimization_features.md` を含む)

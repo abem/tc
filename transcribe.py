@@ -4,8 +4,6 @@ Transcribe Audio - モダンなCLI音声文字起こしツール
 """
 
 import argparse
-import logging
-import os
 import sys
 from pathlib import Path
 from typing import Any, Dict, Optional
@@ -151,7 +149,6 @@ class TranscribeLoader:
                 context=load_context_hints(
                     UnifiedConfig.get("whisper", "context_file", default="config/context_hints.txt")
                 ),
-                show_progress=True  # 元のプログレスバーを使用
             )
 
             # 文字起こし実行
@@ -261,7 +258,7 @@ class TranscribeLoader:
                     input_source = default_url
                 else:
                     input_source = Prompt.ask("\n🎵 音声ソースを入力してください (URL/ファイルパス)")
-            except:
+            except Exception:
                 input_source = Prompt.ask("\n🎵 音声ソースを入力してください (URL/ファイルパス)")
         
         # 入力タイプ検出
@@ -274,6 +271,7 @@ class TranscribeLoader:
         # 入力タイプ表示
         type_names = {
             "youtube": "YouTube",
+            "twitter": "X(Twitter)",
             "gdrive": "Google Drive",
             "local": "ローカルファイル"
         }
@@ -300,7 +298,7 @@ class TranscribeLoader:
         else:
             try:
                 folder_id = UnifiedConfig.get('gdrive', 'upload_folder_id')
-            except:
+            except Exception:
                 pass
 
         # 処理実行

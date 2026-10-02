@@ -32,9 +32,6 @@ cd transcribe_audio
 
 # 依存関係インストール (uv が .venv を自動作成、dev group も含む)
 uv sync
-
-# HuggingFaceトークン設定（日本語転写・話者分離用）
-export HUGGINGFACE_TOKEN=hf_your_token_here
 ```
 
 ### 3. エディタ設定推奨
@@ -42,14 +39,11 @@ export HUGGINGFACE_TOKEN=hf_your_token_here
 **VS Code設定例** (`.vscode/settings.json`):
 ```json
 {
-  "python.defaultInterpreterPath": "./.venv/bin/python",
-  "python.formatting.provider": "black",
-  "python.linting.flake8Enabled": true,
-  "python.linting.mypyEnabled": true,
-  "editor.formatOnSave": true,
-  "python.sortImports.args": ["--profile", "black"]
+  "python.defaultInterpreterPath": "./.venv/bin/python"
 }
 ```
+
+lint は `uv run ruff check .` で実行する(整形ツール・型チェッカーは導入していないため、保存時整形は設定しない)。
 
 ## 🏗️ プロジェクト構造
 
@@ -66,12 +60,14 @@ tc/
 ├── config/
 │   └── config.yaml            # 設定ファイル
 ├── core/                      # コア機能(統一アーキテクチャ)
-│   ├── config.py              # TranscriptionConfig/DiarizationConfig/UnifiedConfig
+│   ├── config.py              # TranscriptionConfig/SystemConfig/UnifiedConfig
 │   ├── logging.py             # 統一ロガー
 │   ├── transcription_interface.py  # UnifiedTranscriber・Qwen3ASREngine・WhisperTranscriptionEngine
+│   ├── nemotron_engine.py     # NemotronSubprocessEngine(Nemotron系モデル用)
 │   ├── model_manager.py       # モデルキャッシュ管理
 │   ├── cli_common.py          # CLI共通ヘルパー
 │   ├── cli_workflow.py        # 入力解決(resolve_input_audio)・アップロードフロー
+│   ├── webui_workflow.py      # WebUI(webui.py)用ワークフロー
 │   └── utils.py               # URL検出(YouTube/X/GDrive)・デバイス解決・context_hints読込
 ├── handlers/                  # 外部サービスハンドラー
 │   ├── gdrive.py              # GDriveClient
@@ -90,30 +86,33 @@ tc/
 
 ```python
 # core/transcription_interface.py (UnifiedTranscriber.__init__)
-if Qwen3ASREngine.is_qwen3_model(transcription_config.model):
+from core.nemotron_engine import is_nemotron_model, NemotronSubprocessEngine
+if is_nemotron_model(transcription_config.model):
+    self.transcription_engine = NemotronSubprocessEngine(transcription_config)
+elif Qwen3ASREngine.is_qwen3_model(transcription_config.model):
     self.transcription_engine = Qwen3ASREngine(transcription_config)
 else:
     self.transcription_engine = WhisperTranscriptionEngine(transcription_config)
 ```
 
-言語(`whisper.language`)は `Qwen3ASREngine.lang_map` で `Qwen3-ASR` の言語指定へ
-変換されるのみで、モデル切替とは無関係(詳細は `docs/user-guides/language_support_guide.md`)。
+言語(`whisper.language`)は `Qwen3ASREngine.transcribe()` 内の `lang_map` で `Qwen3-ASR` の
+言語指定へ変換されるのみで、モデル切替とは無関係(詳細は `docs/user-guides/language_support_guide.md`)。
 
 ### テスト・品質管理
 ```
 tests/
-├── test_core_config.py
-├── test_core_logging.py
-├── test_core_utils.py
-├── test_e2e_dry_run.py
-├── test_handlers_gdrive.py
-└── test_handlers_youtube.py
+├── conftest.py
+├── fixtures/
+├── test_core_*.py             # core/ 配下(config・logging・utils・transcription_interface・cli_workflow・nemotron・webui_workflow)
+├── test_handlers_*.py         # handlers/(gdrive・youtube)
+├── test_tc_*.py               # tc CLI(main フロー・結果保存)
+├── test_transcribe_loader.py  # transcribe.py ローダー
+├── test_webui_*.py            # webui.py
+├── test_scripts_*.py          # scripts/ 配下
+└── test_e2e_dry_run.py        # tc --dry-run による起動確認
 
 .github/workflows/
-├── ci.yml.disabled            # CI/CDパイプライン(現在無効化)
-├── minimal-test.yml
-├── pre-commit.yml             # プリコミット品質チェック
-└── simple-test.yml
+└── ci.yml                     # uv + ruff + pytest(push と pull request で実行)
 
 pyproject.toml                 # プロジェクト設定・依存関係・pytest設定([tool.pytest.ini_options])
 uv.lock                        # 依存関係ロックファイル
@@ -134,11 +133,13 @@ docs/
 └── obsolete/
 
 scripts/
-├── pre_check.sh                # 品質チェックスクリプト
 ├── gpu_monitor.py              # GPU監視
 ├── simple_gpu_monitor.sh       # GPU監視(簡易版)
 ├── e2e_local.sh                # E2Eテスト(ローカル実行)
-└── cleanup_transcriptions.sh   # 出力クリーンアップ
+├── compare_nemotron_baseline.py    # Nemotron回帰ゲート比較
+├── nemotron_infer.py           # Nemotron推論(NemotronSubprocessEngine からサブプロセス起動される)
+├── setup_nemotron_venv.sh      # Nemotron用の隔離venv構築
+└── repro_webui_concurrent_enqueue.py  # WebUI同時投入の再現スクリプト
 ```
 
 ## 🔄 開発フロー
@@ -151,14 +152,12 @@ git checkout -b feature/new-awesome-feature
 # 開発作業
 # ... コーディング ...
 
-# 品質チェック実行
-./scripts/pre_check.sh
+# テスト・lint実行
+uv run python -m pytest tests -q
+uv run ruff check .
 
-# テスト実行
-uv run pytest tests/ -v
-
-# コミット
-git add .
+# コミット(変更したファイルを指定してステージングする)
+git add <変更したファイル>
 git commit -m "feat: add awesome new feature"
 
 # プッシュ
@@ -174,7 +173,7 @@ git checkout -b fix/issue-123
 # ... バグ修正 ...
 
 # リグレッションテスト
-uv run pytest tests/test_basic.py -v
+uv run python -m pytest tests -q
 
 # コミット
 git commit -m "fix: resolve issue #123 with audio processing"
@@ -188,52 +187,23 @@ git commit -m "fix: resolve issue #123 with audio processing"
 
 ## 🔍 コード品質管理
 
-### 自動フォーマッット
+### lint（ruff）
 ```bash
-# コード整形
-black .
-
-# インポート整理
-isort .
-
 # 品質チェック
-flake8 .
-
-# 型チェック
-mypy .
+uv run ruff check .
 ```
+
+自動整形ツール(formatter)・インポート整理ツール・型チェッカーは導入していない。
+ruff の規則は pyflakes 相当の `F`(未使用 import・未定義名など)のみ。
 
 ### 設定ファイル（pyproject.toml）
 ```toml
-[tool.black]
-line-length = 120
-target-version = ['py311']
+[tool.ruff]
+target-version = "py312"
+extend-exclude = ["backup", "WORK_*"]
 
-[tool.isort]
-profile = "black"
-line_length = 120
-
-[tool.flake8]
-max-line-length = 120
-extend-ignore = ["E203", "W503"]
-
-[tool.mypy]
-python_version = "3.11"
-warn_return_any = true
-disallow_untyped_defs = true
-```
-
-### 事前チェックスクリプト
-```bash
-# 包括的品質チェック
-./scripts/pre_check.sh
-
-# 実行内容:
-# 1. テスト実行
-# 2. ドキュメント整合性チェック  
-# 3. コーディング規約チェック
-# 4. Git操作チェック
-# 5. CI設定チェック
+[tool.ruff.lint]
+select = ["F"]
 ```
 
 ## 🧪 テスト実行
@@ -241,31 +211,27 @@ disallow_untyped_defs = true
 ### 基本テスト
 ```bash
 # 全テスト実行 (uv 経由)
-uv run pytest tests/ -v
+uv run python -m pytest tests -q
 
 # カバレッジ付きテスト
-uv run pytest tests/ --cov=. --cov-report=html
+uv run python -m pytest tests --cov=core --cov=handlers -q
 
 # 特定テストのみ
-uv run pytest tests/test_basic.py::test_basic_imports -v
-
-# 並列実行（高速化）
-uv run pytest tests/ -n auto
+uv run python -m pytest tests/test_core_config.py -v
 ```
 
 ### テストカテゴリ
 
-**基本機能テスト** (`tests/test_basic.py`):
-- モジュールインポート
-- 設定クラス初期化
-- 例外階層確認
-- デバイス検出
+**core/ のテスト** (`tests/test_core_*.py`):
+- 設定クラス(`test_core_config.py`)・ロガー(`test_core_logging.py`)・ユーティリティ(`test_core_utils.py`)
+- 転写インターフェース・Nemotronエンジン(`test_core_transcription_interface*.py`、`test_core_nemotron_*.py`)
+- CLI・WebUIワークフロー(`test_core_cli_workflow_*.py`、`test_core_webui_workflow_*.py`)
 
-**統合テスト** (`tests/test_integration.py`):
-- プロジェクト構造確認
-- スクリプト実行権限
-- GitHub Actions設定
-- ドキュメント構造
+**handlers/ のテスト** (`tests/test_handlers_gdrive.py`、`tests/test_handlers_youtube.py`)
+
+**CLI・WebUI のテスト** (`tests/test_tc_*.py`、`tests/test_transcribe_loader.py`、`tests/test_webui_*.py`)
+
+**起動確認テスト** (`tests/test_e2e_dry_run.py`): `tc --dry-run` による起動確認
 
 ### テスト作成ガイドライン
 ```python
@@ -319,7 +285,7 @@ class TranscriptionEngine(ABC):
 ### Factory相当: エンジン選択ロジック
 
 専用のFactoryクラスは無く、`UnifiedTranscriber.__init__`(前掲「エンジン自動選択の
-仕組み」参照)がモデル名を見て `if/else` で直接インスタンス化する。
+仕組み」参照)がモデル名を見て `if/elif/else` で直接インスタンス化する。
 
 ### Command Pattern / Observer Pattern
 
@@ -336,21 +302,21 @@ import logging
 # デバッグログ有効化
 logging.basicConfig(level=logging.DEBUG)
 
-# 特定モジュールのログ制御
-logger = logging.getLogger('transcriber')
+# 特定モジュールのログ制御(UnifiedTranscriber は自身のクラス名でロガーを取得する)
+logger = logging.getLogger('UnifiedTranscriber')
 logger.setLevel(logging.DEBUG)
 ```
 
-### 詳細実行
+### 実行時の確認
 ```bash
-# 詳細ログ付き実行
-./tc --verbose
+# 起動確認用(--dry-run: 設定読み込み・入力解決までを行い、実際の文字起こしは行わない)
+./tc --dry-run "<入力(URLまたはローカルファイルパス)>"
 
 # CPU使用でのデバッグ（GPU問題回避）
-./tc --device cpu --verbose
+./tc --device cpu
 
-# 小さなチャンクでのテスト
-./tc --verbose # config.yamlでchunk_size調整
+# ログはコンソールと logs/transcription.log に出力される
+tail -f logs/transcription.log
 ```
 
 ### GPU監視
@@ -377,43 +343,16 @@ def problematic_function():
 
 ## ⚡ パフォーマンス最適化
 
-### GPU最適化
-```python
-# core/config.py の TranscriptionConfig
-config = TranscriptionConfig(
-    device='cuda',
-    optimal_batch_size=8,  # RTX 4080向け
-    enable_multi_stream=True,
-    enable_dynamic_memory_pool=True
-)
-```
+### GPU・メモリ設定
 
-### メモリ管理
-```python
-# メモリ効率化設定
-config = TranscriptionConfig(
-    max_cache_size=3,
-    memory_efficiency=True,
-    enable_tensor_sharing=True
-)
-```
-
-### 非同期処理
-```python
-# 非同期処理有効化
-config = TranscriptionConfig(
-    enable_async=True,
-    max_concurrent_streams=4
-)
-```
+`TranscriptionConfig` が持つのは `model` / `language` / `device` / `context` / `include_timestamps` の
+5 項目だけです。バッチサイズ・キャッシュ・非同期処理などの調整用フィールドは、どのエンジンも読まなかったため削除しました。
+実行時のデバイスは `device` で選びます。
 
 ### プロファイリング
 ```bash
 # パフォーマンス測定 (tc ランチャーは uv run 経由)
 uv run python -m cProfile -o profile.stats tc
-
-# メモリ使用量監視
-uv run python -m memory_profiler tc
 ```
 
 ## 🛠️ 新機能開発ガイド
@@ -436,7 +375,7 @@ class MyCustomEngine(TranscriptionEngine):
         ...
 
 # UnifiedTranscriber.__init__ のモデル名判定にも分岐を追加する
-# (現状は Qwen3ASREngine.is_qwen3_model() の if/else のみ)
+# (現状は is_nemotron_model() / Qwen3ASREngine.is_qwen3_model() の if/elif/else)
 ```
 
 ### 2. 新しい言語サポート追加
@@ -467,11 +406,6 @@ whisper:
   language: "ja"
   device: "cuda"
   context_file: "config/context_hints.txt"  # 固有名詞・専門用語のヒント(Qwen3-ASR用)
-
-speaker_diarization:
-  enable: true
-  model: "pyannote/speaker-diarization-3.1"
-  max_speakers: 5  # デフォルト話者数変更(transcribe.py 経由でのみ有効。tc は話者分離非対応)
 ```
 
 > `whisper.language_models` セクションは現在dead code(どこからも参照されない)。
@@ -481,22 +415,20 @@ speaker_diarization:
 
 ### docstring形式
 ```python
-def transcribe_audio(self, audio_path: str, **kwargs) -> Dict[str, Any]:
+def transcribe(self, audio_path: str, progress_callback=None, **kwargs) -> TranscriptionResult:
     """
     音声ファイルを文字起こしする
     
     Args:
         audio_path (str): 音声ファイルのパス
-        **kwargs: 追加オプション
-            - language (str): 言語コード ('ja', 'en')
-            - enable_diarization (bool): 話者分離有効化
-            - max_speakers (int): 最大話者数
+        progress_callback: 進捗メッセージを受け取るコールバック(省略可)
+        **kwargs: 各エンジンへ渡す追加オプション
     
     Returns:
-        Dict[str, Any]: 文字起こし結果
+        TranscriptionResult: 文字起こし結果
             - text (str): 文字起こしテキスト
-            - segments (List): セグメント情報
-            - speakers (List): 話者情報（話者分離時）
+            - segments (List[TranscriptionSegment]): セグメント情報
+            - language / duration / processing_time / model_name
     
     Raises:
         RuntimeError: 音声処理エラー
@@ -516,9 +448,10 @@ def transcribe_audio(self, audio_path: str, **kwargs) -> Dict[str, Any]:
 
 **Q: インポートエラーが発生する**
 ```bash
-# .venv を作り直して依存関係を再インストール (uv 管理)
-rm -rf .venv
+# uv.lock のとおりに依存関係をそろえる (.venv は削除しない)
 uv sync
+# それでも直らない場合は、パッケージを入れ直す
+uv sync --reinstall
 ```
 
 **Q: テストが失敗する**
@@ -527,10 +460,10 @@ uv sync
 rm -rf .pytest_cache/ __pycache__/
 
 # 依存関係チェック
-pip check
+uv pip check
 
 # 個別テスト実行
-uv run pytest tests/test_basic.py::test_basic_imports -v -s
+uv run python -m pytest tests/test_core_config.py -v -s
 ```
 
 **Q: GPU out of memory**
@@ -543,19 +476,10 @@ export CUDA_VISIBLE_DEVICES=""
 ./tc --device cpu
 ```
 
-**Q: HuggingFace認証エラー**
-```bash
-# トークン確認
-echo $HUGGINGFACE_TOKEN
-
-# 権限確認（pyannote modelアクセス）
-# https://huggingface.co/pyannote/speaker-diarization-3.1
-```
-
 ### デバッグのベストプラクティス
 
 1. **段階的デバッグ**: 小さな入力から始める
-2. **ログ活用**: `--verbose`オプション使用
+2. **ログ活用**: `logs/transcription.log` を確認
 3. **分離テスト**: 機能別に個別テスト
 4. **環境確認**: CUDA, Python, パッケージバージョン
 5. **リソース監視**: GPU/CPU/メモリ使用状況

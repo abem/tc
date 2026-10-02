@@ -1,0 +1,40 @@
+name: CI
+
+on:
+  push:
+    branches: [main, dev, "feature/**", "fix/**", "refactor/**"]
+  pull_request:
+    branches: [main, dev]
+
+permissions:
+  contents: read
+
+concurrency:
+  # push と pull_request で同じブランチ名になるようにし、同じコミットの二重実行を取り消す
+  group: ci-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      # torch(CUDA 版)を含む依存一式は約 6GB。空き容量を記録しておく。
+      - name: Show free disk space
+        run: df -h /
+
+      - name: Install dependencies (uv.lock のとおり)
+        run: uv sync --frozen
+
+      - name: Lint (ruff)
+        run: uv run --frozen ruff check .
+
+      - name: Test (pytest)
+        run: uv run --frozen python -m pytest tests -q

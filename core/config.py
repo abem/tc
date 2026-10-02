@@ -4,9 +4,8 @@ Consolidates all configuration classes into a single, authoritative source.
 """
 
 from dataclasses import dataclass, field
-from typing import Optional, Callable, Dict, Any, List
+from typing import Optional, Dict, Any, List
 import yaml
-from pathlib import Path
 
 
 def _cuda_is_available() -> bool:
@@ -30,51 +29,20 @@ class TranscriptionConfig:
     # 標準的な自動判定サポートに委ねる)。既定値自体は後方互換のため"ja"のまま。
     language: Optional[str] = "ja"
     device: str = field(default_factory=lambda: "cuda" if _cuda_is_available() else "cpu")
-    compute_type: str = "float16"
-    
-    # Processing settings
-    chunk_size: int = 1024
-    temperature: float = 0.0
-    beam_size: int = 5
-    best_of: int = 3
     # 固有名詞・専門用語の認識ヒント文字列(Qwen3-ASRのcontext引数に相当。
     # WhisperTranscriptionEngineは未対応/無視)。空文字がデフォルトで後方互換。
     context: str = ""
-    
-    # Performance settings
-    optimal_batch_size: int = 8
-    max_cache_size: int = 5
-    enable_async: bool = True
-    memory_efficiency: bool = True
-    performance_monitoring: bool = True
-    
-    # Advanced GPU optimization (RTX 4080)
-    enable_multi_stream: bool = True
-    enable_dynamic_memory_pool: bool = True
-    enable_pipeline_parallel: bool = True
-    max_concurrent_streams: int = 4
-    memory_pool_size: int = 12  # GB
-    enable_tensor_sharing: bool = True
-    
-    # Output formatting
-    max_line_length: int = 80
     # タイムスタンプ付与(bugfix 2026-08-03でQwen3ASREngineに実配線するまでは
     # どこからも参照されないdeadフィールドだった)。ForcedAligner追加ロードを
     # 伴うオプトイン機能のため、既存の出力形式を壊さないようデフォルトFalse。
     include_timestamps: bool = False
-    timestamp_format: str = "elapsed"  # elapsed/absolute/relative
-    
-    # UI and progress
-    show_progress: bool = True
-    progress_bar: bool = True
-    segment_callback: Optional[Callable] = None
-    
-    # Temporary storage
-    temp_chunk_dir: Optional[str] = None
-    
+
     @classmethod
     def for_language(cls, language: str, quality: str = "high") -> 'TranscriptionConfig':
-        """Create optimized config for specific language."""
+        """Create config with the model preset for a specific language.
+
+        quality は互換のために受け付ける引数で、現在は結果に影響しない。
+        """
         config = cls(language=language)
         
         if language == "ja":
@@ -83,38 +51,7 @@ class TranscriptionConfig:
             config.model = "openai/whisper-large-v3"
         else:
             config.model = "openai/whisper-large-v3"  # fallback
-            
-        # Quality adjustments
-        if quality == "high":
-            config.beam_size = 5
-            config.best_of = 3
-            config.temperature = 0.0
-        elif quality == "balanced":
-            config.beam_size = 3
-            config.best_of = 2
-            config.temperature = 0.1
-        elif quality == "fast":
-            config.beam_size = 1
-            config.best_of = 1
-            config.temperature = 0.2
-            
-        return config
-    
-    @classmethod
-    def for_device(cls, device: str) -> 'TranscriptionConfig':
-        """Create optimized config for specific device."""
-        config = cls(device=device)
-        
-        if device == "cuda":
-            config.optimal_batch_size = 8
-            config.enable_multi_stream = True
-            config.memory_pool_size = 12
-        elif device == "cpu":
-            config.optimal_batch_size = 2
-            config.enable_multi_stream = False
-            config.memory_pool_size = 4
-            config.compute_type = "float32"
-            
+
         return config
 
 
@@ -148,26 +85,6 @@ class UnifiedConfig:
     
     transcription: TranscriptionConfig = field(default_factory=TranscriptionConfig)
     system: SystemConfig = field(default_factory=SystemConfig)
-
-    @classmethod
-    def create_for_use_case(cls, use_case: str) -> 'UnifiedConfig':
-        """Create configuration optimized for specific use case."""
-        config = cls()
-
-        if use_case == "japanese_high_quality":
-            config.transcription = TranscriptionConfig.for_language("ja", "high")
-
-        elif use_case == "english_fast":
-            config.transcription = TranscriptionConfig.for_language("en", "fast")
-
-        elif use_case == "multi_speaker_meeting":
-            config.transcription = TranscriptionConfig.for_language("ja", "high")
-
-        elif use_case == "gpu_optimized":
-            config.transcription = TranscriptionConfig.for_device("cuda")
-            config.transcription.performance_monitoring = True
-            
-        return config
     
     _config_data: Optional[Dict[str, Any]] = None
     
@@ -190,22 +107,3 @@ class UnifiedConfig:
             else:
                 return default
         return d
-    
-    def to_dict(self) -> Dict[str, Any]:
-        """Convert to dictionary for serialization."""
-        return {
-            "transcription": self.transcription.__dict__,
-            "system": self.system.__dict__
-        }
-
-    @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> 'UnifiedConfig':
-        """Create from dictionary."""
-        config = cls()
-
-        if "transcription" in data:
-            config.transcription = TranscriptionConfig(**data["transcription"])
-        if "system" in data:
-            config.system = SystemConfig(**data["system"])
-
-        return config

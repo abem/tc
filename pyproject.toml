@@ -30,6 +30,8 @@ dependencies = [
 dev = [
     "pytest>=8.0.0",
     "nvidia-ml-py>=12.0.0",
+    "ruff>=0.16.10",
+    "pytest-cov>=7.1.0",
 ]
 # Qwen3-ASR エンジン(最高精度・2026年ベンチマークトップ)。
 # default-groups に指定しているため uv sync / uv run(./tc) で自動インストールされる。
@@ -65,3 +67,13 @@ filterwarnings = [
     # Whisper/tensor unpickling 警告(既知のノイズ)
     "ignore:.*weights_only=False.*:FutureWarning",
 ]
+
+[tool.ruff]
+target-version = "py312"
+# backup/ と WORK_*/ は作業規律で退避した過去スナップショットや評価用の作業物で、
+# .gitignore の対象ではないため明示的に除外する(pytest の testpaths と同じ理由)。
+extend-exclude = ["backup", "WORK_*"]
+
+[tool.ruff.lint]
+# pyflakes(未使用 import・未定義名など)のみ。整形規則と一括 reformat は対象外。
+select = ["F"]

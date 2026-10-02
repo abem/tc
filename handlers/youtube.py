@@ -213,7 +213,3 @@ def install_yt_dlp():
     except subprocess.CalledProcessError as e:
         logger.error(f"yt-dlp installation failed: {e}")
         raise
-
-
-# Legacy alias for backward compatibility
-YouTubeHandler = YouTubeClient

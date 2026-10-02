@@ -17,7 +17,6 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import numpy as np
-import pytest
 
 FIXTURE_PATH = Path(__file__).parent / "fixtures" / "asr_repetition_incident_20260803.txt"
 

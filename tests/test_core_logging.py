@@ -2,9 +2,7 @@
 Tests for core.logging module.
 """
 
-import pytest
 import logging
-from unittest.mock import patch, MagicMock
 
 
 class TestUnifiedLogger:

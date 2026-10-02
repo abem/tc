@@ -18,29 +18,27 @@ cd transcribe_audio
 uv sync
 
 # Run tests
-uv run pytest
+uv run python -m pytest tests -q
 ```
 
 ## 📋 Development Guidelines
 
 ### Code Style
 - Follow PEP 8
-- Use Black for formatting: `black .`
-- Use isort for imports: `isort .`
-- Run flake8 for linting: `flake8 .`
-- Type hints with mypy: `mypy .`
+- Run ruff for linting: `uv run ruff check .` (設定は `pyproject.toml` の `[tool.ruff]` / `[tool.ruff.lint]`。規則は pyflakes 相当の `F` のみ)
+- 自動整形ツール(formatter)と型チェッカーは導入していない。既存コードの書式に合わせる
 
 ### Architecture Principles
 - **Use core/ unified system** for new features
 - **Preserve legacy compatibility** when possible
-- **Follow OOP patterns** (Factory, Strategy, Observer)
+- **Follow the existing engine structure** (`TranscriptionEngine` を継承し、`UnifiedTranscriber` がモデル名でエンジンを選択する)
 - **Test-driven development** - write tests first
 
 ### Important Rules (べからず集)
 - **NEVER delete .venv/** - production environment (uv が管理)
 - **NEVER commit credentials.json or token.pickle**
 - **Check CLAUDE.md** before making significant changes
-- **Use UnifiedConfig** instead of deprecated AppConfig
+- **Use UnifiedConfig** (`core/config.py`) for configuration (旧 `AppConfig` は廃止済み)
 
 ## 🔄 Contribution Workflow
 
@@ -54,13 +52,10 @@ git checkout -b fix/bug-description
 ### 2. Development Process
 1. Write tests first (TDD approach)
 2. Implement feature using core/ unified system
-3. Ensure all tests pass: `pytest`
-4. Run code quality checks:
+3. Ensure all tests pass: `uv run python -m pytest tests -q`
+4. Run lint check:
    ```bash
-   black .
-   isort .
-   flake8 .
-   mypy .
+   uv run ruff check .
    ```
 
 ### 3. Commit Guidelines
@@ -83,13 +78,13 @@ git commit -m "test: add unit tests for transcription engine"
 ### Running Tests
 ```bash
 # All tests
-pytest
+uv run python -m pytest tests -q
 
 # Specific test file
-pytest tests/test_transcription.py
+uv run python -m pytest tests/test_core_config.py -q
 
 # With coverage
-pytest --cov=. --cov-report=html
+uv run python -m pytest tests --cov=core --cov=handlers -q
 ```
 
 ### Test Categories
@@ -100,6 +95,10 @@ pytest --cov=. --cov-report=html
 ### Writing Tests
 ```python
 # Example test structure
+from core.config import TranscriptionConfig
+from core.transcription_interface import WhisperTranscriptionEngine
+
+
 def test_transcription_engine():
     """Test transcription engine with mock audio."""
     # Arrange
@@ -119,8 +118,7 @@ def test_transcription_engine():
 ### Required Documentation Updates
 - Update README.md for new features
 - Add docstrings to new functions/classes
-- Update API.md for API changes
-- Add examples to docs/examples/
+- Update docs/developer-guides/API.md for API changes
 
 ### Documentation Style
 ```python
@@ -137,7 +135,7 @@ def transcribe_audio(audio_path: str, language: str = "ja") -> TranscriptionResu
         
     Raises:
         FileNotFoundError: If audio file doesn't exist
-        TranscriptionError: If transcription fails
+        RuntimeError: If transcription fails
         
     Example:
         >>> result = transcribe_audio("speech.wav", "ja")
@@ -149,19 +147,14 @@ def transcribe_audio(audio_path: str, language: str = "ja") -> TranscriptionResu
 
 ### Security Considerations
 - Never commit API keys or credentials
-- Use environment variables for sensitive data
+- Keep authentication files out of git (`credentials.json` / `token.pickle` は `.gitignore` 済み)
 - Follow secure coding practices
 - Report security issues privately
 
 ### Credential Management
-```bash
-# Use environment variables
-export GOOGLE_APPLICATION_CREDENTIALS="path/to/credentials.json"
-export HUGGINGFACE_TOKEN="hf_your_token"
-
-# Or use .env file (add to .gitignore)
-echo "HUGGINGFACE_TOKEN=hf_your_token" >> .env
-```
+Google Drive の認証ファイルは、`config.py` の `get_drive_service()` が既定でカレントディレクトリの
+`credentials.json` / `token.pickle` を読み書きする(`handlers/gdrive.py` の `GDriveClient` は引数なしで呼ぶ)。
+どちらもコミットしない。
 
 ## 🐛 Bug Reports
 

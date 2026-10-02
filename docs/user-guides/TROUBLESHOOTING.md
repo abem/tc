@@ -7,7 +7,6 @@
 - [環境・インストール関連](#環境インストール関連)
 - [GPU・CUDA関連](#gpucuda関連)
 - [音声処理関連](#音声処理関連)
-- [話者分離関連](#話者分離関連)
 - [YouTube・Google Drive関連](#youtubegoogle-drive関連)
 - [文字起こし品質関連](#文字起こし品質関連)
 - [設定・認証関連](#設定認証関連)
@@ -47,8 +46,8 @@ uv run python3 -c "import torch; print('CUDA available:', torch.cuda.is_availabl
 # uv で依存関係を再同期 (pyproject.toml/uv.lock が情報源)
 uv sync
 
-# ※pip での個別インストールは廃止されました。uv.lock の外で pip install すると
-#   バージョン不整合の原因になるため、pyproject.toml の依存を編集して uv sync してください。
+# ※依存パッケージを uv.lock の外で個別に追加するとバージョン不整合の原因になるため、
+#   pyproject.toml の依存を編集して uv sync してください。
 ```
 
 ### エラー: `Python version 3.x.x is not supported`
@@ -76,11 +75,10 @@ uv sync
 **解決策:**
 ```bash
 # 実行権限を付与
-chmod +x tc
-chmod +x transcribe.py
+chmod +x tc transcribe transcribe.py
 
 # 確認
-ls -la tc transcribe.py
+ls -la tc transcribe transcribe.py
 ```
 
 ### エラー: `.venv` の依存関係が壊れている / `ModuleNotFoundError`
@@ -92,9 +90,22 @@ ls -la tc transcribe.py
 # .venv を削除して依存関係を再インストール (uv が管理)
 rm -rf .venv
 uv sync
+```
 
-# HuggingFaceトークンの再設定
-export HUGGINGFACE_TOKEN=hf_your_token_here
+### エラー: `Nemotron隔離venvが未構築です`
+
+**原因:** Nemotron モデル（`nvidia/nemotron-3.5-asr-streaming-0.6b` など、モデル名に `nemotron` を含むもの）を指定したが、
+専用の仮想環境 `venv-nemotron/` が無い
+
+**解決策:**
+```bash
+# Nemotron用の隔離環境を作る
+./scripts/setup_nemotron_venv.sh
+
+# venv-nemotron/ が壊れている場合は、削除してから作り直す
+# （スクリプトは venv-nemotron/ が既にあると何もせずに終了する）
+rm -rf venv-nemotron
+./scripts/setup_nemotron_venv.sh
 ```
 
 ## ⚡ GPU・CUDA関連
@@ -108,15 +119,7 @@ export HUGGINGFACE_TOKEN=hf_your_token_here
 ./tc --device cpu "audio.wav"
 ```
 
-**解決策2: バッチサイズを減らす**
-```yaml
-# config/config.yaml
-whisper:
-  chunk_length: 15  # デフォルト30から減らす
-  batch_size: 1     # バッチサイズを最小に
-```
-
-**解決策3: GPU メモリ確認・クリア**
+**解決策2: GPU メモリ確認・クリア**
 ```bash
 # GPU使用状況確認
 nvidia-smi
@@ -126,13 +129,6 @@ sudo fuser -v /dev/nvidia*
 sudo kill -9 <process_id>
 
 # Pythonプロセス再起動
-```
-
-**解決策4: 動的メモリ管理**
-```python
-# config設定で動的メモリプール有効化
-enable_dynamic_memory_pool: true
-memory_efficiency: true
 ```
 
 ### エラー: `CUDA device not found`
@@ -197,9 +193,13 @@ sudo nvidia-smi --gpu-reset
 
 ## 🎵 音声処理関連
 
-### エラー: `File not found or unsupported format`
+### エラー: `入力を認識できません` / `Audio file not found`
 
-**原因:** 音声ファイルが存在しない、または非対応形式
+**原因:** 入力のファイルが存在しない、またはURLの形式が対応外
+
+`./tc` が受け付ける入力は、YouTube の動画URL、X（旧 Twitter）の動画投稿URL
+（`https://x.com/<ユーザー名>/status/<数字>` 形式）、Google Drive のURL（`https://drive.google.com/...`）、
+存在するローカルファイルのパスです。これ以外は `入力を認識できません: ...` になります。
 
 **解決策:**
 ```bash
@@ -209,30 +209,34 @@ ls -la audio.wav
 # ファイル形式確認
 file audio.wav
 
-# 対応形式への変換
+# 読み込めない形式は変換する
 ffmpeg -i audio.mp3 audio.wav
 ffmpeg -i audio.m4a audio.wav
 ffmpeg -i audio.ogg audio.wav
 ```
 
-**対応形式:**
-- ✅ WAV, MP3, MP4, M4A, FLAC, OGG
-- ❌ WMA, RA, AMR（要変換）
+WebUI でアップロードできるファイルは `wav` / `mp3` / `mp4` / `m4a` / `flac` / `ogg` です
+（`core/config.py` の `SystemConfig.allowed_file_types`）。
 
-### エラー: `Audio file is too long`
+### 警告: `チャンクが失敗し` / `反復ループを検出しました`
 
-**原因:** 音声ファイルが長すぎる
+**原因:** 長い音声は自動で分割して処理されます（Qwen3-ASR は 300 秒ごと）。そのうち一部の分割区間で
+認識に失敗した、または同じ語句を繰り返す出力になった
+
+実行後に `⚠️  警告: N個のチャンクが失敗し...` または `⚠️  警告: N個のチャンクで反復ループを検出しました...`
+が表示され、出力テキストの該当位置に `[チャンクN失敗]` / `[チャンクN反復検出のため破棄]` が入ります。
 
 **解決策:**
 ```bash
-# ファイル長確認
-ffprobe -i audio.wav -show_format -v quiet | grep duration
+# ログで該当チャンクのエラー内容を確認
+grep -n "Chunk" logs/transcription.log | tail -20
 
-# 分割処理（30分単位）
+# 同じファイルをもう一度処理する（一時的な失敗なら解消することがある）
+./tc audio.wav --no-upload
+
+# 音声を手動で分割して個別に処理する
 ffmpeg -i long_audio.wav -t 1800 -c copy part1.wav
 ffmpeg -i long_audio.wav -ss 1800 -t 1800 -c copy part2.wav
-
-# 各部分を個別処理
 ./tc part1.wav --language ja
 ./tc part2.wav --language ja
 ```
@@ -269,116 +273,49 @@ ffmpeg -i audio.wav -ar 16000 audio_16khz.wav
 ./tc audio_16khz.wav --language ja
 ```
 
-## 🎤 話者分離関連
-
-### エラー: `Cannot access model pyannote/speaker-diarization-3.1`
-
-**原因:** HuggingFace トークンまたはモデルアクセス許可の問題
-
-**解決策:**
-```bash
-# トークン確認
-echo $HUGGINGFACE_TOKEN
-
-# トークン再設定
-export HUGGINGFACE_TOKEN=hf_your_new_token
-
-# モデルアクセス許可確認
-# https://huggingface.co/pyannote/speaker-diarization-3.1 で「Agree and access」
-
-# pyannote 再インストール (uv 経由の強制再インストール)
-# ※pyannote.audio は pyproject.toml の標準依存に含まれていないため、
-#   uv.lock を介さず uv pip install で直接インストールする。
-uv pip install pyannote.audio --force-reinstall
-```
-
-### エラー: `ModuleNotFoundError: No module named 'pyannote'`
-
-**原因:** pyannote.audioがインストールされていない
-
-**解決策:**
-```bash
-# pyannote.audio は pyproject.toml の標準依存に含まれていないため、
-# 追加インストールが必要な場合は pyproject.toml に追記して uv sync する。
-# (一時的な確認なら uv pip install pyannote.audio も可)
-uv pip install pyannote.audio
-
-# トークン設定
-export HUGGINGFACE_TOKEN=hf_your_token
-```
-
-### エラー: `Speaker diarization failed`
-
-**原因:** 音声品質が低い、またはパラメータが不適切
-
-**解決策:**
-```bash
-# 音声品質向上
-ffmpeg -i noisy_audio.wav -af "highpass=f=200,lowpass=f=8000" clean_audio.wav
-
-# 話者数パラメータ調整
-./tc --enable-diarization --max-speakers 2 "audio.wav"  # 少なめに設定
-
-# 話者分離無しで試行
-./tc "audio.wav"  # 基本転写のみ
-```
-
-### エラー: `Too many speakers detected`
-
-**原因:** 雑音や音楽が話者として誤認識されている
-
-**解決策:**
-```bash
-# 話者数制限を厳しく
-./tc --enable-diarization --max-speakers 2 "audio.wav"
-
-# 音声フィルタリング
-ffmpeg -i audio.wav -af "highpass=f=300,lowpass=f=3400" voice_only.wav
-
-# 無音区間除去
-ffmpeg -i audio.wav -af silenceremove=start_periods=1:start_silence=0.1:start_threshold=-30dB audio_trimmed.wav
-```
-
 ## 📺 YouTube・Google Drive関連
 
-### エラー: `Unable to extract audio from YouTube URL`
+### エラー: `Failed to get video info` / `Audio extraction failed`
 
-**原因:** YouTube URL の形式、プライベート動画、または地域制限
+**原因:** YouTube / X のURLの形式、プライベート動画、地域制限、または yt-dlp が動画の取得に失敗した
+（YouTube と X の動画は yt-dlp で取得します）
 
 **解決策:**
 ```bash
 # URL形式確認
-echo "https://www.youtube.com/watch?v=VIDEO_ID"  # 正しい形式
+echo "https://www.youtube.com/watch?v=VIDEO_ID"  # 正しい形式（YouTube）
+echo "https://x.com/<ユーザー名>/status/<投稿ID>"   # 正しい形式（X）
 
-# URLテスト
-curl -I "https://www.youtube.com/watch?v=VIDEO_ID"
+# 手動ダウンロード（デバッグ用。yt-dlp は uv 環境にインストール済み）
+uv run yt-dlp --extract-audio --audio-format wav "動画のURL"
 
-# 手動ダウンロード（デバッグ用）
-youtube-dl --extract-audio --audio-format wav "YouTube_URL"
-
-# yt-dlp を使用（推奨・uv 経由でインストール）
-uv pip install yt-dlp
-uv run yt-dlp --extract-audio --audio-format wav "YouTube_URL"
+# yt-dlp のバージョン確認（動画サイトの仕様変更で古いと失敗することがある）
+uv run yt-dlp --version
 ```
 
-### エラー: `Google Drive authentication failed`
+### エラー: `Google Drive authentication failed` / `Google Drive APIの認証に失敗しました`
 
 **原因:** 認証ファイルまたは権限の問題
 
+認証ファイルは、`./tc` を実行したディレクトリ直下の `credentials.json`（OAuthクライアント情報）と
+`token.pickle`（認証済みトークン）が固定名で使われます（`config.yaml` で場所は変えられません）。
+
 **解決策:**
 ```bash
-# credentials.json確認
+# credentials.json確認（実行するディレクトリ直下に置く）
 ls -la credentials.json
 
 # 認証ファイル権限確認
 chmod 600 credentials.json
 
-# 環境変数設定
-export GOOGLE_APPLICATION_CREDENTIALS="$(pwd)/credentials.json"
-
 # Google Drive API有効化確認
 # https://console.cloud.google.com/apis/library/drive.googleapis.com
 ```
+
+- `token.pickle` が無い・壊れている・更新できない場合は、再認証が始まります。表示される認証URLを
+  ブラウザで開いて認証し、リダイレクト先の完全なURLを貼り付けてください（標準入力で待機するため、
+  バックグラウンド実行や入力を受け付けない環境では先に進めません）。
+- OAuth同意画面の公開ステータスが「テスト」の場合は、自分のGoogleアカウントを「テストユーザー」に追加します。
 
 ### エラー: `Google Drive quota exceeded`
 
@@ -408,115 +345,100 @@ sleep 300  # 5分待機
 
 # 公開動画のURLで再試行
 ./tc "https://www.youtube.com/watch?v=public_video_id"
-
-# 別の動画でテスト
-./tc "https://www.youtube.com/watch?v=dQw4w9WgXcQ" --language en  # テスト用
 ```
 
 ## 📝 文字起こし品質関連
 
 ### 問題: 文字起こし結果が短すぎる
 
-**原因:** モデルパラメータまたは音声品質の問題
+**原因:** 音声品質の問題、言語指定の不一致、または一部区間の認識失敗
 
 **解決策:**
 ```bash
-# 詳細ログで確認
-./tc --verbose "audio.wav"
+# ログを保存して確認（ログは logs/transcription.log にも記録される）
+./tc "audio.wav" --no-upload 2>&1 | tee debug.log
 
-# 異なるモデルでテスト
-./tc --language ja "audio.wav"  # 日本語特化モデル
-./tc --language en "audio.wav"  # 英語モデル
+# 出力テキストに [チャンクN失敗] / [チャンクN反復検出のため破棄] が無いか確認
+grep -n "チャンク" output/*_transcription.txt
 
-# チャンクサイズ調整
-# config/config.yaml で chunk_length: 15 に変更
-```
+# 言語を明示する（既定は自動判定）
+./tc --language ja "audio.wav"
 
-**設定例:**
-```yaml
-# config/config.yaml
-whisper:
-  chunk_length: 15        # 短いチャンクでより詳細に
-  max_new_tokens: 400     # トークン数制限
-  temperature: 0.0        # 決定的な出力
+# 別のモデル（別のエンジン）で比較する
+./tc --model openai/whisper-large-v3 --language ja "audio.wav"
 ```
 
 ### 問題: 句読点がない
 
-**原因:** モデルまたは言語設定の問題
+**原因:** モデルの出力の違い
 
 **解決策:**
 ```bash
-# 日本語特化モデル使用
-./tc --language ja "audio.wav"
-
-# forced_decoder_ids確認（日本語の場合）
-# システムが自動的に句読点モードを選択
+# モデルによって出力は異なるため、別のモデルを試して比較する
+./tc --model Qwen/Qwen3-ASR-1.7B "audio.wav"
+./tc --model kotoba-tech/kotoba-whisper-v2.2 --language ja "audio.wav"
 ```
 
 ### 問題: 専門用語が正しく認識されない
 
-**原因:** 音声が不明瞭、または専門用語に対応していない
+**原因:** 音声が不明瞭、または固有名詞・専門用語が誤変換されている
 
 **解決策:**
 ```bash
 # 音声品質向上
 ffmpeg -i audio.wav -af "loudnorm,highpass=f=200" enhanced_audio.wav
 
-# より大きなモデル使用
-# config.yamlで model: "large-v3" に変更
-
-# 前後の文脈から修正（手動）
+# 認識ヒントを登録する（Qwen3-ASR専用）
+cp config/context_hints.txt.sample config/context_hints.txt
+# context_hints.txt に、誤変換される語を1行に1つずつ書く
 ```
 
-### 問題: タイムスタンプがずれている
+認識ヒントの詳細は [設定ガイド](configuration.md) の `context_file` を参照してください。
+ヒントに書いた語が、発話されていない区間の出力に混入することがあるため、結果は目視で確認してください。
 
-**原因:** 音声ファイルの前処理または設定の問題
+### 問題: タイムスタンプが付かない
+
+**原因:** タイムスタンプ付与が有効になっていない、または Qwen3-ASR 以外のエンジンを使っている
 
 **解決策:**
-```bash
-# 音声ファイル確認
-ffprobe -show_format -show_streams audio.wav
-
-# 無音除去なしで処理
-ffmpeg -i audio.wav -c copy no_processing.wav
-./tc no_processing.wav
-
-# チャンクサイズ調整
-# config.yamlで chunk_length: 30 に設定
+```yaml
+# config/config.yaml
+whisper:
+  include_timestamps: true   # Qwen3-ASR専用。初回は ForcedAligner を追加でダウンロードする
 ```
+
+Whisper 系モデルと Nemotron では、この設定は使われません。詳細は
+[timestamp_feature.md](../feature/timestamp_feature.md) を参照してください。
 
 ## ⚙️ 設定・認証関連
 
-### エラー: `Configuration file not found`
+### エラー: `設定ファイルが見つかりません`
 
-**原因:** config.yaml が存在しない
+**原因:** config/config.yaml が存在しない
 
 **解決策:**
 ```bash
 # 設定ファイル確認
 ls -la config/config.yaml
 
-# サンプル設定から復元
-cp config/config.yaml.example config/config.yaml
+# Gitで管理されている版に復元
+git checkout config/config.yaml
+```
 
-# デフォルト設定生成
-cat > config/config.yaml << 'EOF'
+復元できない場合は、次の最小構成で作成できます（各項目は [設定ガイド](configuration.md) を参照）。
+
+```yaml
+# config/config.yaml
+gdrive:
+  url: null
+  upload_folder_id: null
+
 whisper:
-  model: "large-v3"
-  language: "ja"
-  device: "auto"
-  chunk_length: 30
-
-speaker_diarization:
-  enable: false
-  model: "pyannote/speaker-diarization-3.1"
-  max_speakers: 4
-
-logging:
-  level: "INFO"
-  dir: "logs"
-EOF
+  model: Qwen/Qwen3-ASR-1.7B
+  language: null
+  device: cuda
+  context_file: "config/context_hints.txt"
+  include_timestamps: false
 ```
 
 ### エラー: `Invalid configuration format`
@@ -536,27 +458,6 @@ cat -A config/config.yaml
 nano config/config.yaml
 ```
 
-### エラー: `Environment variable not set`
-
-**原因:** 必要な環境変数が設定されていない
-
-**解決策:**
-```bash
-# 環境変数確認
-env | grep HUGGINGFACE
-env | grep GOOGLE
-
-# 環境変数設定
-export HUGGINGFACE_TOKEN=hf_your_token
-export GOOGLE_APPLICATION_CREDENTIALS=credentials.json
-
-# .envファイル作成（自動読み込み）
-cat > .env << 'EOF'
-HUGGINGFACE_TOKEN=hf_your_token_here
-GOOGLE_APPLICATION_CREDENTIALS=credentials.json
-EOF
-```
-
 ## 🚀 パフォーマンス関連
 
 ### 問題: 処理が遅い
@@ -568,15 +469,19 @@ EOF
 # GPU使用確認
 ./tc --device cuda "audio.wav"
 
-# GPU監視
-./tc --gpu-monitor "audio.wav"
+# GPU監視（別ターミナルで実行）
+uv run python3 scripts/gpu_monitor.py
+# または
+watch -n 1 nvidia-smi
 
-# より小さなモデル使用
-# config.yamlで model: "base" または "small"
+# より軽いモデルを使う（transcribe.py のカスタム設定でも選べるWhisper系モデル）
+./tc --model openai/whisper-medium "audio.wav"
 
 # 音声ファイル圧縮
 ffmpeg -i large_audio.wav -ar 16000 -ac 1 compressed_audio.wav
 ```
+
+初回の実行ではモデルのダウンロード・ロードの時間が加わります。
 
 ### 問題: メモリ使用量が多い
 
@@ -584,74 +489,50 @@ ffmpeg -i large_audio.wav -ar 16000 -ac 1 compressed_audio.wav
 
 **解決策:**
 ```bash
-# メモリ効率化設定
-# config.yamlに追加:
-memory_efficiency: true
-max_cache_size: 2
-
-# チャンクサイズ削減
-chunk_length: 15
-
-# スワップ領域確認
+# メモリ・スワップ領域確認
 free -h
 swapon --show
+
+# CPUで実行してGPUメモリを使わない
+./tc --device cpu "audio.wav"
+
+# 音声を分割して個別に処理する
+ffmpeg -i long_audio.wav -t 1800 -c copy part1.wav
 ```
 
-### 問題: GPU使用率が低い
-
-**原因:** バッチサイズが小さい、またはI/Oボトルネック
-
-**解決策:**
-```bash
-# バッチサイズ調整
-# config.yamlで:
-optimal_batch_size: 8  # GPU能力に応じて調整
-
-# SSD使用（可能な場合）
-# 音声ファイルをSSDに配置
-
-# GPU監視
-watch -n 1 nvidia-smi
-```
+WebUI は複数の入力を同時には処理せず、キューで順番に処理します。
 
 ## 📊 ログ・デバッグ関連
 
 ### 問題: ログが出力されない
 
-**原因:** ログ設定またはディレクトリの問題
+**原因:** ログディレクトリの権限、または実行したディレクトリの違い
+
+実行ログは標準出力と `logs/transcription.log`（実行したディレクトリ直下の `logs/`、10MBごとにローテーション、
+5世代保持）に出力されます。ログレベルは INFO 固定で、設定では変えられません。
 
 **解決策:**
 ```bash
-# ログディレクトリ作成
-mkdir -p logs
-
 # ログディレクトリ権限確認
 ls -la logs/
 chmod 755 logs/
 
-# 詳細ログで実行
-./tc --verbose "audio.wav"
-
-# ログレベル設定確認
-# config.yamlで level: "DEBUG"
+# ログファイルの末尾を確認
+tail -n 50 logs/transcription.log
 ```
 
 ### 問題: デバッグ情報が欲しい
 
 **解決策:**
 ```bash
-# 最大詳細ログ
-./tc --verbose --gpu-monitor "audio.wav"
-
-# Python レベルデバッグ (uv 経由で起動)
+# 実行ログを別ファイルにも保存
 ./tc "audio.wav" 2>&1 | tee debug.log
 
 # ログファイル確認
-tail -f logs/transcribe_*.log
+tail -f logs/transcription.log
 
 # システムログ確認
 dmesg | tail
-journalctl -u service_name -f
 ```
 
 ### 問題: エラーメッセージが不明確
@@ -687,9 +568,6 @@ uv sync
 
 # 設定リセット
 git checkout config/config.yaml
-
-# 環境変数再設定
-export HUGGINGFACE_TOKEN=hf_your_token
 ```
 
 **重大な問題の場合:**
@@ -717,24 +595,22 @@ sudo reboot
 # システム情報
 uname -a
 python3 --version
-pip list | grep -E "(torch|transformers|pyannote)"
+uv pip list | grep -E "(torch|transformers|qwen)"
 
 # GPU情報（該当する場合）
 nvidia-smi
 nvcc --version
 
 # エラーログ
-cat logs/transcribe_*.log | tail -50
+tail -50 logs/transcription.log
 
-# 設定情報
+# 設定情報（gdrive.url などURL・フォルダIDは伏せて共有する）
 cat config/config.yaml
 ```
 
 ### 報告先
 
-1. **GitHub Issues**: https://github.com/yourusername/transcribe_audio/issues
-2. **GitHub Discussions**: 一般的な質問
-3. **緊急度の高い問題**: Issue に `urgent` ラベル
+プロジェクトの課題管理（Issue / チケット）に、上記の情報と、次の形式で報告してください。
 
 ### 効果的な報告方法
 
@@ -763,9 +639,9 @@ torch.cuda.OutOfMemoryError: CUDA out of memory. Tried to allocate 2.00 GiB
 
 試行した解決策:
 - --device cpu で動作確認済み
-- chunk_length: 15 に変更も試行済み
+- 別のモデル（--model openai/whisper-large-v3）も試行済み
 ```
 
 ---
 
-このトラブルシューティングガイドで解決しない問題がありましたら、お気軽にGitHub Issuesまでご報告ください。継続的にガイドを更新し、より良いサポートを提供いたします。
+このトラブルシューティングガイドで解決しない問題は、上記の情報を添えて報告してください。

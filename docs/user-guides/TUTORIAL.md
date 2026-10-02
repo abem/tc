@@ -6,9 +6,9 @@
 
 - [事前準備](#事前準備)
 - [基本的な使い方](#基本的な使い方)
-- [話者分離機能](#話者分離機能)
-- [YouTube動画の処理](#youtube動画の処理)
+- [YouTube・X動画の処理](#youtubex動画の処理)
 - [Google Drive連携](#google-drive連携)
+- [WebUIで使う](#webuiで使う)
 - [設定のカスタマイズ](#設定のカスタマイズ)
 - [トラブルシューティング](#トラブルシューティング)
 
@@ -40,52 +40,29 @@ free -h
 
 ```bash
 # GitHubからクローン
-git clone https://github.com/yourusername/transcribe_audio.git
-cd transcribe_audio
+git clone <repository-url>
+cd tc
 ```
 
 ### ステップ3: 仮想環境セットアップ
 
 このプロジェクトは [uv](https://docs.astral.sh/uv/) で依存関係を管理しています。
-pyproject.toml / uv.lock が情報源です（requirements-*.txt 系は廃止済）。
+pyproject.toml / uv.lock が情報源です。
 
 ```bash
 # 依存関係インストール（.venv を自動作成）
-# dev group(pytest 等)もデフォルトで含まれるため、素の uv sync で開発環境まで揃う
+# dev group(pytest 等)と Qwen3-ASR エンジンもデフォルトで含まれるため、素の uv sync で揃う
 uv sync
 ```
 
-**📸 期待される画面:**
-```
-Installed packages: torch, transformers, librosa, scipy ...
-✅ インストール完了
-```
+### ステップ4: Nemotronを使う場合の準備（任意）
 
-### ステップ4: HuggingFaceトークン設定
+既定のモデル（Qwen3-ASR）と Whisper 系モデルは、ステップ3だけで使えます。
+Nemotron（`nvidia/nemotron-3.5-asr-streaming-0.6b`）を使う場合だけ、専用の仮想環境 `venv-nemotron/` が必要です。
 
-話者分離機能を使用する場合は必須です。
-
-1. **HuggingFaceアカウント作成**
-   - [HuggingFace](https://huggingface.co/)にアクセス
-   - 「Sign Up」をクリック
-   - メールアドレスとパスワードを入力
-
-2. **アクセストークン生成**
-   - ログイン後、右上のプロフィール → Settings
-   - 「Access Tokens」をクリック
-   - 「New token」で新しいトークンを作成
-
-3. **pyannoteモデルへのアクセス許可**
-   - [pyannote/speaker-diarization-3.1](https://huggingface.co/pyannote/speaker-diarization-3.1)にアクセス
-   - 「Agree and access repository」をクリック
-
-4. **環境変数設定**
 ```bash
-# トークンを環境変数に設定
-export HUGGINGFACE_TOKEN=hf_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
-
-# 確認
-echo $HUGGINGFACE_TOKEN
+# Nemotron用の隔離環境を作る（既に venv-nemotron/ がある場合は何もしない）
+./scripts/setup_nemotron_venv.sh
 ```
 
 ### ステップ5: 基本動作確認
@@ -99,14 +76,14 @@ echo $HUGGINGFACE_TOKEN
 ```
 usage: tc [-h] [--output-dir OUTPUT_DIR] [--no-upload] [--model MODEL]
           [--language LANGUAGE] [--device {cuda,cpu,auto}]
-          [--folder-id FOLDER_ID]
+          [--folder-id FOLDER_ID] [--dry-run]
           [input]
 
 音声文字起こしツール - YouTube URL・Google Drive URLまたはローカルファイルを文字起こし
 
 positional arguments:
-  input                 YouTube URL・Google Drive URLまたはローカルファイルパス
-                        （省略時はconfig.yamlのURLを使用）
+  input                 YouTube URL・Google Drive
+                        URLまたはローカルファイルパス（省略時はconfig.yamlのURLを使用）
 
 options:
   -h, --help            show this help message and exit
@@ -119,10 +96,8 @@ options:
                         使用するデバイス（config.yamlの設定を上書き）
   --folder-id FOLDER_ID
                         アップロード先Google DriveフォルダID（省略時は元ファイルと同じフォルダ）
+  --dry-run             設定読み込み・入力解決までを行い、実際の文字起こしは行わずに終了する（起動確認用）
 ```
-
-> `./tc` は話者分離オプションを持たない。話者分離が必要な場合は下記
-> 「話者分離機能」セクションの `transcribe.py -d` を使う。
 
 ## 🎯 基本的な使い方
 
@@ -139,32 +114,32 @@ ls -la *.wav
 
 2. **基本的な文字起こし実行**
 ```bash
-# 日本語音声の文字起こし
+# 日本語音声の文字起こし（ローカルファイルは Google Drive にアップロードされない）
 ./tc audio_sample.wav --language ja
 ```
 
-3. **実行中の画面表示**
+3. **実行中の画面表示**（表示内容の例）
 ```
-[INFO] 処理を開始します: audio_sample.wav
-[INFO] 選択された言語: ja
-[INFO] 話者分離機能: false
-音声文字起こし: 100%|████████████| 10/10 [00:45<00:00, 4.52s/it]
-[INFO] 転写完了: 1,247文字
+設定ファイルを読み込みました
+文字起こし開始: モデル=Qwen/Qwen3-ASR-1.7B, 言語=ja, デバイス=cuda
+文字起こし完了: output/20261002_101530_transcription.txt
 ```
+実行ログは同じ内容が `logs/transcription.log` にも記録されます。
 
 4. **結果の確認**
 ```bash
 # 出力ファイルの確認
 ls -la output/
-cat output/20250729_*_transcription.txt
+cat output/*_transcription.txt
 ```
 
 **📸 期待される出力例:**
 ```
-[00:00] こんにちは、今日は音声文字起こしのテストを行います。
-[00:30] この機能を使うことで、音声ファイルを自動的にテキストに変換できます。
-[01:00] とても便利な機能ですね。
+こんにちは、今日は音声文字起こしのテストを行います。この機能を使うことで、音声ファイルを自動的にテキストに変換できます。
 ```
+
+既定ではテキストのみが出力されます。各行頭に `[MM:SS]` を付けたい場合は、`config/config.yaml` の
+`whisper.include_timestamps` を `true` にします（Qwen3-ASR のみ対応。[設定ガイド](configuration.md) を参照）。
 
 ### シナリオ2: 英語音声の処理
 
@@ -173,129 +148,80 @@ cat output/20250729_*_transcription.txt
 ./tc english_audio.wav --language en --device cuda
 ```
 
-**自動モデル選択:**
-- 日本語: `Qwen/Qwen3-ASR-1.7B`（デフォルト・最高精度）
-- 英語: `Qwen/Qwen3-ASR-1.7B`（デフォルト）または `openai/whisper-large-v3`
+**モデルの選択:**
+- 既定は `Qwen/Qwen3-ASR-1.7B`（`config.yaml` の `whisper.model`）。日本語・英語とも同じモデルで処理する
+- `--model` で上書きできる: `./tc english_audio.wav --language en --model openai/whisper-large-v3`
+- 日本語: `--model kotoba-tech/kotoba-whisper-v2.2` なども指定できる（モデル名で Qwen3-ASR / Whisper /
+  Nemotron のエンジンが自動で選ばれる。詳細は [多言語対応ガイド](language_support_guide.md)）
 
-## 🎤 話者分離機能
+## 📺 YouTube・X動画の処理
 
-### シナリオ3: 会議音声の話者分離
-
-**手順:**
-
-1. **複数話者の音声ファイルを準備**
-```bash
-# 会議録音などの複数話者音声
-# 例: meeting.wav
-```
-
-> **注**: `./tc` は話者分離に対応していない。話者分離は `transcribe.py`
-> （インタラクティブ版CLI）の機能。
-
-2. **話者分離付き文字起こし（最大話者数は自動検出）**
-```bash
-# -d / --diarization で話者分離を有効化(プロファイル1のデフォルト設定+話者分離)
-./transcribe.py meeting.wav --language ja -d
-```
-
-3. **最大話者数を指定したい場合**
-```bash
-# --profile 6 (カスタム設定)を選ぶと対話式で話者分離の有無・最大話者数を尋ねられる
-# (--max-speakers という直接指定できるCLI引数は存在しない)
-./transcribe.py meeting.wav --profile 6
-# → 話者分離を有効にしますか？ [y/n]: y
-# → 最大話者数 (空欄で自動): 3
-```
-
-4. **実行中の画面表示**
-```
-[INFO] 話者分離機能: true
-[INFO] 最大話者数: 3
-話者分離処理: 100%|████████████| 1/1 [01:30<00:00, 90.45s/it]
-音声文字起こし: 100%|████████████| 15/15 [02:15<00:00, 9.03s/it]
-話者統合処理: 100%|████████████| 15/15 [00:05<00:00, 2.85it/s]
-```
-
-5. **話者別結果の確認**
-```bash
-cat output/20250729_*_transcription.txt
-```
-
-**📸 期待される出力例:**
-```
-[00:00] SPEAKER_00: おはようございます。今日の会議を始めさせていただきます。
-[00:15] SPEAKER_01: よろしくお願いします。まず議題について確認します。
-[00:30] SPEAKER_02: 前回の続きから話していきましょう。
-[00:45] SPEAKER_00: そうですね。それでは資料を見ながら進めていきます。
-```
-
-## 📺 YouTube動画の処理
-
-### シナリオ4: YouTube動画から音声抽出・文字起こし
+### シナリオ3: 動画から音声抽出・文字起こし
 
 **手順:**
 
-1. **YouTube URLを準備**
+1. **動画URLを準備**
 ```bash
-# 例: https://www.youtube.com/watch?v=example123
+# YouTube の例: https://www.youtube.com/watch?v=example123
+# X(旧Twitter)の例: https://x.com/<ユーザー名>/status/<投稿ID>
 ```
 
-2. **基本的なYouTube処理**
+2. **基本的な処理**
 ```bash
 # YouTube動画の文字起こし
 ./tc "https://www.youtube.com/watch?v=example123" --language ja
+
+# X(旧Twitter)の動画投稿
+./tc "https://x.com/<ユーザー名>/status/<投稿ID>" --language ja
 ```
 
-3. **YouTube + 話者分離**
+3. **実行中の画面表示**（表示内容の例）
+```
+YouTube URLを検出
+...（yt-dlp のダウンロード進捗）
+文字起こし開始: モデル=Qwen/Qwen3-ASR-1.7B, 言語=ja, デバイス=cuda
+文字起こし完了: output/20261002_101530_transcription.txt
+```
+X の URL では「X(Twitter)動画URLを検出」と表示されます。
 
-`./tc` は話者分離に対応していないため、話者分離が必要な場合は `transcribe.py` を使う:
+4. **処理完了確認**
 ```bash
-# 複数話者のYouTube動画処理(対話式で話者分離・最大話者数を指定)
-./transcribe.py "https://www.youtube.com/watch?v=example123" --language ja --profile 6
-```
-
-4. **実行中の画面表示**
-```
-[INFO] YouTube動画をダウンロード中...
-[INFO] 音声抽出中...
-[INFO] 文字起こし開始...
-YouTube audio extraction: 100%|████████| 1/1 [00:30<00:00, 30.2s/it]
-音声文字起こし: 100%|████████████| 25/25 [03:45<00:00, 9.0s/it]
-```
-
-5. **処理完了確認**
-```bash
-# ダウンロードされた音声ファイル
-ls -la downloads/
 # 文字起こし結果
 ls -la output/
 ```
+ダウンロードした音声（`<タイトル>_<動画ID>.wav`）は `--output-dir`（既定は `output/`）に一時保存され、
+処理が終わると削除されます。
+
+YouTube 動画は、処理後に Google Drive へ自動アップロードされます（`--no-upload` で止められます）。
+X の動画はアップロードされず、ローカルにのみ保存されます。
 
 ## ☁️ Google Drive連携
 
-### シナリオ5: Google Drive上の音声ファイル処理
+### シナリオ4: Google Drive上の音声ファイル処理
 
 **事前準備:**
 
 1. **Google Drive API認証設定**
 ```bash
-# credentials.jsonが存在することを確認
+# 実行するディレクトリ直下に credentials.json があることを確認
 ls -la credentials.json
 ```
+初回は認証URLが表示されます。ブラウザで認証したあと、リダイレクト先の完全なURLを貼り付けると、
+`token.pickle` が作成されます（以降は自動で再利用）。
 
 2. **設定ファイルでDrive URLを指定**
 ```yaml
 # config/config.yaml
 gdrive:
   url: "https://drive.google.com/file/d/your_file_id/view"
-  output_folder_id: "your_folder_id"
+  upload_folder_id: null   # 結果の保存先フォルダID（null なら元ファイルと同じフォルダ）
 ```
 
 **手順:**
 
 1. **設定ファイル使用の基本実行**
 ```bash
-# config.yamlで設定されたGoogle Drive URLを使用
+# config.yamlで設定されたURLを使用
 ./tc
 ```
 
@@ -305,27 +231,40 @@ gdrive:
 ./tc "https://drive.google.com/file/d/1ABC123XYZ/view" --language ja
 ```
 
-3. **実行中の画面表示**
+3. **実行中の画面表示**（表示内容の例）
 ```
-[INFO] Google Driveからダウンロード中...
-[INFO] ファイルサイズ: 15.2MB
-[INFO] ダウンロード完了: /tmp/audio_file.wav
-[INFO] 文字起こし開始...
+Google Drive URLを検出、ダウンロードを開始
+文字起こし開始: モデル=Qwen/Qwen3-ASR-1.7B, 言語=ja, デバイス=cuda
+文字起こし完了: output/20261002_101530_transcription.txt
+アップロード完了: https://drive.google.com/file/d/<結果ファイルID>/view
 ```
 
-4. **結果のDriveアップロード確認**
+4. **結果の確認**
 ```bash
 # ローカル結果確認
-cat output/20250729_*_transcription.txt
-
-# Google Driveへの自動アップロード完了メッセージ
-[INFO] 結果をGoogle Driveにアップロード完了
-[INFO] URL: https://drive.google.com/file/d/result_file_id/view
+cat output/*_transcription.txt
 ```
+アップロード先は `--folder-id` > `gdrive.upload_folder_id` > 元ファイルと同じフォルダ、の優先順位で決まります。
+
+## 🖥️ WebUIで使う
+
+コマンドラインの代わりに、ブラウザから操作できる WebUI（`webui.py`、Streamlit 製）もあります。
+
+```bash
+uv run streamlit run webui.py --server.headless true --server.port 8501
+```
+
+起動後、ブラウザで `http://localhost:8501` を開きます。
+
+- 「文字起こし」タブ: YouTube / X / Google Drive の URL を入力するか、ファイルをアップロードして、
+  モデル・デバイス・言語を選び「キューに追加」を押す。複数の入力は順番に処理される
+- 「履歴」タブ: 過去の文字起こし結果の検索・確認ができる
+
+詳細は [WebUI内部サーバー構成](../system-docs/webui_architecture.md) を参照してください。
 
 ## ⚙️ 設定のカスタマイズ
 
-### シナリオ6: 設定ファイルのカスタマイズ
+### シナリオ5: 設定ファイルのカスタマイズ
 
 **設定ファイルの編集:**
 
@@ -339,25 +278,18 @@ nano config/config.yaml
 ```yaml
 # config/config.yaml
 whisper:
-  model: "large-v3"              # モデル名
-  language: "ja"                 # デフォルト言語
-  device: "cuda"                 # デバイス設定
-  chunk_length: 30               # チャンク長（秒）
-  output_format: "txt"           # 出力形式
-
-speaker_diarization:
-  enable: false                  # 話者分離のデフォルト設定
-  model: "pyannote/speaker-diarization-3.1"
-  max_speakers: 4                # デフォルト最大話者数
+  model: Qwen/Qwen3-ASR-1.7B     # モデル名（名前でエンジンが自動選択される）
+  language: null                 # null=自動判定。ja / en を指定すると強制
+  device: cuda                   # cuda / cpu / auto
+  context_file: "config/context_hints.txt"  # 固有名詞のヒント（Qwen3-ASR専用）
+  include_timestamps: false      # true で各行頭に [MM:SS] を付与（Qwen3-ASR専用）
 
 gdrive:
-  url: "your_default_url"        # デフォルトGoogle Drive URL
-  output_folder_id: "folder_id"  # 結果アップロード先
-
-logging:
-  level: "INFO"                  # ログレベル
-  dir: "logs"                    # ログディレクトリ
+  url: "your_default_url"        # 入力を省略したときに処理するURL
+  upload_folder_id: null         # Google Drive入力の結果のアップロード先フォルダID
 ```
+
+各項目の詳細は [設定ガイド](configuration.md) を参照してください。
 
 **設定確認:**
 ```bash
@@ -371,7 +303,7 @@ uv run python3 -c "from core.config import UnifiedConfig; UnifiedConfig.load(); 
 # CPUを強制使用
 ./tc --device cpu "audio.wav"
 
-# 詳細ログ表示(./tc に --verbose フラグは無いため tee でログを保存)
+# 実行ログをファイルにも保存
 ./tc "audio.wav" 2>&1 | tee debug.log
 
 # GPU監視(別ターミナルで scripts/gpu_monitor.py を並行実行)
@@ -387,52 +319,47 @@ uv run python3 scripts/gpu_monitor.py &
 # 複数ファイルの一括処理
 for file in audio_files/*.wav; do
     echo "処理中: $file"
-    ./tc "$file" --language ja
+    ./tc "$file" --language ja --no-upload
 done
 ```
 
-### パターン2: 品質重視設定
+### パターン2: モデルを切り替える
 
 ```bash
-# 高品質設定（処理時間長め）
-./tc --device cuda --language ja "high_quality_audio.wav"
+# Whisper系モデルで処理
+./tc "audio.wav" --model openai/whisper-large-v3 --language ja
 ```
 
-### パターン3: 高速処理設定
+### パターン3: GPUが使えない環境で処理する
 
 ```bash
-# 高速設定（品質やや劣る）
-./tc --device cpu --language ja "quick_process_audio.wav"
+# CPUで処理（GPUより時間がかかる）
+./tc --device cpu --language ja "audio.wav"
 ```
 
 ## 📊 結果の活用
 
 ### 出力ファイル形式
 
-**基本テキスト形式:**
+**基本テキスト形式（既定）:** 文字起こし結果のテキストのみ。
+
+**タイムスタンプ付き形式（`whisper.include_timestamps: true`、Qwen3-ASRのみ）:**
 ```
 [MM:SS] 文字起こしテキスト
 [MM:SS] 続きのテキスト
 ```
 
-**話者分離付き形式:**
-```
-[MM:SS] SPEAKER_00: 最初の話者の発言
-[MM:SS] SPEAKER_01: 2番目の話者の発言
-```
-
 ### 後処理の例
 
 ```bash
-# 文字数カウント
-wc -c output/latest_transcription.txt
+# 最新の出力ファイルを変数に入れる
+latest=$(ls -t output/*_transcription.txt | head -1)
 
-# 話者別発言量分析
-grep "SPEAKER_00" output/latest_transcription.txt | wc -l
-grep "SPEAKER_01" output/latest_transcription.txt | wc -l
+# 文字数カウント
+wc -c "$latest"
 
 # 特定キーワード検索
-grep -i "重要" output/latest_transcription.txt
+grep -i "重要" "$latest"
 ```
 
 ## 🚨 トラブルシューティング
@@ -448,22 +375,22 @@ CUDA out of memory. Tried to allocate 2.00 GiB
 ./tc --device cpu "audio.wav"
 ```
 
-**問題2: HuggingFace認証エラー**
+**問題2: Nemotron隔離venvが未構築**
 ```bash
 # エラーメッセージ例
-Cannot access model pyannote/speaker-diarization-3.1
+Nemotron隔離venvが未構築です。scripts/setup_nemotron_venv.sh を実行してから再度お試しください。
 
-# 解決策: トークン再設定
-export HUGGINGFACE_TOKEN=hf_your_new_token
-./transcribe.py "audio.wav" -d
+# 解決策: 隔離環境を作る
+./scripts/setup_nemotron_venv.sh
 ```
 
 **問題3: 音声ファイルが認識されない**
 ```bash
 # エラーメッセージ例
-File not found or unsupported format
+入力を認識できません: audio.wav
 
-# 解決策: ファイル形式確認
+# 解決策: パスと拡張子を確認（存在しないパスは「認識できません」になる）
+ls -la audio.wav
 file audio.wav
 # 必要に応じて変換
 ffmpeg -i audio.mp3 audio.wav
@@ -472,7 +399,8 @@ ffmpeg -i audio.mp3 audio.wav
 **問題4: YouTube URLが処理できない**
 ```bash
 # エラーメッセージ例
-Unable to extract audio from YouTube URL
+Failed to get video info
+Audio extraction failed: ...
 
 # 解決策: URLの確認
 echo "https://www.youtube.com/watch?v=VIDEO_ID"
@@ -482,11 +410,11 @@ echo "https://www.youtube.com/watch?v=VIDEO_ID"
 ### デバッグ方法
 
 ```bash
-# 詳細ログで実行(./tc に --verbose フラグは無いため tee でログを保存)
+# 実行ログをファイルに保存
 ./tc "audio.wav" 2>&1 | tee debug.log
 
 # ログファイル確認
-tail -f logs/transcribe_*.log
+tail -f logs/transcription.log
 
 # システム状態確認
 nvidia-smi  # GPU使用状況
@@ -495,12 +423,11 @@ top         # CPU/メモリ使用状況
 
 ## 🎯 実践的な使用例
 
-### 例1: 会議録音の処理(話者分離あり)
+### 例1: 会議録音の処理
 
 ```bash
-# 1時間の会議録音（4人の参加者）。話者分離は transcribe.py のみ対応。
-# --profile 6 で対話式に「話者分離を有効にしますか？」「最大話者数」を指定する
-./transcribe.py meeting_2025-07-29.wav --language ja --profile 6
+# 1時間の会議録音。ローカルファイルはアップロードされず output/ に保存される
+./tc meeting_2026-10-02.wav --language ja
 ```
 
 ### 例2: 講演動画の処理
@@ -530,14 +457,8 @@ top         # CPU/メモリ使用状況
 
 ### 次のステップ
 
-1. **[API仕様書](API.md)** - プログラマー向け詳細情報
-2. **[開発者ガイド](../DEVELOPMENT.md)** - カスタマイズ方法
-3. **[トラブルシューティング](TROUBLESHOOTING.md)** - 詳細な問題解決
-
-### サポート
-
-- 🐛 **バグ報告**: [GitHub Issues](https://github.com/yourusername/transcribe_audio/issues)
-- 💬 **質問・相談**: [GitHub Discussions](https://github.com/yourusername/transcribe_audio/discussions)
-- 📖 **ドキュメント**: 常に最新版をGitHubで確認
+- **[API仕様書](../developer-guides/API.md)** - プログラマー向け詳細情報
+- **[開発者ガイド](../../DEVELOPMENT.md)** - カスタマイズ方法
+- **[トラブルシューティング](TROUBLESHOOTING.md)** - 詳細な問題解決
 
 高品質な音声文字起こしをお楽しみください！ 🎙️✨

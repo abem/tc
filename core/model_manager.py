@@ -9,8 +9,7 @@ import torch
 from abc import ABC, abstractmethod
 from collections import OrderedDict
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Tuple, Union
-from pathlib import Path
+from typing import Any, Dict, Optional
 
 from core.logging import UnifiedLogger, PerformanceLogger
 
@@ -105,11 +104,6 @@ class UnifiedModelManager:
     def _register_default_loaders(self) -> None:
         """Register default model loaders."""
         self._loaders["whisper"] = WhisperModelLoader()
-    
-    def register_loader(self, model_type: str, loader: ModelLoader) -> None:
-        """Register a custom model loader."""
-        self._loaders[model_type] = loader
-        self.logger.info(f"Registered loader for model type: {model_type}")
     
     def load_model(self, 
                    model_name: str, 
@@ -226,13 +220,6 @@ class UnifiedModelManager:
             self.logger.info(f"Cache size limit exceeded, removing: {entry.model_name}")
             del self._model_cache[oldest_key]
     
-    def clear_cache(self) -> None:
-        """Clear all cached models."""
-        with self._cache_lock:
-            cleared_count = len(self._model_cache)
-            self._model_cache.clear()
-            self.logger.info(f"Cache cleared: {cleared_count} models removed")
-    
     def get_cache_stats(self) -> Dict[str, Any]:
         """Get cache statistics."""
         with self._cache_lock:
@@ -260,26 +247,6 @@ class UnifiedModelManager:
                 })
             
             return stats
-    
-    def preload_models(self, model_configs: List[Dict[str, Any]]) -> None:
-        """Preload multiple models."""
-        self.logger.info(f"Preloading {len(model_configs)} models")
-        
-        for config in model_configs:
-            try:
-                self.load_model(**config)
-            except Exception as e:
-                self.logger.error(f"Failed to preload model {config}: {str(e)}")
-    
-    def warm_up_cache(self) -> None:
-        """Warm up cache with commonly used models."""
-        common_models = [
-            {"model_name": "kotoba-tech/kotoba-whisper-v2.2", "model_type": "whisper"},
-            {"model_name": "openai/whisper-large-v3", "model_type": "whisper"}
-        ]
-        
-        self.logger.info("Warming up model cache")
-        self.preload_models(common_models)
 
 
 # Global instance
@@ -291,19 +258,6 @@ def get_global_model_manager() -> UnifiedModelManager:
     global _global_manager
     if _global_manager is None:
         _global_manager = UnifiedModelManager()
-    return _global_manager
-
-
-def configure_model_manager(cache_size_limit: int = 3,
-                           memory_limit_mb: float = 8192,
-                           enable_metrics: bool = True) -> UnifiedModelManager:
-    """Configure and get the global model manager."""
-    global _global_manager
-    _global_manager = UnifiedModelManager(
-        cache_size_limit=cache_size_limit,
-        memory_limit_mb=memory_limit_mb,
-        enable_metrics=enable_metrics
-    )
     return _global_manager
 
 

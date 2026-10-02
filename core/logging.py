@@ -81,38 +81,6 @@ class UnifiedLogger:
             cls._loggers[name] = logger
         
         return cls._loggers[name]
-    
-    @classmethod
-    def set_level(cls, level: str) -> None:
-        """Change log level for all loggers."""
-        new_level = getattr(logging, level.upper())
-        cls._log_level = new_level
-        
-        # Update all existing loggers
-        for logger in cls._loggers.values():
-            logger.setLevel(new_level)
-        
-        # Update root logger
-        logging.getLogger().setLevel(new_level)
-    
-    @classmethod
-    def add_handler(cls, handler: logging.Handler) -> None:
-        """Add a handler to all existing loggers."""
-        handler.setLevel(cls._log_level)
-        
-        for logger in cls._loggers.values():
-            logger.addHandler(handler)
-    
-    @classmethod
-    def get_stats(cls) -> Dict[str, Any]:
-        """Get logging statistics."""
-        return {
-            "configured": cls._configured,
-            "log_level": logging.getLevelName(cls._log_level),
-            "log_file": cls._log_file,
-            "active_loggers": len(cls._loggers),
-            "logger_names": list(cls._loggers.keys())
-        }
 
 
 # Convenience functions for backward compatibility
@@ -169,18 +137,6 @@ class PerformanceLogger:
             self.log_metric("memory_usage", f"{memory_mb:.2f}", "MB")
         except ImportError:
             self.logger.debug("psutil not available for memory monitoring")
-    
-    def log_gpu_usage(self) -> None:
-        """Log GPU memory usage if available."""
-        try:
-            import torch
-            if torch.cuda.is_available():
-                allocated = torch.cuda.memory_allocated() / 1024**3
-                cached = torch.cuda.memory_reserved() / 1024**3
-                self.log_metric("gpu_memory_allocated", f"{allocated:.2f}", "GB")
-                self.log_metric("gpu_memory_cached", f"{cached:.2f}", "GB")
-        except ImportError:
-            self.logger.debug("torch not available for GPU monitoring")
 
 
 # Initialize default configuration if running as main module

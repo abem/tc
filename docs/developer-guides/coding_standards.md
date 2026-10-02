@@ -35,6 +35,8 @@
   - ドキュメント更新確認
   - 履歴改変チェック
 - 自動チェックが失敗した場合は即時作業停止
+- 現状の自動化は `.github/workflows/ci.yml` の ruff（`ruff check .`）と pytest（`tests` ディレクトリ）です。
+  ドキュメント更新確認と履歴改変チェックは自動化されていないため、レビューと運用で確認します
 
 ### ⚠️ 違反時の措置
 - これらの手順を守れない者は**直ちに作業権限を停止**
@@ -309,8 +311,8 @@ cp token.pickle token.pickle.backup
 # 2. 新しい認証ファイルの配置
 # credentials.jsonを新しいものに置き換え
 
-# 3. 動作確認
-python transcribe_audio.py "テスト用のGoogle Drive URL" --output-format txt
+# 3. 動作確認（設定読み込み・入力解決＝Drive認証とダウンロードまで行い、文字起こしはしない）
+./tc --dry-run "テスト用のGoogle Drive URL"
 
 # 4. バックアップの移動
 mv credentials.json.backup /path/to/secure/backup/
@@ -419,10 +421,11 @@ def test_something():
 - 影響範囲の記載
 
 ### 8.2 ブランチ戦略
-- main: 本番環境用
-- develop: 開発用
+- main: 本番環境用（ユーザーの明示的な指示なしに更新しない）
+- dev: 統合用。feature/* → dev → main の順で更新する（`CLAUDE.md` 参照）
 - feature/*: 機能開発用
-- hotfix/*: 緊急修正用
+- fix/*: バグ修正用
+- refactor/*: リファクタリング用
 
 ## 9. デプロイメント
 
@@ -452,30 +455,29 @@ def test_something():
 ## 11. ファイル管理
 
 ### 11.1 文字起こしファイルの管理
-- 文字起こしファイルは `output/transcriptions/` ディレクトリに保存
-- ファイル名のフォーマット: `YYYYMMDD_HHMM_transcription.txt`
-- 古いファイルは `output/transcriptions/archive/` に移動
-- 一時ファイルは `output/transcriptions/temp/` に保存
-- 定期的なクリーンアップを実施（30日以上経過したファイル）
+- 文字起こしファイルは `output/` ディレクトリに保存（`tc` は `--output-dir` で変更できる）
+- ファイル名のフォーマット: `YYYYMMDD_HHMMSS_transcription.txt`（`core/cli_common.py` の `build_output_file()`）
+- 変換履歴は `output/history.db`（SQLite）に記録され、結果テキストも含む
+- WebUI は、アップロードされたファイルを `output/uploads/`、URL入力のダウンロードを
+  `output/queue_downloads/<トークン>/` に置く
+- `output/` と `logs/` は `.gitignore` の対象（コミットしない）
 
 ### 11.2 ファイル命名規則
-- 日時ベース: `YYYYMMDD_HHMM_transcription.txt`
-- ソースベース: `transcription_[FILE_ID].txt`
-- バージョン管理: `transcription_[FILE_ID]_v[VERSION].txt`
+- 日時ベース（現行）: `YYYYMMDD_HHMMSS_transcription.txt`
+- 同一秒に複数の結果を保存する場合は上書きに注意する（`build_output_file()` は秒単位）
 
 ### 11.3 クリーンアップ手順
+自動削除はしない（WebUI の履歴タブにある「古い履歴の一括削除」は `output/history.db` の行だけを消す）。
+手動で整理する場合は、削除前に対象を必ず確認する。
+
 ```bash
-# 1. 古いファイルのアーカイブ
-find output/transcriptions -name "*.txt" -mtime +30 -exec mv {} output/transcriptions/archive/ \;
+# 1. 30日以上前の文字起こしファイルを確認（まず一覧だけ。削除しない）
+find output -maxdepth 1 -name "*_transcription.txt" -mtime +30
 
-# 2. 一時ファイルの削除
-rm -f output/transcriptions/temp/*.txt
-
-# 3. 空ディレクトリの削除
-find output/transcriptions -type d -empty -delete
+# 2. 一覧を確認してから、必要なものだけ手動で削除またはバックアップへ移動する
 ```
 
 ### 11.4 バックアップ
-- 重要な文字起こしファイルは定期的にバックアップ
-- バックアップは `output/transcriptions/backup/` に保存
-- バックアップの命名規則: `backup_YYYYMMDD_HHMM.tar.gz` 
+- 重要な文字起こしファイルは定期的にバックアップする
+- 入力が Google Drive / YouTube の場合、結果は Google Drive にもアップロードされる
+- `output/history.db` には結果テキストも入っているため、必要に応じてファイルごとバックアップする

@@ -16,10 +16,6 @@ YOUTUBE_URL_PATTERNS = [
     r'(?:https?://)?(?:www\.)?youtube\.com/shorts/[\w-]+',
 ]
 
-YOUTUBE_URL_PATTERN = re.compile(
-    r"https?://(?:www\.)?(?:youtube\.com/watch|youtu\.be/)"
-)
-
 GDRIVE_URL_PATTERN = re.compile(r"^https://drive\.google\.com/")
 GDRIVE_FILE_ID_PATTERN = re.compile(r"/file/d/([a-zA-Z0-9_-]+)")
 GDRIVE_OPEN_ID_PATTERN = re.compile(r"[?&]id=([a-zA-Z0-9_-]+)")
@@ -105,3 +101,26 @@ def resolve_device(device: str) -> str:
         return "cuda" if torch.cuda.is_available() else "cpu"
     except ImportError:
         return "cpu"
+
+
+DEFAULT_AUDIO_DURATION_SEC = 600.0  # 長さを取得できないときの既定値(10 分)
+
+
+def get_audio_duration(audio_path: str, fallback_sec: float = DEFAULT_AUDIO_DURATION_SEC) -> float:
+    """音声ファイルの長さ(秒)を返す。
+
+    soundfile でヘッダから読み、失敗したら librosa(audioread 経由で mp4/m4a 等も扱える)、
+    それも失敗したら `fallback_sec` を返す。例外は呼び出し元へ出さない。
+    """
+    try:
+        import soundfile as sf
+
+        return float(sf.info(audio_path).duration)
+    except Exception:
+        pass
+    try:
+        import librosa
+
+        return float(librosa.get_duration(path=audio_path))
+    except Exception:
+        return fallback_sec

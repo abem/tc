@@ -2,8 +2,6 @@
 Tests for core.utils module.
 """
 
-import pytest
-
 
 class TestYouTubeUrlDetection:
     """Tests for YouTube URL detection."""
@@ -219,7 +217,6 @@ class TestResolveDevice:
         result = resolve_device("cpu")
         assert result == "cpu"
 
-    @pytest.mark.skip(reason="Requires torch which may not be installed")
     def test_resolve_auto(self):
         """Test auto device resolution."""
         from core.utils import resolve_device
@@ -227,3 +224,55 @@ class TestResolveDevice:
         result = resolve_device("auto")
         # Should be either cuda or cpu depending on system
         assert result in ["cuda", "cpu"]
+
+
+class TestGetAudioDuration:
+    """core.utils.get_audio_duration(3 エンジンが共有する音声長の取得)。"""
+
+    @staticmethod
+    def _write_wav(path, seconds, sample_rate=8000):
+        import wave
+
+        with wave.open(str(path), "w") as wf:
+            wf.setnchannels(1)
+            wf.setsampwidth(2)
+            wf.setframerate(sample_rate)
+            wf.writeframes(b"\x00\x00" * int(seconds * sample_rate))
+
+    def test_reads_duration_of_real_wav(self, tmp_path):
+        from core.utils import get_audio_duration
+
+        wav = tmp_path / "a.wav"
+        self._write_wav(wav, 2.5)
+        assert get_audio_duration(str(wav)) == 2.5
+
+    def test_missing_file_returns_default_fallback(self, tmp_path):
+        from core.utils import DEFAULT_AUDIO_DURATION_SEC, get_audio_duration
+
+        assert DEFAULT_AUDIO_DURATION_SEC == 600.0
+        assert get_audio_duration(str(tmp_path / "none.wav")) == 600.0
+
+    def test_custom_fallback_is_used(self, tmp_path):
+        from core.utils import get_audio_duration
+
+        assert get_audio_duration(str(tmp_path / "none.wav"), fallback_sec=12.0) == 12.0
+
+    def test_unreadable_file_returns_fallback(self, tmp_path):
+        from core.utils import get_audio_duration
+
+        bad = tmp_path / "bad.wav"
+        bad.write_bytes(b"not audio")
+        assert get_audio_duration(str(bad), fallback_sec=7.0) == 7.0
+
+    def test_falls_back_to_librosa_when_soundfile_fails(self, tmp_path, monkeypatch):
+        import soundfile
+        import librosa
+        from core.utils import get_audio_duration
+
+        def boom(path):
+            raise RuntimeError("soundfile cannot read this")
+
+        monkeypatch.setattr(soundfile, "info", boom)
+        monkeypatch.setattr(librosa, "get_duration", lambda path: 42.0)
+        assert get_audio_duration(str(tmp_path / "x.m4a")) == 42.0
+

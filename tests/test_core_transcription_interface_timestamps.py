@@ -11,9 +11,6 @@ Tests for core.transcription_interface.Qwen3ASREngine のタイムスタンプ�
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
-import numpy as np
-import pytest
-
 
 def _make_engine(include_timestamps=False):
     from core.config import TranscriptionConfig

@@ -1,169 +1,86 @@
 # タイムスタンプ機能 詳細仕様書
 
 ## 概要
-音声文字起こしシステムのタイムスタンプ機能は、音声ファイルの録音時刻を基準とした正確な時刻表示を提供します。
 
-## 機能仕様
+文字起こし結果に、音声の先頭からの経過時間を `[MM:SS]` 形式で付ける機能です。
+付き方はエンジンによって異なります。
 
-### 1. タイムスタンプ位置修正機能
+| エンジン | タイムスタンプ |
+|---|---|
+| Qwen3-ASR（既定） | オプトイン。`config/config.yaml` の `whisper.include_timestamps: true` で有効化。ForcedAligner を使い、`tc` の保存ファイルでは各行の行頭に `[MM:SS]` を付ける |
+| Whisper | 常時。30秒ごとに `[MM:SS]` を行頭に付ける |
+| Nemotron | 非対応。出力はタイムスタンプなしの1つのテキスト |
 
-#### 目的
-- タイムスタンプを行頭に強制配置
-- 行内の不適切な位置にあるタイムスタンプを修正
-- 重複タイムスタンプの除去
+録音時刻（壁時計の時刻）を基準にした表示や、音声ファイルのメタデータ読み取りは実装していません。
+`[MM:SS]` は常に音声先頭からの経過時間です。
 
-#### 実装詳細
-```python
-def _ensure_timestamps_at_line_start(self, text):
-    """タイムスタンプが確実に行頭に配置されるようにテキストを整形"""
-    # 既存のタイムスタンプパターンを検出
-    timestamp_pattern = r'\[\d{2}:\d{2}:\d{2}\]'
-    
-    # 各行を処理
-    for line in text.split('\n'):
-        # 行内のすべてのタイムスタンプを抽出
-        timestamps = re.findall(timestamp_pattern, line)
-        if not timestamps:
-            continue
-        
-        # タイムスタンプ以外のテキストを抽出
-        content = re.sub(timestamp_pattern, '', line)
-        content = re.sub(r'\s+', ' ', content).strip()
-        
-        if content:
-            # 最初のタイムスタンプを行頭に配置
-            lines.append(f"{timestamps[0]} {content}")
-```
+## Qwen3-ASR のタイムスタンプ（`whisper.include_timestamps`）
 
-#### 修正例
-**修正前**:
-```
-はい[00:00:30] ごめん[00:01:00]
-チェッチキット[00:05:30] ごめん[00:06:00]
-お疲れさまで[00:07:30]
-```
+### 設定
 
-**修正後**:
-```
-[00:00:30] はい ごめん
-[00:05:30] チェッチキット ごめん
-[00:07:30] お疲れさまで
-```
-
-### 2. 録音時刻ベース表示機能
-
-#### 目的
-- 現在時刻ではなく、実際の録音時刻を基準とした表示
-- 音声ファイルのメタデータから録音時刻を自動取得
-- 録音機器の時刻情報を活用
-
-#### 実装詳細
-```python
-def _get_recording_start_time(self, audio_path: str):
-    """音声ファイルのメタデータから録音開始時刻を取得"""
-    # メタデータから録音時刻を取得
-    audio_file = File(audio_path, easy=True)
-    
-    # titleタグから録音時刻を取得（例: 250627_1453）
-    if audio_file.get('title'):
-        title_text = audio_file.get('title')[0]
-        # 250627_1453形式を解析
-        match = re.match(r'(\d{2})(\d{2})(\d{2})_(\d{2})(\d{2})', title_text)
-        if match:
-            year, month, day, hour, minute = match.groups()
-            # 20xx年として解釈
-            full_year = 2000 + int(year)
-            recording_time = time.struct_time((full_year, int(month), int(day), 
-                                             int(hour), int(minute), 0, 0, 0, -1))
-            return time.mktime(recording_time)
-```
-
-#### 対応メタデータ形式
-1. **SONY IC RECORDER形式**: `250627_1453`
-   - 形式: `YYMMDD_HHMM`
-   - 例: `250627_1453` → 2025年6月27日 14:53:00
-
-2. **ISO形式**: `2025-06-27T14:53:24`
-   - 形式: `YYYY-MM-DDTHH:MM:SS`
-   - GEOB:IcdRInfoタグから取得
-
-#### 時刻表示例
-```
-[14:53:00] はい
-[14:53:30] お
-[14:54:00] チェッチョコ
-[15:00:00] お疲れさまで
-[16:09:30] ごめん
-```
-
-### 3. タイムスタンプ形式設定
-
-#### 設定オプション
-```python
-@dataclass
-class TranscriptionConfig:
-    timestamp_format: str = "absolute"  # elapsed/absolute/relative
-```
-
-- **elapsed**: 経過時間形式 `[00:00:30]`
-- **absolute**: 録音時刻ベース `[14:53:30]`
-- **relative**: 相対時刻形式（未実装）
-
-## 技術仕様
-
-### 依存ライブラリ
-- **mutagen**: 音声ファイルメタデータ読み取り
-- **re**: 正規表現処理
-- **time**: 時刻処理
-
-### ファイル形式対応
-- **MP3**: ID3タグ対応
-- **WAV**: メタデータ対応
-- **M4A**: メタデータ対応
-- **FLAC**: メタデータ対応
-
-### エラーハンドリング
-1. **メタデータ取得失敗**: ファイル作成時刻をフォールバック
-2. **形式解析失敗**: デフォルト時刻を使用
-3. **ライブラリ未インストール**: エラーログ出力
-
-## テスト結果
-
-### タイムスタンプ位置修正テスト
-- **テストケース数**: 17行
-- **修正成功率**: 100%
-- **修正前**: 17行に行頭以外のタイムスタンプ
-- **修正後**: 0行（すべて行頭に配置）
-
-### 録音時刻取得テスト
-- **テストファイル**: SONY IC RECORDER録音ファイル
-- **メタデータ**: `250627_1453`
-- **取得結果**: 2025年6月27日 14:53:00
-- **成功率**: 100%
-
-### 出力品質テスト
-- **総行数**: 154行
-- **タイムスタンプ付与率**: 100%
-- **時刻精度**: 30秒間隔で正確
-- **文字起こし品質**: 高品質
-
-## 使用方法
-
-### 基本設定
 ```yaml
 # config/config.yaml
 whisper:
-  include_timestamps: true
-  timestamp_format: "absolute"  # 録音時刻ベース
+  include_timestamps: true   # 既定は false
 ```
 
-### 実行方法
-```bash
-./exec.sh
+- 既定は `false`（既存の出力形式を変えないため）。
+- `tc` は `whisper.include_timestamps` を読みます。WebUI は設定パネルの「タイムスタンプ付与」
+  チェックボックスで切り替えます（Nemotron を選ぶと無効になります）。
+- `transcribe.py`（Rich 対話型）は `include_timestamps` を渡さないため、タイムスタンプは付きません。
+- Qwen3-ASR 以外のモデルでは、この設定は使われません。
+
+### 仕組み
+
+1. Qwen3-ASR で文字起こしします（Qwen3-ASR は300秒を超える音声をチャンクに分割します）。
+2. 音声とその文字起こしテキストを ForcedAligner（`Qwen/Qwen3-ForcedAligner-0.6B`）に渡し、
+   文字・単語単位の時刻を得ます。長音声ではチャンクごとに行い、チャンクの開始秒を加算します。
+3. 文節ごとに改行された各行を、アライナー出力の対応する区間に近似的に対応付け、
+   各行の開始・終了秒を `TranscriptionSegment`（`start` / `end`）に設定します。
+   厳密な1対1対応の保証はなく、音声位置の目安として使う近似処理です。
+4. `tc` の `save_result()` が、各セグメントの先頭に `[MM:SS]`（開始秒）を付けて保存します。
+   分は 60 を超えても繰り上げません（75分30秒は `[75:30]`）。
+
+ForcedAligner のモデル重みはメインモデルとは別のチェックポイントで、初回利用時に追加でダウンロードされます
+（GPU メモリを約1.2GB追加で使います）。ForcedAligner のロードや実行に失敗した場合は、警告をログに出して
+タイムスタンプなしの通常出力にフォールバックします。結果の `metadata["timestamps_included"]` で、
+タイムスタンプが付いたかどうかを判別できます。
+
+### 出力例
+
+```
+[00:00] こんにちは。
+[00:03] 今日は文字起こしのテストをしています。
+[00:08] それでは、
+[00:09] 始めましょう。
 ```
 
-### 出力確認
+### 保存先による違い
+
+| 出力 | `[MM:SS]` |
+|---|---|
+| `tc` が保存するテキスト（`output/YYYYMMDD_HHMMSS_transcription.txt`） | 付く |
+| WebUI が保存するテキスト、`transcribe.py` が保存するテキスト | 付かない（`result.text` をそのまま保存） |
+| WebUI の「SRTプレビュー」 | SRT 形式で表示（`include_timestamps` を有効にした場合） |
+
+## Whisper のタイムスタンプ
+
+`WhisperTranscriptionEngine` は、音声を30秒ごとのチャンクに分け、各チャンクの文字起こしの行頭に
+`[MM:SS]`（チャンクの開始秒）を付けます（`_add_timestamps_to_text`）。行内に `[MM:SS]` が紛れた場合は、
+行頭に寄せます（`_ensure_timestamps_at_line_start`）。`TranscriptionResult.segments` は、このテキスト中の
+`[MM:SS]` を解析した30秒区間です。
+
+```
+[00:00] はい、ではお願いします。
+[00:30] ありがとうございます。
+```
+
+## 実行方法と確認
+
 ```bash
+# 設定の include_timestamps を true にして、ローカルファイルを処理（アップロードなし）
+./tc audio.wav --no-upload
+
 # 最新の出力ファイルを確認
 ls -la output/
 head -20 output/YYYYMMDD_HHMMSS_transcription.txt
@@ -171,46 +88,21 @@ head -20 output/YYYYMMDD_HHMMSS_transcription.txt
 
 ## トラブルシューティング
 
-### よくある問題
+#### タイムスタンプが付かない
 
-#### 1. タイムスタンプが現在時刻になる
-**原因**: メタデータ取得失敗
-**解決策**: 
+次の順に確認してください。
+
+- 使っているモデルが Qwen3-ASR か（Whisper は常に付きます。Nemotron は付きません）
+- `whisper.include_timestamps` が `true` か（`tc`・WebUI の場合）。`transcribe.py` は対応していません
+- 保存先が `tc` の出力ファイルか（WebUI・`transcribe.py` の保存ファイルには付きません）
+- ログに「ForcedAlignerのロードに失敗しました」「ForcedAlignerの実行に失敗しました」が出ていないか
+  （ログは `logs/transcription.log`）。初回はモデルの追加ダウンロードにネットワークが必要です
+
+## テスト
+
+- `tests/test_core_transcription_interface_timestamps.py`: エンジン側のタイムスタンプ処理
+- `tests/test_tc_save_result.py`: `tc` の `save_result()` が `[MM:SS]` を付ける処理
+
 ```bash
-pip install mutagen
+uv run pytest tests/test_core_transcription_interface_timestamps.py tests/test_tc_save_result.py -v
 ```
-
-#### 2. タイムスタンプが行頭以外に配置される
-**原因**: 修正機能が適用されていない
-**解決策**: `_ensure_timestamps_at_line_start`メソッドの確認
-
-#### 3. メタデータが読み取れない
-**原因**: 音声ファイル形式の問題
-**解決策**: 対応形式（MP3, WAV, M4A, FLAC）に変換
-
-### デバッグ方法
-```python
-# デバッグ情報を有効化
-print(f"[DEBUG] 録音時刻取得開始: {audio_path}")
-print(f"[DEBUG] メタデータ取得成功: {dict(audio_file)}")
-print(f"[DEBUG] titleタグ: {title_text}")
-```
-
-## 今後の改善予定
-
-### 短期目標
-- [ ] より多くの録音機器メタデータ形式に対応
-- [ ] タイムスタンプ間隔の調整機能
-- [ ] 手動時刻設定機能
-
-### 長期目標
-- [ ] リアルタイムタイムスタンプ表示
-- [ ] 複数音声ファイルの同期機能
-- [ ] タイムスタンプ編集機能
-
----
-
-**作成日**: 2025年7月13日  
-**作成者**: AI Assistant  
-**バージョン**: v1.0  
-**ステータス**: 実装完了・テスト済み 

@@ -70,10 +70,6 @@ print(result.text)
 
 **戻り値:** `TranscriptionResult`（辞書ではなくデータクラス。属性でアクセスします）
 
-##### `get_stats() -> Dict[str, Any]`
-
-使用中のエンジン名（`transcription_engine`）とモデルキャッシュの統計（`model_cache_stats`）を返します。
-
 ### TranscriptionResult / TranscriptionSegment
 
 `core.transcription_interface` で定義されたデータクラスです。
@@ -313,10 +309,9 @@ def safe_transcription(audio_path: str, model: str, fallback_device: str = "cpu"
 `Qwen3ASREngine` は `qwen_asr` の API で直接モデルをロードし、このキャッシュを経由しません。
 
 ```python
-from core.model_manager import get_global_model_manager, configure_model_manager
+from core.model_manager import get_global_model_manager
 
 manager = get_global_model_manager()          # 共有インスタンス
-manager = configure_model_manager(cache_size_limit=3, memory_limit_mb=8192)  # 設定して取得
 stats = manager.get_cache_stats()
 ```
 

@@ -30,32 +30,24 @@ _transcription_available = False
 try:
     from .model_manager import (
         UnifiedModelManager,
-        get_global_model_manager,
-        configure_model_manager
+        get_global_model_manager
     )
     _model_manager_available = True
 except ImportError:
     UnifiedModelManager = None
     get_global_model_manager = None
-    configure_model_manager = None
 
 try:
     from .transcription_interface import (
         UnifiedTranscriber,
         TranscriptionResult,
-        TranscriptionSegment,
-        create_transcriber,
-        create_japanese_transcriber,
-        create_english_transcriber
+        TranscriptionSegment
     )
     _transcription_available = True
 except ImportError:
     UnifiedTranscriber = None
     TranscriptionResult = None
     TranscriptionSegment = None
-    create_transcriber = None
-    create_japanese_transcriber = None
-    create_english_transcriber = None
 
 __version__ = "2025.07.29-unified"
 __all__ = [
@@ -79,15 +71,11 @@ __all__ = [
     # Model Management (optional)
     "UnifiedModelManager",
     "get_global_model_manager",
-    "configure_model_manager",
 
     # Transcription (optional)
     "UnifiedTranscriber",
     "TranscriptionResult",
-    "TranscriptionSegment",
-    "create_transcriber",
-    "create_japanese_transcriber",
-    "create_english_transcriber"
+    "TranscriptionSegment"
 ]
 
 # Initialize logging system

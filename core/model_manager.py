@@ -261,19 +261,6 @@ def get_global_model_manager() -> UnifiedModelManager:
     return _global_manager
 
 
-def configure_model_manager(cache_size_limit: int = 3,
-                           memory_limit_mb: float = 8192,
-                           enable_metrics: bool = True) -> UnifiedModelManager:
-    """Configure and get the global model manager."""
-    global _global_manager
-    _global_manager = UnifiedModelManager(
-        cache_size_limit=cache_size_limit,
-        memory_limit_mb=memory_limit_mb,
-        enable_metrics=enable_metrics
-    )
-    return _global_manager
-
-
 # Testing
 if __name__ == "__main__":
     manager = UnifiedModelManager(cache_size_limit=2, memory_limit_mb=4096)

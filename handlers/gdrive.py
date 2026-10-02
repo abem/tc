@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """
 Unified Google Drive client.
-Consolidates GDriveHandler, YouTubeGDriveHandler, and GDriveStorageHandler.
 """
 
 from __future__ import annotations
@@ -367,9 +366,3 @@ class GDriveClient(StorageBackend):
             filename=file_path.name,
             parent_id=parent_id
         )
-
-
-# Legacy aliases for backward compatibility
-GDriveHandler = GDriveClient
-GDriveStorageHandler = GDriveClient
-YouTubeGDriveHandler = GDriveClient

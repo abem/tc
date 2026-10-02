@@ -114,13 +114,3 @@ class TestCheckYtDlpInstalled:
 
         mock_run.side_effect = FileNotFoundError()
         assert check_yt_dlp_installed() is False
-
-
-class TestYouTubeHandlerAlias:
-    """Tests for backward compatibility alias."""
-
-    def test_youtube_handler_alias(self):
-        """Test that YouTubeHandler is an alias for YouTubeClient."""
-        from handlers.youtube import YouTubeHandler, YouTubeClient
-
-        assert YouTubeHandler is YouTubeClient

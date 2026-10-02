@@ -1012,38 +1012,3 @@ class UnifiedTranscriber:
             progress_callback("Transcription completed")
 
         return result
-
-    def get_stats(self) -> Dict[str, Any]:
-        """Get transcription system statistics."""
-        return {
-            "transcription_engine": self.transcription_engine.get_engine_name(),
-            "model_cache_stats": self.transcription_engine.model_manager.get_cache_stats()
-        }
-
-
-# Factory functions for backward compatibility
-def create_transcriber(config: TranscriptionConfig) -> UnifiedTranscriber:
-    """Create a unified transcriber with the specified configuration."""
-    return UnifiedTranscriber(config)
-
-
-def create_japanese_transcriber(quality: str = "high") -> UnifiedTranscriber:
-    """Create a transcriber optimized for Japanese."""
-    config = TranscriptionConfig.for_language("ja", quality)
-    return UnifiedTranscriber(config)
-
-
-def create_english_transcriber(quality: str = "high") -> UnifiedTranscriber:
-    """Create a transcriber optimized for English."""
-    config = TranscriptionConfig.for_language("en", quality)
-    return UnifiedTranscriber(config)
-
-
-# Testing
-if __name__ == "__main__":
-    from core.config import TranscriptionConfig
-    
-    config = TranscriptionConfig.for_language("ja", "high")
-    transcriber = UnifiedTranscriber(config)
-    
-    print(f"Transcriber created: {transcriber.get_stats()}")

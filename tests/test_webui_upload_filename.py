@@ -69,7 +69,7 @@ class TestResolveInputUpload:
         resolution = webui._resolve_input(form, tmp_path / "dl", on_status=lambda m: None)
 
         written = Path(resolution.local_audio_path).resolve()
-        assert written.parent == (tmp_path / "output" / "uploads").resolve()
+        assert (tmp_path / "output" / "uploads").resolve() in written.parents  # アップロード領域の中
         assert written.read_bytes() == b"RIFFdata"
         outside = [p for p in tmp_path.rglob("*") if p.is_file() and (tmp_path / "output" / "uploads") not in p.parents]
         assert outside == []
@@ -83,3 +83,39 @@ class TestResolveInputUpload:
         resolution = webui._resolve_input(form, tmp_path / "dl", on_status=lambda m: None)
 
         assert Path(resolution.local_audio_path).name == "meeting.wav"
+
+    def test_same_name_uploads_do_not_overwrite_each_other(self, tmp_path, monkeypatch):
+        """同名のファイルを続けてアップロードしても、先のファイルが後のもので置き換わらない
+        (キューに同名が複数あると、先のジョブが処理中のファイルが書き換わっていた)。"""
+        monkeypatch.chdir(tmp_path)
+
+        first = webui._resolve_input(
+            {"source_url": "", "uploaded_file": self._upload("meeting.wav", b"FIRST")},
+            tmp_path / "dl", on_status=lambda m: None,
+        )
+        second = webui._resolve_input(
+            {"source_url": "", "uploaded_file": self._upload("meeting.wav", b"SECOND")},
+            tmp_path / "dl", on_status=lambda m: None,
+        )
+
+        assert first.local_audio_path != second.local_audio_path
+        assert Path(first.local_audio_path).read_bytes() == b"FIRST"
+        assert Path(second.local_audio_path).read_bytes() == b"SECOND"
+        assert Path(first.local_audio_path).name == Path(second.local_audio_path).name == "meeting.wav"
+
+    def test_uploads_stay_inside_upload_area_when_same_name_repeated(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        area = (tmp_path / "output" / "uploads").resolve()
+
+        paths = [
+            Path(
+                webui._resolve_input(
+                    {"source_url": "", "uploaded_file": self._upload("../x.wav", bytes([i]))},
+                    tmp_path / "dl", on_status=lambda m: None,
+                ).local_audio_path
+            ).resolve()
+            for i in range(3)
+        ]
+
+        assert len(set(paths)) == 3
+        assert all(area in p.parents for p in paths)

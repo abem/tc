@@ -174,9 +174,12 @@ class TestResolveInputUploadedFile:
             {"source_url": "", "uploaded_file": _FakeUpload("会議 録音.wav", payload)}, in_tmp_cwd / "dl", MagicMock()
         )
 
-        saved = Path("output/uploads/会議 録音.wav")
+        saved = Path(actual.local_audio_path)
+        # output/uploads/<アップロードごとの一意なディレクトリ>/会議 録音.wav (同名ファイルを上書きしないため)
+        assert saved.parent.parent == Path("output/uploads")
+        assert saved.name == "会議 録音.wav"
         assert saved.read_bytes() == payload
-        assert (in_tmp_cwd / "output" / "uploads" / "会議 録音.wav").read_bytes() == payload
+        assert (in_tmp_cwd / saved).read_bytes() == payload
         assert actual == InputResolution(
             source_type="local",
             original_source=str(saved),
@@ -185,7 +188,7 @@ class TestResolveInputUploadedFile:
             metadata=None,
             youtube_handler=None,
         )
-        assert actual.original_source == "output/uploads/会議 録音.wav"  # 相対パスのまま
+        assert not saved.is_absolute()  # 相対パスのまま
         resolver.assert_not_called()
 
     def test_download_dir_is_not_used_for_uploaded_file(self, in_tmp_cwd, monkeypatch):
@@ -196,16 +199,22 @@ class TestResolveInputUploadedFile:
 
         assert not download_dir.exists()
 
-    def test_same_filename_upload_overwrites_previous_file(self, in_tmp_cwd, monkeypatch):
+    def test_same_filename_upload_does_not_overwrite_previous_file(self, in_tmp_cwd, monkeypatch):
+        """旧実装は同名ファイルを上書きしていた(キューに同名が複数あると、先のジョブが処理中のファイルが
+        書き換わる不具合)。アップロードごとに別ディレクトリへ保存し、先のファイルを残す(tc-ops #578)。"""
         monkeypatch.setattr(webui, "resolve_input_audio", MagicMock())
-        form = {"source_url": "", "uploaded_file": _FakeUpload("same.wav", b"first-content")}
-        webui._resolve_input(form, in_tmp_cwd, MagicMock())
-        form = {"source_url": "", "uploaded_file": _FakeUpload("same.wav", b"2nd")}
+        first = webui._resolve_input(
+            {"source_url": "", "uploaded_file": _FakeUpload("same.wav", b"first-content")}, in_tmp_cwd, MagicMock()
+        )
 
-        webui._resolve_input(form, in_tmp_cwd, MagicMock())
+        second = webui._resolve_input(
+            {"source_url": "", "uploaded_file": _FakeUpload("same.wav", b"2nd")}, in_tmp_cwd, MagicMock()
+        )
 
-        assert (in_tmp_cwd / "output" / "uploads" / "same.wav").read_bytes() == b"2nd"
-        assert [p.name for p in (in_tmp_cwd / "output" / "uploads").iterdir()] == ["same.wav"]
+        assert first.local_audio_path != second.local_audio_path
+        assert Path(first.local_audio_path).read_bytes() == b"first-content"
+        assert Path(second.local_audio_path).read_bytes() == b"2nd"
+        assert len(list((in_tmp_cwd / "output" / "uploads").iterdir())) == 2
 
     def test_empty_uploaded_file_is_saved_as_empty_file(self, in_tmp_cwd, monkeypatch):
         monkeypatch.setattr(webui, "resolve_input_audio", MagicMock())
@@ -215,7 +224,8 @@ class TestResolveInputUploadedFile:
         )
 
         assert actual is not None
-        assert (in_tmp_cwd / "output" / "uploads" / "empty.wav").read_bytes() == b""
+        assert Path(actual.local_audio_path).name == "empty.wav"
+        assert Path(actual.local_audio_path).read_bytes() == b""
 
     def test_none_url_with_uploaded_file_uses_upload_path(self, in_tmp_cwd, monkeypatch):
         """source_url が空文字ではなく None でも、アップロード経路に入る。"""

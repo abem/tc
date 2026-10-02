@@ -12,6 +12,7 @@ Phase2最小構成(URL入力→文字起こし→履歴表示)。設計書:
 
 from __future__ import annotations
 
+import tempfile
 import threading
 import time
 import uuid
@@ -202,8 +203,12 @@ def _resolve_input(
         # Streamlitの`UploadedFile.name`はクライアントが送った文字列のまま(`../`等を含み得る)なので、
         # 区切り文字を除いた単一のファイル名にしてから連結し、保存先が必ず`output/uploads/`直下になるようにする。
         safe_name = sanitize_upload_filename(form_values["uploaded_file"].name)
-        local_path = upload_dir / safe_name
-        if local_path.resolve().parent != upload_dir.resolve():
+        # アップロードごとに専用の一意なサブディレクトリを作る。同名のファイルを続けてアップロードしても
+        # 互いを上書きしない(キューに同名が複数あると、先のジョブが処理中のファイルが書き換わっていた)。
+        # ファイル名はそのまま残る(履歴・表示の見え方を変えない)。
+        # (mkdtemp は絶対パスを返すため、従来どおり相対パス(output/uploads/...)のままにする)
+        local_path = upload_dir / Path(tempfile.mkdtemp(dir=upload_dir)).name / safe_name
+        if local_path.resolve().parent.parent != upload_dir.resolve():
             raise ValueError(f"アップロード先が想定の場所の外になります: {form_values['uploaded_file'].name!r}")
         with open(local_path, "wb") as f:
             f.write(form_values["uploaded_file"].getbuffer())

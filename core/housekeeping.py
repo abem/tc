@@ -1,7 +1,9 @@
-"""WebUI のアップロード領域(output/uploads)の整理。
+"""WebUI の作業領域の整理(output/uploads、output/queue_downloads)。
 
-アップロードされたファイルは、文字起こしの後も残る(履歴が元ファイルのパスを記録するため、
-処理直後には消さない)。放置すると増え続けるので、一定日数を過ぎたものだけを消す。
+- output/uploads: アップロードされたファイル。文字起こしの後も残る(履歴が元ファイルのパスを記録する
+  ため、処理直後には消さない)。放置すると増え続けるので、一定日数を過ぎたものだけを消す。
+- output/queue_downloads/<トークン>/: URL入力のダウンロード。処理後の音声は消えるが、空のディレクトリや
+  失敗時の部分ファイル(.part など)が残る。
 """
 
 import shutil
@@ -18,15 +20,15 @@ MIN_RETENTION_DAYS = 1
 SECONDS_PER_DAY = 86400
 
 
-def cleanup_old_uploads(
-    upload_dir: Path,
+def cleanup_old_entries(
+    directory: Path,
     max_age_days: float,
     *,
     protected_paths: Iterable[Path] = (),
     now: Optional[float] = None,
 ) -> List[str]:
-    """`upload_dir`直下で、更新から`max_age_days`日を過ぎた項目(サブディレクトリ、および
-    サブディレクトリ導入前の平置きファイル)を削除し、削除した項目名のリストを返す。
+    """`directory`直下で、更新から`max_age_days`日を過ぎた項目(サブディレクトリ、および
+    平置きファイル)を削除し、削除した項目名のリストを返す。
 
     - `protected_paths`(処理待ち・処理中のジョブが使うファイル)を含む項目は、古くても消さない。
     - シンボリックリンクは辿らず、消さない(リンク先を巻き込まない)。
@@ -35,8 +37,8 @@ def cleanup_old_uploads(
     """
     if max_age_days < MIN_RETENTION_DAYS:
         raise ValueError(f"保持期間は{MIN_RETENTION_DAYS}日以上にしてください: {max_age_days}")
-    upload_dir = Path(upload_dir)
-    if not upload_dir.is_dir():
+    directory = Path(directory)
+    if not directory.is_dir():
         return []
 
     cutoff = (time.time() if now is None else now) - max_age_days * SECONDS_PER_DAY
@@ -48,7 +50,7 @@ def cleanup_old_uploads(
             continue
 
     removed: List[str] = []
-    for entry in sorted(upload_dir.iterdir()):
+    for entry in sorted(directory.iterdir()):
         if entry.is_symlink():
             continue
         try:
@@ -62,9 +64,9 @@ def cleanup_old_uploads(
             else:
                 entry.unlink()
         except OSError as e:
-            logger.warning("アップロードの整理に失敗(スキップ): %s: %s", entry, e)
+            logger.warning("古い項目の整理に失敗(スキップ): %s: %s", entry, e)
             continue
         removed.append(entry.name)
     if removed:
-        logger.info("古いアップロードを%d件削除しました(保持期間%s日)", len(removed), max_age_days)
+        logger.info("%s の古い項目を%d件削除しました(保持期間%s日)", directory, len(removed), max_age_days)
     return removed

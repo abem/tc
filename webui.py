@@ -44,7 +44,7 @@ from core.logging import get_logger, setup_logging
 from core.nemotron_engine import is_nemotron_model
 from core.transcription_interface import UnifiedTranscriber
 from core.housekeeping import cleanup_old_entries
-from core.utils import sanitize_upload_filename
+from core.utils import one_line, sanitize_upload_filename
 from core.webui_workflow import (
     QueueItem,
     QueueItemState,
@@ -320,8 +320,9 @@ def _enqueue_job(form_values: Dict[str, Any], settings_values: Dict[str, Any], c
     logger.info(
         "enqueue試行開始 token=%s source_url=%s uploaded_file=%s",
         token,
-        form_values.get("source_url") or "(none)",
-        form_values["uploaded_file"].name if form_values.get("uploaded_file") is not None else "(none)",
+        # クライアント由来の文字列は、改行・制御文字をエスケープして1行にしてからログへ出す(ログインジェクション対策)
+        one_line(form_values.get("source_url") or "(none)"),
+        one_line(form_values["uploaded_file"].name) if form_values.get("uploaded_file") is not None else "(none)",
     )
     download_dir = DOWNLOAD_DIR / token
 
@@ -331,7 +332,12 @@ def _enqueue_job(form_values: Dict[str, Any], settings_values: Dict[str, Any], c
     job_settings["device"] = resolve_device(settings_values["device"])
     job_settings["context"] = context_value
 
-    label = form_values["source_url"] or form_values["uploaded_file"].name
+    # ラベルは一覧表示とログ(状態遷移)の両方に使う。URLは1行化し、アップロードは保存名と同じ安全な名前にする。
+    label = (
+        one_line(form_values["source_url"])
+        if form_values["source_url"]
+        else sanitize_upload_filename(form_values["uploaded_file"].name)
+    )
 
     job_queue = _get_queue()
     _sweep_old_files(job_queue)

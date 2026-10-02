@@ -151,3 +151,19 @@ def sanitize_upload_filename(name: object, default: str = DEFAULT_UPLOAD_FILENAM
         else:
             base = base[:MAX_UPLOAD_FILENAME_LENGTH]
     return base
+
+
+_CONTROL_CHARS_RE = re.compile(r"[\x00-\x1f\x7f]")
+
+
+def one_line(value: object, limit: int = 200) -> str:
+    """ログや一覧表示に出すための、1 行の文字列にする。
+
+    クライアント由来の文字列(アップロード名・URL)に改行や制御文字が含まれていると、ログに偽の行を
+    紛れ込ませたり、端末の制御シーケンスを送り込んだりできる。制御文字は`\\n`・`\\x1b`のように
+    見える形のエスケープにし(情報は残す)、`limit`文字を超える分は`…`で切り詰める。
+    """
+    text = _CONTROL_CHARS_RE.sub(lambda m: m.group().encode("unicode_escape").decode("ascii"), str(value))
+    if len(text) > limit:
+        text = text[: max(limit - 1, 0)] + "…"
+    return text

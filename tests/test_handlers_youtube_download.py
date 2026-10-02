@@ -366,3 +366,19 @@ class TestTimeouts:
 
         for args in read_calls(tmp_path):
             assert "--socket-timeout" in args
+
+
+class TestLogsStayOnOneLine:
+    def test_remote_title_with_newline_does_not_split_a_log_line(self, make_client, tmp_path, caplog):
+        """動画タイトルなど外部由来の文字列に改行があっても、ログが複数行にならない(tc-ops #578)。"""
+        import logging
+
+        info = dict(DEFAULT_INFO, title="evil\n2026-01-01 00:00:00 - core - ERROR - FAKE")
+        client = make_client(info=info)
+
+        with caplog.at_level(logging.INFO):
+            client.download_audio(YOUTUBE_URL, output_path=str(tmp_path / "out" / "p.wav"))
+
+        titles = [r.getMessage() for r in caplog.records if "Video title" in r.getMessage()]
+        assert len(titles) == 1
+        assert "\n" not in titles[0] and "evil\\n2026" in titles[0]

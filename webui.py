@@ -43,6 +43,7 @@ from core.history import (
 from core.logging import get_logger, setup_logging
 from core.nemotron_engine import is_nemotron_model
 from core.transcription_interface import UnifiedTranscriber
+from core.uploads import cleanup_old_uploads
 from core.utils import sanitize_upload_filename
 from core.webui_workflow import (
     QueueItem,
@@ -60,6 +61,9 @@ from core.webui_workflow import (
 st.set_page_config(page_title="Transcribe Audio WebUI", layout="wide")
 
 logger = get_logger(__name__)
+
+UPLOAD_DIR = Path("output/uploads")
+UPLOAD_RETENTION_DAYS = 7  # アップロードの保持日数。これを過ぎた項目は新しい投入のたびに整理する(docs/spec D7)
 
 
 def _load_config() -> None:
@@ -198,7 +202,7 @@ def _resolve_input(
             logger.error("resolve_input_audio失敗(通常のException) token=%s error=%s", download_dir.name, e)
             raise
     if form_values["uploaded_file"] is not None:
-        upload_dir = Path("output/uploads")
+        upload_dir = UPLOAD_DIR
         upload_dir.mkdir(parents=True, exist_ok=True)
         # Streamlitの`UploadedFile.name`はクライアントが送った文字列のまま(`../`等を含み得る)なので、
         # 区切り文字を除いた単一のファイル名にしてから連結し、保存先が必ず`output/uploads/`直下になるようにする。
@@ -281,6 +285,22 @@ def _start_resolution_job(
     threading.Thread(target=_run, daemon=True).start()
 
 
+def _sweep_old_uploads(job_queue: TranscriptionJobQueue) -> None:
+    """保持期間を過ぎたアップロードを整理する。処理待ち・処理中のジョブが使うファイルは消さない。
+    整理の失敗で投入を止めない。"""
+    try:
+        in_use = [
+            item.resolution.local_audio_path
+            for item in job_queue.items
+            if item.state in (QueueItemState.QUEUED, QueueItemState.PROCESSING)
+            and item.resolution is not None
+            and item.resolution.source_type == "local"
+        ]
+        cleanup_old_uploads(UPLOAD_DIR, UPLOAD_RETENTION_DAYS, protected_paths=in_use)
+    except Exception as e:  # noqa: BLE001 - 整理は付随処理。投入そのものは続ける
+        logger.warning("アップロードの整理に失敗しました(投入は続行): %s", e)
+
+
 def _enqueue_job(form_values: Dict[str, Any], settings_values: Dict[str, Any], context_value: str) -> None:
     """キューへ即座に追加してから入力解決(ダウンロード等)をバックグラウンドで開始する
     (現行ジョブが処理中でも追加投入できる。要件4-2-1)。
@@ -313,6 +333,7 @@ def _enqueue_job(form_values: Dict[str, Any], settings_values: Dict[str, Any], c
     label = form_values["source_url"] or form_values["uploaded_file"].name
 
     job_queue = _get_queue()
+    _sweep_old_uploads(job_queue)
     item = job_queue.enqueue_pending(label=label, settings=job_settings)
     logger.info("enqueue(pending)完了 token=%s item_id=%s", token, item.item_id)
 

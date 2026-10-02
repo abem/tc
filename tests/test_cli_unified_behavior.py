@@ -18,6 +18,7 @@ from pathlib import Path
 import pytest
 
 import transcribe
+from core import cli_workflow
 from core.cli_workflow import InputResolution
 from core.transcription_interface import TranscriptionResult, TranscriptionSegment
 
@@ -107,8 +108,8 @@ class CliHarness:
         mod = tc_module if kind == "tc" else transcribe
         monkeypatch.setattr(mod, "UnifiedTranscriber", FakeTranscriber)
         monkeypatch.setattr(mod, "resolve_input_audio", lambda *a, **k: self.resolution)
-        monkeypatch.setattr(mod, "upload_transcription_result", lambda **k: None)
-        monkeypatch.setattr(mod, "record_transcription_history", lambda **k: None)
+        monkeypatch.setattr(cli_workflow, "upload_transcription_result", lambda **k: None)
+        monkeypatch.setattr(cli_workflow, "record_transcription_history", lambda **k: None)
         if kind == "tc":
             monkeypatch.setattr(
                 mod, "load_config", lambda: {"whisper": {"model": "m", "language": "ja", "device": "cpu"}}

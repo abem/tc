@@ -198,6 +198,79 @@ def upload_transcription_result(
     return None
 
 
+@dataclass
+class FinalizeOutcome:
+    """`finalize_transcription` の結果。UI 固有の通知は呼び出し側がこの内容から表示する。"""
+
+    output_file: Path
+    gdrive_url: Optional[str] = None
+    upload_attempted: bool = False
+    upload_error: Optional[Exception] = None
+    history_error: Optional[Exception] = None
+    cleanup_warning: Optional[str] = None
+
+
+def finalize_transcription(
+    *,
+    result: "TranscriptionResult",
+    resolution: InputResolution,
+    output_dir: Path,
+    settings: "Dict[str, Any] | Callable[[], Dict[str, Any]]",
+    upload: bool = True,
+    folder_id: Optional[str] = None,
+    raise_upload_errors: bool = False,
+    on_saved: Optional[Callable[[Path], None]] = None,
+    on_uploading: Optional[Callable[[], None]] = None,
+) -> FinalizeOutcome:
+    """保存 → アップロード → 履歴記録 → 一時ファイル削除を行う(tc / transcribe.py / webui 共通)。
+
+    - 保存形式は D4(`format_transcript_text`)、削除は D5(`cleanup_input_audio`)。
+      一時ファイルの削除は保存・アップロードが例外で失敗した場合も行う。
+    - アップロードは `upload` が真で source_type が youtube/gdrive のときだけ。
+      アップロード失敗は既定で `outcome.upload_error` に入れて続行する。
+      `raise_upload_errors=True` なら例外を伝播する(履歴記録は行わない。tc の従来挙動)。
+    - 履歴記録の失敗は常に `outcome.history_error` に入れて続行する(処理結果は失敗にしない)。
+    - `settings` は dict か、履歴記録の直前に評価する引数なしの関数(評価の失敗も history_error 扱い)。
+    - UI 固有の通知(print・st.warning)は持たない。進行の合図用に `on_saved` / `on_uploading` を任意で呼ぶ。
+    """
+    outcome = FinalizeOutcome(output_file=Path())
+    try:
+        outcome.output_file = save_transcription_text(result, output_dir)
+        if on_saved:
+            on_saved(outcome.output_file)
+
+        if upload and resolution.source_type in {"youtube", "gdrive"}:
+            outcome.upload_attempted = True
+            if on_uploading:
+                on_uploading()
+            try:
+                outcome.gdrive_url = upload_transcription_result(
+                    source_type=resolution.source_type,
+                    original_source=resolution.original_source,
+                    output_file=outcome.output_file,
+                    metadata=resolution.metadata,
+                    folder_id=folder_id,
+                )
+            except Exception as e:
+                if raise_upload_errors:
+                    raise
+                outcome.upload_error = e
+
+        try:
+            record_transcription_history(
+                result=result,
+                resolution=resolution,
+                output_file=outcome.output_file,
+                settings=settings() if callable(settings) else settings,
+                gdrive_url=outcome.gdrive_url,
+            )
+        except Exception as e:
+            outcome.history_error = e
+    finally:
+        outcome.cleanup_warning = cleanup_input_audio(resolution)
+    return outcome
+
+
 # 変換履歴DB(設計書: 作から計への設計書_変換履歴DB設計_20260806.md §3 DDL準拠)
 _HISTORY_DDL = """
 CREATE TABLE IF NOT EXISTS transcription_history (

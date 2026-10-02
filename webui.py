@@ -12,7 +12,6 @@ Phase2最小構成(URL入力→文字起こし→履歴表示)。設計書:
 
 from __future__ import annotations
 
-import os
 import threading
 import time
 import uuid
@@ -25,13 +24,13 @@ import streamlit as st
 # 警告抑制を統一設定(suppress_warnings.py は import 時に自動で全抑制を実行)
 import suppress_warnings  # noqa: F401
 
-from core.cli_common import build_output_file, detect_input_type, resolve_device
+from core.cli_common import detect_input_type, resolve_device
 from core.cli_workflow import (
     DEFAULT_HISTORY_DB_PATH,
     InputResolution,
-    record_transcription_history,
+    cleanup_input_audio,
+    finalize_transcription,
     resolve_input_audio,
-    upload_transcription_result,
 )
 from core.config import SystemConfig, TranscriptionConfig, UnifiedConfig
 from core.history import (
@@ -315,19 +314,11 @@ def _dispatch_next_job(job_queue: TranscriptionJobQueue) -> None:
 
 
 def _cleanup_temp_file(resolution: InputResolution) -> None:
-    """ダウンロードした一時音声ファイルを削除する(成功・失敗いずれの経路でも呼び出す)。
-    ローカルアップロードファイルは削除しない(tc/transcribe.pyの既存挙動と整合)。"""
-    needs_cleanup = resolution.is_temp_file or resolution.source_type == "gdrive"
-    if not needs_cleanup:
-        return
-    try:
-        if os.path.exists(resolution.local_audio_path):
-            if resolution.youtube_handler:
-                resolution.youtube_handler.cleanup_temp_file(resolution.local_audio_path)
-            else:
-                os.remove(resolution.local_audio_path)
-    except Exception as e:
-        st.warning(f"一時ファイルの削除に失敗しました: {e}")
+    """ダウンロードした一時音声ファイルを削除する(文字起こし失敗時の経路用。D5)。
+    削除対象の判定・削除は `core.cli_workflow.cleanup_input_audio`、ここでは警告表示だけを行う。"""
+    warning = cleanup_input_audio(resolution)
+    if warning:
+        st.warning(warning)
 
 
 def _save_and_record(
@@ -335,42 +326,27 @@ def _save_and_record(
 ) -> tuple[str, Optional[str]]:
     """完了したジョブの結果を保存し、変換履歴を記録する(設計書§5-2の統合パターンをWebUI側でも踏襲)。
 
+    保存・アップロード・履歴記録・一時ファイル削除は `core.cli_workflow.finalize_transcription`
+    (tc / transcribe.py と共通)で行い、ここでは結果を `st.warning` で表示するだけにする。
+
     戻り値は `(output_file, gdrive_url)`。呼び出し元(キュー項目単位)が結果の保持先を持つため、
     ここでは `st.session_state` の共有キーへは書き込まない(tc-ops #440: 複数ジョブが並行して
     キューに存在するため、単一の共有キーに書くと後続ジョブに上書きされる)。
     """
-    result = job.result
-    output_file = build_output_file(Path("output"))
-    output_file.parent.mkdir(parents=True, exist_ok=True)
-    with open(output_file, "w", encoding="utf-8") as f:
-        f.write(result.text)
+    outcome = finalize_transcription(
+        result=job.result,
+        resolution=resolution,
+        output_dir=Path("output"),
+        settings=settings_values,
+    )
+    if outcome.upload_error is not None:
+        st.warning(f"Google Driveアップロードに失敗しました: {outcome.upload_error}")
+    if outcome.history_error is not None:
+        st.warning(f"変換履歴の記録に失敗しました: {outcome.history_error}")
+    if outcome.cleanup_warning:
+        st.warning(outcome.cleanup_warning)
 
-    gdrive_url: Optional[str] = None
-    try:
-        if resolution.source_type in {"youtube", "gdrive"}:
-            gdrive_url = upload_transcription_result(
-                source_type=resolution.source_type,
-                original_source=resolution.original_source,
-                output_file=output_file,
-                metadata=resolution.metadata,
-            )
-    except Exception as e:
-        st.warning(f"Google Driveアップロードに失敗しました: {e}")
-
-    try:
-        record_transcription_history(
-            result=result,
-            resolution=resolution,
-            output_file=output_file,
-            settings=settings_values,
-            gdrive_url=gdrive_url,
-        )
-    except Exception as e:
-        st.warning(f"変換履歴の記録に失敗しました: {e}")
-
-    _cleanup_temp_file(resolution)
-
-    return str(output_file), gdrive_url
+    return str(outcome.output_file), outcome.gdrive_url
 
 
 def _format_time(epoch: Optional[float]) -> str:

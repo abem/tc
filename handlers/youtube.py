@@ -26,6 +26,7 @@ logger = get_logger(__name__)
 # 無期限に待機してしまう(WebUI「解決中」ハングの原因候補)。
 SOCKET_TIMEOUT_SECONDS = 30  # yt-dlp --socket-timeout。単発通信の無応答をyt-dlp自身に検知させる。
 INFO_TIMEOUT_SECONDS = 60  # extract_video_info()のsubprocess.run全体タイムアウト。メタデータ取得は実測0.9秒程度のため十分な余裕を持たせた値。
+ERROR_TEXT_LIMIT = 1000  # ログ・例外メッセージに載せるエラー文の最大文字数(1行化して切り詰める)
 DOWNLOAD_STALL_TIMEOUT_SECONDS = 300  # download_audio()の出力停止監視。--socket-timeoutでは捕捉できない非ネットワーク要因(後段処理のハング等)への保険。
 
 
@@ -69,14 +70,14 @@ class YouTubeClient:
             if result.returncode == 0:
                 return json.loads(result.stdout)
             else:
-                logger.error(f"Failed to get video info: {result.stderr}")
+                logger.error(f"Failed to get video info: {one_line(result.stderr, ERROR_TEXT_LIMIT)}")
                 return {}
 
         except subprocess.TimeoutExpired:
             logger.error(f"Timed out getting video info ({INFO_TIMEOUT_SECONDS}s): {one_line(url)}")
             return {}
         except Exception as e:
-            logger.error(f"Error extracting video info: {e}")
+            logger.error(f"Error extracting video info: {one_line(e, ERROR_TEXT_LIMIT)}")
             return {}
 
     def download_audio(
@@ -174,7 +175,7 @@ class YouTubeClient:
             stdout, stderr = process.communicate()
 
             if process.returncode != 0:
-                raise RuntimeError(f"Audio extraction failed: {stderr}")
+                raise RuntimeError(f"Audio extraction failed: {one_line(stderr, ERROR_TEXT_LIMIT)}")
 
             if not os.path.exists(output_path):
                 possible_paths = [
@@ -205,10 +206,10 @@ class YouTubeClient:
             return output_path, metadata
 
         except subprocess.CalledProcessError as e:
-            logger.error(f"yt-dlp command failed: {e}")
-            raise RuntimeError(f"Audio extraction failed: {e}")
+            logger.error(f"yt-dlp command failed: {one_line(e, ERROR_TEXT_LIMIT)}")
+            raise RuntimeError(f"Audio extraction failed: {one_line(e, ERROR_TEXT_LIMIT)}")
         except Exception as e:
-            logger.error(f"Unexpected error: {e}")
+            logger.error(f"Unexpected error: {one_line(e, ERROR_TEXT_LIMIT)}")
             raise
 
     def cleanup_temp_file(self, file_path: str):
@@ -218,7 +219,7 @@ class YouTubeClient:
                 os.remove(file_path)
                 logger.info(f"Temporary file removed: {file_path}")
         except Exception as e:
-            logger.warning(f"Failed to remove temporary file: {e}")
+            logger.warning(f"Failed to remove temporary file: {one_line(e, ERROR_TEXT_LIMIT)}")
 
 
 class YtDlpNotFoundError(ValueError):

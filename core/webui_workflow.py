@@ -17,6 +17,7 @@ from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional
 
 from core.logging import get_logger
 from core.progress import ProgressMessage
+from core.utils import one_line
 
 if TYPE_CHECKING:
     from core.cli_workflow import InputResolution
@@ -168,7 +169,7 @@ class TranscriptionJobQueue:
         """`RESOLVING`項目の解決(ダウンロード等)が失敗した場合に`FAILED`へ遷移する(tc-ops #440是正3)。
 
         後続の`RESOLVING`/`QUEUED`項目には影響しない。"""
-        logger.info("状態遷移 item_id=%s RESOLVING->FAILED error=%s", item.item_id, error)
+        logger.info("状態遷移 item_id=%s RESOLVING->FAILED error=%s", item.item_id, one_line(error, 1000))
         item.resolve_error = error
         item.error_message = str(error)
         item.state = QueueItemState.FAILED
@@ -226,7 +227,7 @@ class TranscriptionJobQueue:
 
     def mark_failed(self, item: QueueItem, *, error_message: str) -> None:
         """処理中項目を失敗(`FAILED`)へ遷移する。後続の`QUEUED`項目の起動は妨げない。"""
-        logger.info("状態遷移 item_id=%s PROCESSING->FAILED error=%s", item.item_id, error_message)
+        logger.info("状態遷移 item_id=%s PROCESSING->FAILED error=%s", item.item_id, one_line(error_message, 1000))
         item.state = QueueItemState.FAILED
         item.error_message = error_message
         item.finished_at = time.time()

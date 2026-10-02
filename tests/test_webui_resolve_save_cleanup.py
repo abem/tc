@@ -146,7 +146,8 @@ class TestResolveInputUrl:
         logger_mock.error.assert_called_once()
         logged_args = logger_mock.error.call_args.args
         assert "token1234" in logged_args  # token は download_dir.name
-        assert boom in logged_args
+        # 例外はログへ 1 行化した文字列で渡す(複数行のエラー文でログが分かれない。tc-ops #578)。内容は残る
+        assert "download failed" in logged_args
 
     def test_base_exception_is_not_caught(self, tmp_path, monkeypatch):
         """`except Exception` なので、RerunException のような BaseException 派生はそのまま伝播する。"""

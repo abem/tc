@@ -201,7 +201,7 @@ def _resolve_input(
                 form_values["source_url"], download_dir, ensure_yt_dlp=True, on_status=on_status
             )
         except Exception as e:
-            logger.error("resolve_input_audio失敗(通常のException) token=%s error=%s", download_dir.name, e)
+            logger.error("resolve_input_audio失敗(通常のException) token=%s error=%s", download_dir.name, one_line(e, 1000))
             raise
     if form_values["uploaded_file"] is not None:
         upload_dir = UPLOAD_DIR

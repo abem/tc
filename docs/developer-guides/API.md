@@ -167,7 +167,7 @@ config = TranscriptionConfig(
 
 言語に応じた既定モデルを選んだ設定を返します（`ja` は `kotoba-tech/kotoba-whisper-v2.2`、
 それ以外は `openai/whisper-large-v3`）。`quality`（`high` / `balanced` / `fast`）は、
-エンジンが参照するフィールドには影響しません。
+現在は結果に影響しません（互換のために受け付ける引数です）。
 
 ### SystemConfig
 

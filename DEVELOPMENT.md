@@ -343,35 +343,11 @@ def problematic_function():
 
 ## ⚡ パフォーマンス最適化
 
-### GPU最適化
-```python
-# core/config.py の TranscriptionConfig
-config = TranscriptionConfig(
-    device='cuda',
-    optimal_batch_size=8,  # RTX 4080向け
-    enable_multi_stream=True,
-    enable_dynamic_memory_pool=True
-)
-```
+### GPU・メモリ設定
 
-### メモリ管理
-```python
-# メモリ効率化設定
-config = TranscriptionConfig(
-    max_cache_size=3,
-    memory_efficiency=True,
-    enable_tensor_sharing=True
-)
-```
-
-### 非同期処理
-```python
-# 非同期処理有効化
-config = TranscriptionConfig(
-    enable_async=True,
-    max_concurrent_streams=4
-)
-```
+`TranscriptionConfig` が持つのは `model` / `language` / `device` / `context` / `include_timestamps` の
+5 項目だけです。バッチサイズ・キャッシュ・非同期処理などの調整用フィールドは、どのエンジンも読まなかったため削除しました。
+実行時のデバイスは `device` で選びます。
 
 ### プロファイリング
 ```bash

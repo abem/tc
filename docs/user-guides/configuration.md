@@ -86,8 +86,7 @@ whisper:
   GPUメモリを約1.2GB追加で使います。Qwen3-ASR 以外のエンジンでは使われません。詳細は
   [timestamp_feature.md](../feature/timestamp_feature.md) を参照。
 
-> `config.yaml` には上記以外のキー（`available_models` など）が書かれていることがありますが、
-> 現在のコードは動作の設定として読まない（または読んでも結果に影響しない）ため、変更しても結果は変わりません。
+> `config.yaml` に上記以外のキーを書いても、現在のコードは読まないため結果は変わりません。
 
 #### `context_file`（固有名詞・専門用語のヒント）
 

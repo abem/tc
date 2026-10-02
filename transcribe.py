@@ -149,7 +149,6 @@ class TranscribeLoader:
                 context=load_context_hints(
                     UnifiedConfig.get("whisper", "context_file", default="config/context_hints.txt")
                 ),
-                show_progress=True  # 元のプログレスバーを使用
             )
 
             # 文字起こし実行

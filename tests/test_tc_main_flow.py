@@ -28,14 +28,12 @@ from core.transcription_interface import TranscriptionResult, TranscriptionSegme
 TC_PATH = Path(__file__).resolve().parents[1] / "tc"
 
 # transcribe_audio が TranscriptionConfig(...) にキーワード引数で渡している全キー。
-# 後続タスクで TranscriptionConfig を整理する際の影響範囲として固定する。
+# いずれもエンジンが実際に読む項目。どのエンジンも読まない項目は TranscriptionConfig から
+# 削除済み(tc-ops #567 Task 3.3)で、渡すキーを増やすとここで検出される。
 PASSED_CONFIG_KEYS = {
     "model",
     "language",
     "device",
-    "beam_size",
-    "best_of",
-    "temperature",
     "context",
     "include_timestamps",
 }
@@ -127,7 +125,7 @@ class TestLoadConfig:
     def test_reads_all_keys_from_yaml(self, tc_module, project_root):
         data = {
             "gdrive": {"url": "https://drive.google.com/file/d/abc/view", "upload_folder_id": "folder1"},
-            "whisper": {"model": "m", "language": None, "device": "cpu", "beam_size": 7},
+            "whisper": {"model": "m", "language": None, "device": "cpu", "include_timestamps": True},
             "extra": [1, 2],
         }
         (project_root / "config" / "config.yaml").write_text(
@@ -294,9 +292,6 @@ class TestTranscribeAudioConfigPassing:
             "model": "kotoba-tech/kotoba-whisper-v2.2",
             "language": "ja",
             "device": "cuda",
-            "beam_size": 5,
-            "best_of": 3,
-            "temperature": 0.1,
             "context": "",
             "include_timestamps": False,
         }
@@ -309,9 +304,6 @@ class TestTranscribeAudioConfigPassing:
                 "model": "Qwen/Qwen3-ASR-1.7B",
                 "language": "en",
                 "device": "cpu",
-                "beam_size": 9,
-                "best_of": 4,
-                "temperature": 0.3,
                 "context_file": str(hints),
                 "include_timestamps": True,
             }
@@ -323,9 +315,6 @@ class TestTranscribeAudioConfigPassing:
             "model": "Qwen/Qwen3-ASR-1.7B",
             "language": "en",
             "device": "cpu",
-            "beam_size": 9,
-            "best_of": 4,
-            "temperature": 0.3,
             "context": "Foo, Bar",
             "include_timestamps": True,
         }
@@ -339,13 +328,21 @@ class TestTranscribeAudioConfigPassing:
         assert config_capture["kwargs"]["language"] is None
 
     def test_keys_outside_the_passed_set_are_not_forwarded(self, tc_module, fake_transcriber, config_capture):
-        # config.yaml の whisper.chunk_size 等は TranscriptionConfig へ渡らず、既定値のまま。
-        tc_module.transcribe_audio("a.wav", {"whisper": {"chunk_size": 100, "compute_type": "int8"}})
+        # config.yaml の whisper.chunk_size 等は TranscriptionConfig へ渡らない。
+        # これらのフィールドは TranscriptionConfig 自体から削除済みで、存在しないことも確認する。
+        removed_fields = ("chunk_size", "compute_type", "beam_size", "best_of", "temperature")
+        tc_module.transcribe_audio(
+            "a.wav",
+            {"whisper": {"chunk_size": 100, "compute_type": "int8", "beam_size": 9, "best_of": 4, "temperature": 0.3}},
+        )
 
+        assert set(config_capture["kwargs"]) == PASSED_CONFIG_KEYS
         passed_config = fake_transcriber.instances[0].config
-        defaults = TranscriptionConfig()
-        assert passed_config.chunk_size == defaults.chunk_size
-        assert passed_config.compute_type == defaults.compute_type
+        for name in removed_fields:
+            assert not hasattr(passed_config, name)
+            assert name not in TranscriptionConfig.__dataclass_fields__
+            with pytest.raises(TypeError):
+                TranscriptionConfig(**{name: 1})
 
     def test_auto_device_is_resolved_before_building_config(
         self, tc_module, fake_transcriber, config_capture, monkeypatch
@@ -698,7 +695,7 @@ class TestMainCliOverridesConfig:
 
     def test_config_values_are_used_when_cli_options_are_omitted(self, env, config_capture):
         env.config["whisper"].update(
-            {"model": "cfg-model", "language": "fr", "device": "cpu", "beam_size": 8, "best_of": 2, "temperature": 0.4}
+            {"model": "cfg-model", "language": "fr", "device": "cpu"}
         )
 
         env.run(str(env.audio), "--output-dir", str(env.output_dir))
@@ -707,7 +704,6 @@ class TestMainCliOverridesConfig:
         assert kwargs["model"] == "cfg-model"
         assert kwargs["language"] == "fr"
         assert kwargs["device"] == "cpu"
-        assert (kwargs["beam_size"], kwargs["best_of"], kwargs["temperature"]) == (8, 2, 0.4)
 
     def test_partial_cli_override_only_replaces_given_keys(self, env, config_capture):
         env.config["whisper"].update({"model": "cfg-model", "language": "ja", "device": "cpu"})

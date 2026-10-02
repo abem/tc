@@ -38,6 +38,20 @@ class TestTranscriptionConfig:
         config = TranscriptionConfig(language=None)
         assert config.language is None
 
+    def test_for_language_accepts_quality_but_it_does_not_change_the_result(self):
+        """quality は互換のための引数で、現在は結果に影響しない(tc-ops #567 Task 3.3)。"""
+        from dataclasses import asdict
+        from core.config import TranscriptionConfig
+
+        results = [
+            asdict(TranscriptionConfig.for_language("ja", quality))
+            for quality in ("high", "balanced", "fast")
+        ]
+
+        assert results[0] == results[1] == results[2]
+        assert results[0]["model"] == "kotoba-tech/kotoba-whisper-v2.2"
+        assert results[0]["language"] == "ja"
+
     def test_config_yaml_default_language_is_auto(self):
         """config/config.yamlのwhisper.language既定値がnull(自動判定)であること
         (実態確認: 誤ってja固定へ戻す変更が入っていないかの回帰防止)。"""

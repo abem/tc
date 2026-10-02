@@ -1,8 +1,5 @@
 gdrive:
-  credentials_file: credentials.json
-  token_file: token.pickle
   url: "https://drive.google.com/file/d/19OT5RdY5As-8bALfxKeh2lNjB8ZPyOoP/view?usp=drive_link"
-  chunk_size: 100
   upload_folder_id: null  # デフォルトアップロード先フォルダID（省略時は元ファイルと同じフォルダ）
 
 whisper:
@@ -11,11 +8,7 @@ whisper:
   # 2026-08-03: 従来language: ja固定だったため、英語主体音声にja強制が
   # 適用され誤変換・内容縮退が実機で複数回観測されたため自動判定に変更。
   language: null
-  chunk_size: 100
   device: cuda
-  beam_size: 5
-  best_of: 3
-  temperature: 0.1
   # 固有名詞・専門用語の認識ヒントファイル(Qwen3-ASR用)。1行1語彙、#はコメント。
   # 書式サンプル: config/context_hints.txt.sample を参照。
   # ファイル不存在/空の場合はヒントなし(後方互換)。
@@ -25,75 +18,3 @@ whisper:
   # 約1.2GB追加)を読み込み、出力テキストの各行頭に[MM:SS]を付与する。
   # 既定はfalse(既存の出力形式を維持)。
   include_timestamps: false
-
-  # モデル履歴と利用可能モデル
-  model_history:
-    current: Qwen/Qwen3-ASR-1.7B
-    previous:
-      - model: whisper-large-v3
-        commit: c065e48
-        description: "Whisper v3修正時"
-      - model: large-v3
-        commit: f49e744
-        description: "README更新時"
-      - model: large-v3
-        commit: d122bc7
-        description: "スクリプト再構築時"
-
-  available_models:
-    tiny:
-      description: "最小モデル（高速、低精度）"
-      size: "39MB"
-      speed: "fast"
-      accuracy: "low"
-    base:
-      description: "基本モデル（バランス型）"
-      size: "74MB"
-      speed: "medium"
-      accuracy: "medium"
-    small:
-      description: "小モデル（推奨）"
-      size: "244MB"
-      speed: "medium"
-      accuracy: "good"
-    medium:
-      description: "中モデル（高精度）"
-      size: "769MB"
-      speed: "slow"
-      accuracy: "high"
-    large-v3:
-      description: "大モデル（最高精度）"
-      size: "1550MB"
-      speed: "slow"
-      accuracy: "highest"
-    kotoba-tech/kotoba-whisper-v2.2:
-      description: "日本語特化モデル（現在使用）"
-      size: "1550MB"
-      speed: "medium"
-      accuracy: "high"
-      language: "ja"
-    drewschaub/whisper-large-v3-japanese-4k-steps:
-      description: "日本語特化モデル"
-      size: "1550MB"
-      speed: "slow"
-      accuracy: "high"
-      language: "ja"
-    openai/whisper-large-v3:
-      description: "OpenAI公式大モデル"
-      size: "1550MB"
-      speed: "slow"
-      accuracy: "highest"
-    Qwen/Qwen3-ASR-1.7B:
-      description: "Qwen3-ASR (最高精度・2026年ベンチマークトップ)"
-      size: "1700MB"
-      speed: "medium"
-      accuracy: "highest"
-      language: "ja"
-      engine: "qwen3-asr"
-
-logging:
-  level: INFO
-  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-  file: logs/transcribe.log
-  max_size: 10485760
-  backup_count: 5

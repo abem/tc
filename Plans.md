@@ -2,7 +2,7 @@
 
 作成日: 2026-10-02
 記録先: Redmine tc-ops #566
-状態: 実行中（harness-work、2026-10-02 開始）。Phase 1〜4 は承認済み、Phase 5 は未承認
+状態: 実行中（harness-work、2026-10-02 開始）。Phase 1〜4 は完了・dev/main 統合済み（2026-10-02〜03）。Phase 5 は 2026-10-03 にユーザーが承認（「Phase 5 に進んで」）
 
 ---
 
@@ -120,7 +120,7 @@ Purpose: 同じ処理の重複実装を 1 か所にまとめる。利用者に�
 
 | Task | 内容 | DoD | Depends | Status |
 |------|------|-----|---------|--------|
-| 5.0 | `[Contract]` `[lane:gate]` `[tdd:skip:docs-contract]` `docs/spec/00-project-spec.md` を新設し、未決事項 D2 の決定（正とする CLI、保存形式、一時ファイルの削除対象、yt-dlp が無いときの挙動）を記録する | ファイルが存在し、4 項目すべてに決定と決定日が書かれている | Phase 3 | cc:TODO |
+| 5.0 | `[Contract]` `[lane:gate]` `[tdd:skip:docs-contract]` `docs/spec/00-project-spec.md` を新設し、未決事項 D2 の決定（正とする CLI、保存形式、一時ファイルの削除対象、yt-dlp が無いときの挙動）を記録する | ファイルが存在し、4 項目すべてに決定と決定日が書かれている | Phase 3 | cc:完了 [e7ad0a7] |
 | 5.1 | `[Refactor]` `[lane:gate]` `[tdd:required]` CLI を整理する。`tc`（228 行）と `transcribe.py`（318 行）が同じ流れを別々に実装し、gdrive の一時ファイル削除と `[MM:SS]` 付き保存の挙動が食い違っている。D2 の決定どおり両方を残し、食い違う挙動を 5.0 で決めた側に揃える。`transcribe`（bash）は `transcribe.py` の shebang と役割が重なるため扱いを 5.0 で決める | 5.0 で決めた挙動を、`tc` と `transcribe.py` の両方について確認するテストが pass | 5.0, 2.6 | cc:TODO |
 | 5.2 | `[Refactor]` `[lane:gate]` `[tdd:required]` 保存 → アップロード → 履歴記録 → 一時ファイル削除の流れを `core/` の 1 関数にまとめ、`tc` と `webui.py` の両方から呼ぶ | `tc` と `webui.py` に同じ流れの重複実装が無い。2.3 / 2.5 / 2.6 のテストが pass | 5.1, 2.3, 2.5 | cc:TODO |
 | 5.3 | `[Refactor]` `[lane:gate]` `[tdd:required]` `handlers/youtube.py` の `install_yt_dlp`（`pip install` で uv 管理の `.venv` を書き換える経路）を除き、yt-dlp の検出を 1 つの方法に揃える。挙動が変わるため 5.0 の決定に従う | `grep -rn "pip install" handlers/ core/` が 0 件。yt-dlp が無い場合のエラーメッセージを確認するテストが pass | 5.0, 2.2 | cc:TODO |
@@ -167,11 +167,11 @@ Purpose: 同じ処理の重複実装を 1 か所にまとめる。利用者に�
 |----|-----------|------|
 | D1 | 実行体制 | harness-work で進める。Git 操作を計の専任とする ccc のロール規則とは両立しないため、harness のワーカーがコミットする範囲は feature ブランチと dev に限る |
 | D2 | 正とする CLI | `tc` と `transcribe.py` を両方残し、共通処理に寄せる。廃止はしない |
-| D3 | Phase 5 を行うか | 未決。Phase 4 まで終えた時点で判断する |
+| D3 | Phase 5 を行うか | 行う（2026-10-03、ユーザー「Phase 5 に進んで」）。D4〜D6 は `docs/spec/00-project-spec.md` に記録 |
 
 ## 事前確認
 
-ユーザーの承認: Phase 1〜4 を承認、Phase 5 は未承認。削除と push は `.claude/state/plan-preapprovals.json` に記録済み（期限 2026-10-16）。依存・`config.yaml`・`CLAUDE.md` の変更は記録形式の対象外のため、本節の記載を承認の記録とする。
+ユーザーの承認: Phase 1〜4 を承認、Phase 5 は 2026-10-03 に承認。main の更新は都度ユーザーの GO を得る。削除と push は `.claude/state/plan-preapprovals.json` に記録済み（期限 2026-10-16）。依存・`config.yaml`・`CLAUDE.md` の変更は記録形式の対象外のため、本節の記載を承認の記録とする。
 - 事項: destructive — 追跡中のファイルの削除（`scripts/` の 5 本、`.github/workflows/` の 4 本）
   理由: 起動不能または常に失敗し、うち 1 本は `.venv` 削除に到達しうる
   scope: Phase 1 / Task 1.1, 1.2、Phase 2 / Task 2.8

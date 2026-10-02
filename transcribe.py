@@ -17,11 +17,16 @@ from rich.prompt import Prompt
 
 # プロジェクトモジュール
 from core.cli_common import (
-    build_output_file,
     detect_input_type,
     resolve_device,
 )
-from core.cli_workflow import record_transcription_history, resolve_input_audio, upload_transcription_result
+from core.cli_workflow import (
+    cleanup_input_audio,
+    record_transcription_history,
+    resolve_input_audio,
+    save_transcription_text,
+    upload_transcription_result,
+)
 from core.config import UnifiedConfig, TranscriptionConfig
 from core.logging import setup_logging
 from core.progress import throttled
@@ -127,14 +132,13 @@ class TranscribeLoader:
     
     def process_with_progress(self, input_info: Dict[str, Any], settings: Dict[str, Any], folder_id=None):
         """シンプルな処理"""
+        resolution = resolve_input_audio(
+            input_info["source"],
+            Path("output"),
+            ensure_yt_dlp=True,
+            on_status=throttled(console.print),
+        )
         try:
-            resolution = resolve_input_audio(
-                input_info["source"],
-                Path("output"),
-                ensure_yt_dlp=True,
-                on_status=throttled(console.print),
-            )
-
             if resolution.source_type == "youtube" and resolution.metadata:
                 console.print(f"ダウンロード完了: {resolution.metadata.get('title', 'unknown')}")
             elif resolution.source_type == "gdrive":
@@ -171,23 +175,19 @@ class TranscribeLoader:
 
             # 結果保存
             self.save_results(result, resolution, settings, folder_id=folder_id)
-            
-            # クリーンアップ
-            if resolution.is_temp_file and resolution.youtube_handler:
-                resolution.youtube_handler.cleanup_temp_file(resolution.local_audio_path)
-            
+
         except Exception as e:
             console.print(f"エラー: {str(e)}")
             raise
-    
+        finally:
+            # 成功・失敗どちらでも一時音声(yt-dlp由来・Google Driveダウンロード分)を削除する(D5)
+            warning = cleanup_input_audio(resolution)
+            if warning:
+                console.print(f"警告: {warning}")
+
     def save_results(self, result, resolution, settings, folder_id=None):
         """結果保存"""
-        output_file = build_output_file(Path("output"))
-
-        output_file.parent.mkdir(parents=True, exist_ok=True)
-
-        with open(output_file, 'w', encoding='utf-8') as f:
-            f.write(result.text)
+        output_file = save_transcription_text(result, Path("output"))
 
         # 結果表示
         console.print("文字起こし完了")

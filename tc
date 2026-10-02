@@ -2,7 +2,6 @@
 """Transcribe CLI - config/config.yaml対応の音声文字起こしツール。"""
 
 import argparse
-import os
 import sys
 from pathlib import Path
 from typing import Any, Dict, Optional
@@ -22,8 +21,15 @@ sys.path.insert(0, str(PROJECT_ROOT))
 # 警告抑制を統一設定(suppress_warnings.py は import 時に自動で全抑制を実行)
 import suppress_warnings  # noqa: F401
 
-from core.cli_common import build_output_file, resolve_device, update_whisper_config
-from core.cli_workflow import record_transcription_history, resolve_input_audio, upload_transcription_result
+from core.cli_common import resolve_device, update_whisper_config
+from core.cli_workflow import (
+    cleanup_input_audio,
+    format_mmss,
+    record_transcription_history,
+    resolve_input_audio,
+    save_transcription_text,
+    upload_transcription_result,
+)
 from core.config import TranscriptionConfig
 from core.logging import get_logger, setup_logging
 from core.progress import throttled
@@ -82,32 +88,18 @@ def transcribe_audio(audio_path: str, config: Dict[str, Any]) -> TranscriptionRe
     return result
 
 
-def _format_mmss(seconds: float) -> str:
-    total = max(0, int(seconds))
-    return f"{total // 60:02d}:{total % 60:02d}"
+_format_mmss = format_mmss
 
 
 def save_result(result: TranscriptionResult, output_dir: str = "output") -> str:
-    """文字起こし結果をテキストファイルに保存する。
+    """文字起こし結果をテキストファイルに保存する(形式は core.cli_workflow.format_transcript_text、D4)。"""
+    return str(save_transcription_text(result, Path(output_dir)))
 
-    result.metadata["timestamps_included"]がTrueの場合(config.include_timestamps=True
-    かつForcedAlignerによる整合に成功した場合)、segments各要素の先頭に[MM:SS]を
-    付与する。それ以外(タイムスタンプ未使用/失敗時のフォールバック)は従来どおり
-    result.textをそのまま書き出し、既存の出力形式を維持する。
-    """
-    output_path = build_output_file(Path(output_dir))
-    output_path.parent.mkdir(parents=True, exist_ok=True)
 
-    timestamps_included = bool((result.metadata or {}).get("timestamps_included", False))
-    if timestamps_included and result.segments:
-        lines = [f"[{_format_mmss(seg.start)}] {seg.text}" for seg in result.segments]
-        content = "\n".join(lines)
-    else:
-        content = result.text
-
-    output_path.write_text(content, encoding="utf-8")
-    logger.info(f"結果を保存: {output_path}")
-    return str(output_path)
+def _cleanup(resolution) -> None:
+    warning = cleanup_input_audio(resolution)
+    if warning:
+        print(f"⚠️  {warning}")
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -151,20 +143,10 @@ def main():
         sys.exit(1)
 
     audio_path = resolution.local_audio_path
-    # GDriveClient.download()はStorageBackendインターフェース経由で常に
-    # NamedTemporaryFile(delete=False)へ保存する。resolve_input_audioの
-    # is_temp_fileはgdriveでは常にFalseだが、実体は一時ファイルであるため
-    # source_type=="gdrive"も削除対象に含める（tcの従来挙動を維持）。
-    needs_cleanup = resolution.is_temp_file or resolution.source_type == "gdrive"
 
     if args.dry_run:
         print(f"ドライラン: 起動確認OK (input={audio_path})")
-        if needs_cleanup and os.path.exists(audio_path):
-            if resolution.youtube_handler:
-                resolution.youtube_handler.cleanup_temp_file(audio_path)
-            else:
-                os.remove(audio_path)
-                logger.info(f"一時ファイルを削除: {audio_path}")
+        _cleanup(resolution)
         return
 
     try:
@@ -215,12 +197,7 @@ def main():
             print(f"... (全{len(transcribed_text)}文字)")
 
     finally:
-        if needs_cleanup and os.path.exists(audio_path):
-            if resolution.youtube_handler:
-                resolution.youtube_handler.cleanup_temp_file(audio_path)
-            else:
-                os.remove(audio_path)
-                logger.info(f"一時ファイルを削除: {audio_path}")
+        _cleanup(resolution)
 
 
 if __name__ == "__main__":

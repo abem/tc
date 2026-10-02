@@ -4,18 +4,22 @@ Shared workflow helpers for CLI entry points.
 
 from __future__ import annotations
 
+import logging
+import os
 import sqlite3
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable, Dict, Optional
 
-from core.cli_common import detect_input_type, upload_text_to_gdrive_sibling
+from core.cli_common import build_output_file, detect_input_type, upload_text_to_gdrive_sibling
 
 if TYPE_CHECKING:
     from core.transcription_interface import TranscriptionResult
 
 StatusCallback = Callable[[str], None]
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -26,6 +30,70 @@ class InputResolution:
     is_temp_file: bool
     metadata: Optional[Dict[str, Any]]
     youtube_handler: Optional[Any]  # YouTubeClient
+
+    @property
+    def needs_cleanup(self) -> bool:
+        """処理終了時に `local_audio_path` を削除すべきか(D5)。
+
+        yt-dlp が作った音声(youtube/twitter)と Google Drive からダウンロードした音声は
+        一時ファイルなので削除対象。`GDriveClient.download()` は常に
+        `NamedTemporaryFile(delete=False)` へ保存するが、`resolve_input_audio` は
+        gdrive で `is_temp_file=False` を返すため、source_type でも判定する。
+        ローカルファイル入力は削除しない。
+        """
+        return self.is_temp_file or self.source_type == "gdrive"
+
+
+def cleanup_input_audio(resolution: "InputResolution") -> Optional[str]:
+    """`resolution.needs_cleanup` のとき一時音声ファイルを削除する(D5)。
+
+    成功・失敗・中断いずれの経路でも呼べる。削除に失敗しても例外は出さず、
+    警告メッセージを返す(呼び出し側が表示する。core に UI は持ち込まない)。
+    正常に削除した場合・対象外・既に無い場合は None。
+    """
+    if not resolution.needs_cleanup:
+        return None
+    path = resolution.local_audio_path
+    try:
+        if not os.path.exists(path):
+            return None
+        if resolution.youtube_handler:
+            resolution.youtube_handler.cleanup_temp_file(path)
+        else:
+            os.remove(path)
+            logger.info("一時ファイルを削除: %s", path)
+    except Exception as e:
+        message = f"一時ファイルの削除に失敗しました: {e}"
+        logger.warning(message)
+        return message
+    return None
+
+
+def format_mmss(seconds: float) -> str:
+    total = max(0, int(seconds))
+    return f"{total // 60:02d}:{total % 60:02d}"
+
+
+def format_transcript_text(result: "TranscriptionResult") -> str:
+    """保存用テキストを作る(D4)。
+
+    `result.metadata["timestamps_included"]` が真で `result.segments` があるときだけ、
+    各セグメント先頭に `[MM:SS] ` を付けて 1 行 1 セグメントにする。それ以外は
+    `result.text` をそのまま返す。
+    """
+    timestamps_included = bool((result.metadata or {}).get("timestamps_included", False))
+    if timestamps_included and result.segments:
+        return "\n".join(f"[{format_mmss(seg.start)}] {seg.text}" for seg in result.segments)
+    return result.text
+
+
+def save_transcription_text(result: "TranscriptionResult", output_dir: Path) -> Path:
+    """文字起こし結果をタイムスタンプ付きファイル名で保存し、パスを返す(D4)。"""
+    output_path = build_output_file(Path(output_dir))
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text(format_transcript_text(result), encoding="utf-8")
+    logger.info("結果を保存: %s", output_path)
+    return output_path
 
 
 def resolve_input_audio(

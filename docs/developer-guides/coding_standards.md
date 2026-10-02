@@ -458,7 +458,8 @@ def test_something():
 - 文字起こしファイルは `output/` ディレクトリに保存（`tc` は `--output-dir` で変更できる）
 - ファイル名のフォーマット: `YYYYMMDD_HHMMSS_transcription.txt`（`core/cli_common.py` の `build_output_file()`）
 - 変換履歴は `output/history.db`（SQLite）に記録され、結果テキストも含む
-- WebUI は、アップロードされたファイルを `output/uploads/`、URL入力のダウンロードを
+- WebUI は、アップロードされたファイルを `output/uploads/<一意>/<ファイル名>`（同名でも上書きしない。
+  7 日を過ぎたものは新しい投入のたびに削除される。`core/uploads.py`）、URL入力のダウンロードを
   `output/queue_downloads/<トークン>/` に置く
 - `output/` と `logs/` は `.gitignore` の対象（コミットしない）
 

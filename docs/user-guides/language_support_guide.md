@@ -3,7 +3,7 @@
 ## 📋 概要
 
 本システムは `config/config.yaml` の `whisper.model` で指定したモデルを使って文字起こしを行います。
-モデル名のパターンによって内部エンジン（Qwen3-ASR系 / Whisper系）が自動的に切り替わり、
+モデル名のパターンによって内部エンジン（Nemotron系 / Qwen3-ASR系 / Whisper系）が自動的に切り替わり、
 `whisper.language` の指定は各エンジンの言語指定へ変換されます。
 
 ## 🎯 対応言語とモデル
@@ -11,19 +11,34 @@
 ### デフォルト構成
 
 - **デフォルトモデル**: `Qwen/Qwen3-ASR-1.7B`（`config.yaml` の `whisper.model`）
-- **対応言語**: 日本語(`ja`)・英語(`en`)。`whisper.language` で切り替える
-- **特徴**: 2026年ベンチマークで最上位の精度。日本語・英語とも同一モデルで高精度に対応するため、
-  言語ごとにモデルを別々に指定する必要はない
+- **言語**: `whisper.language` の既定は `null`（自動判定）。`ja` / `en` を指定するとその言語を指定して認識する
+- **特徴**: 日本語・英語とも同一モデルで対応するため、言語ごとにモデルを別々に指定する必要はない
 
 ### モデルを明示的に切り替える場合
 
-`whisper.model` を書き換える（または `--model` で上書きする）ことで、Whisper系エンジンへ切り替えられます。
+`whisper.model` を書き換える（または `--model` で上書きする）ことで、別のエンジンへ切り替えられます。
 
 | モデル | エンジン | 主な用途 |
 |--------|---------|----------|
-| `Qwen/Qwen3-ASR-1.7B` | Qwen3ASREngine | 日本語・英語とも最高精度（デフォルト） |
+| `Qwen/Qwen3-ASR-1.7B` | Qwen3ASREngine | 日本語・英語（デフォルト） |
 | `kotoba-tech/kotoba-whisper-v2.2` | WhisperTranscriptionEngine | 日本語特化（Whisperベース） |
 | `openai/whisper-large-v3` | WhisperTranscriptionEngine | 多言語対応の標準モデル |
+| `nvidia/nemotron-3.5-asr-streaming-0.6b` | NemotronSubprocessEngine | Nemotron（専用の仮想環境が必要。後述） |
+
+### Nemotron を使う場合の前提
+
+Nemotron は通常の `.venv` では動かせず、専用の仮想環境 `venv-nemotron/` のPythonをサブプロセスとして呼び出します
+（`core/nemotron_engine.py`）。使う前に一度、次を実行して環境を作ります。
+
+```bash
+./scripts/setup_nemotron_venv.sh
+```
+
+`venv-nemotron/` が既に存在する場合、このスクリプトは何もせずに終了します（作り直す場合は先に `rm -rf venv-nemotron`）。
+未構築のままNemotronを指定すると、このスクリプトの実行を促すエラーになります。
+
+Nemotron では `whisper.context_file`（認識ヒント）と `whisper.include_timestamps`（タイムスタンプ付与）は使われません
+（`core/nemotron_engine.py` がこれらを参照しないため）。
 
 ## 🔄 エンジン・言語の解決の仕組み
 
@@ -33,26 +48,30 @@
 
 ```python
 # core/transcription_interface.py (UnifiedTranscriber.__init__)
-if Qwen3ASREngine.is_qwen3_model(transcription_config.model):
+if is_nemotron_model(transcription_config.model):
+    self.transcription_engine = NemotronSubprocessEngine(transcription_config)
+elif Qwen3ASREngine.is_qwen3_model(transcription_config.model):
     self.transcription_engine = Qwen3ASREngine(transcription_config)
 else:
     self.transcription_engine = WhisperTranscriptionEngine(transcription_config)
 ```
 
-`is_qwen3_model()` はモデル名に `qwen3-asr` または `qwen3_asr` を含むかどうかで判定する。
+- `is_nemotron_model()` は、モデル名（小文字化）に `nemotron` を含むかどうかで判定する。
+- `is_qwen3_model()` は、モデル名に `qwen3-asr` または `qwen3_asr` を含むかどうかで判定する。
+
 **言語(`whisper.language`)は一切見ない** — エンジン選択は完全にモデル名依存。
 
 > **注記**: `core/cli_common.py` の `select_model()` は「言語ごとにデフォルトモデルを選ぶ」関数だが、
-> 現在どこからも呼ばれていない dead code（`config.yaml` の `whisper.language_models` コメント参照）。
-> `language_models` セクションの値は現状の実行パスには影響しない。
+> 現在どこからも呼ばれていない。`config.yaml` に `whisper.language_models` を書いても実行パスには影響しない。
 
 ### 2. 言語の扱い(エンジンごとに異なる)
 
-- **Qwen3ASREngine**: `whisper.language` の値(`ja`/`en`)を `core/transcription_interface.py` の
-  `lang_map = {"ja": "Japanese", "en": "English"}` で変換し、Qwen3-ASRモデルの `language` 引数
-  （認識対象言語のヒント）として渡す。モデル自体は切り替わらない。
-- **WhisperTranscriptionEngine**: `whisper.language` の値をそのまま(`ja`/`en`)Whisperへ渡す
-  （変換不要。Whisperは同じ言語コード体系を使う）。
+- **Qwen3ASREngine**: `ja` → `Japanese`、`en` → `English` に変換して Qwen3-ASR の `language` 引数として渡す
+  （`core/transcription_interface.py` の `lang_map = {"ja": "Japanese", "en": "English"}`）。
+  それ以外の値と `null` は指定なし（自動判定）になる。モデル自体は切り替わらない。
+- **WhisperTranscriptionEngine**: `whisper.language` の値をそのまま Whisper の `language` へ渡す。
+- **NemotronSubprocessEngine**: `ja` → `ja-JP`、`en` → `en-US` に変換して渡す。
+  それ以外の値と `null` は `auto`（自動判定）になる（`core/nemotron_engine.py` の `_resolve_language`）。
 
 ## 🚀 使用方法
 
@@ -83,24 +102,9 @@ else:
 ./tc path/to/audio.wav --model "openai/whisper-large-v3" --language en
 ```
 
-`transcribe.py`（インタラクティブ版CLI）を使う場合はプロファイル選択(`--profile`)または
-カスタム設定でモデル・言語を選べる。ただしこちらは `config.yaml` の `whisper.model` 等を
-自動では読まない(プロファイル固定値かカスタム入力を使う)。
-
-## 📊 パフォーマンス比較
-
-### 日本語音声での性能比較
-| モデル | 文字起こし精度 | 処理速度 | 推奨用途 |
-|--------|---------------|----------|----------|
-| Qwen/Qwen3-ASR-1.7B | ⭐⭐⭐⭐⭐ | ⭐⭐⭐⭐ | 日本語音声（推奨・デフォルト）|
-| kotoba-tech/kotoba-whisper-v2.2 | ⭐⭐⭐⭐ | ⭐⭐⭐⭐ | 日本語音声（Whisperエンジン）|
-| openai/whisper-large-v3 | ⭐⭐⭐ | ⭐⭐⭐⭐ | 多言語対応 |
-
-### 英語音声での性能比較
-| モデル | 文字起こし精度 | 処理速度 | 推奨用途 |
-|--------|---------------|----------|----------|
-| Qwen/Qwen3-ASR-1.7B | ⭐⭐⭐⭐⭐ | ⭐⭐⭐⭐ | 英語音声（推奨・デフォルト）|
-| openai/whisper-large-v3 | ⭐⭐⭐⭐⭐ | ⭐⭐⭐⭐ | 英語音声（Whisperエンジン）|
+`transcribe.py`（プロファイル版CLI）を使う場合は `--profile` でモデル・言語を選ぶ
+（プロファイルの内容は [CLIの使用方法](new_cli_usage.md) を参照）。
+こちらは `config.yaml` の `whisper.model` / `whisper.language` を読まない（プロファイル固定値かカスタム入力を使う）。
 
 ## 🧪 テスト・検証
 
@@ -125,17 +129,18 @@ uv run pytest -q
 
 ### よくある問題と解決法
 
-#### 1. 英語音声が日本語として認識される
-**原因**: `whisper.language` / `--language` が正しく渡されていない
-**解決法**: `--language en` を明示的に指定するか `config.yaml` の `whisper.language` を確認する
+#### 英語音声が日本語として認識される
+**原因**: `whisper.language` / `--language` が `ja` に固定されている
+**解決法**: `--language en` を明示的に指定するか、`config.yaml` の `whisper.language` を確認する
+（`null` なら自動判定）
 
-#### 2. 想定と違うモデルが使われる
+#### 想定と違うモデルが使われる
 **原因**: `config.yaml` の `whisper.model` が想定と異なる値になっている、または `--model` で上書きされている
 **解決法**: 実行時ログの `文字起こし開始: モデル=...` 行で実際に使われたモデル名を確認する
 
 ### デバッグ方法
 ```bash
-# 詳細ログでモデル・言語の解決状況を確認
+# ログを保存してモデル・言語の解決状況を確認
 ./tc path/to/audio.wav --language en --no-upload 2>&1 | tee debug.log
 
 # 設定ファイル確認
@@ -146,25 +151,13 @@ print(config['whisper']['model'], config['whisper']['language'])
 "
 ```
 
-## 🔄 今後の拡張予定
-
-### 追加予定言語
-- **中国語**: `openai/whisper-large-v3` + 中国語特化モデル
-- **韓国語**: 韓国語特化Whisperモデル
-- **スペイン語**: スペイン語圏向け最適化
-
-### 機能拡張
-- 自動言語検出機能
-- 混合言語音声への対応
-- リアルタイム言語切り替え
-
 ## 📞 サポート
 
 ### ログ確認
 モデル・言語選択の問題がある場合、以下のログを確認:
 ```bash
-# 最新のログファイル確認
-tail -f logs/transcribe.log | grep -E "(言語|モデル|文字起こし開始)"
+# ログファイルを追う
+tail -f logs/transcription.log | grep -E "(言語|モデル|文字起こし開始)"
 ```
 
 ### バグレポート
@@ -176,7 +169,5 @@ tail -f logs/transcribe.log | grep -E "(言語|モデル|文字起こし開始)"
 
 ---
 
-**最終更新**: 2026年8月2日
-**対応言語**: 日本語、英語
+**対応言語**: 日本語、英語（`ja` / `en`）
 **デフォルトモデル**: Qwen/Qwen3-ASR-1.7B（言語共通・エンジン自動選択はモデル名ベース）
-**話者分離**: 全言語対応

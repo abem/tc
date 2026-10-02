@@ -9,9 +9,10 @@ import re
 import subprocess
 import tempfile
 from pathlib import Path
-from typing import Dict, Optional, Tuple
+from typing import Callable, Dict, Optional, Tuple
 
 from core.logging import get_logger
+from core.progress import emit_progress, parse_ytdlp_progress
 from core.utils import is_youtube_url as check_is_youtube_url
 from core.utils import is_twitter_url as check_is_twitter_url
 
@@ -82,7 +83,8 @@ class YouTubeClient:
     def download_audio(
         self,
         url: str,
-        output_path: Optional[str] = None
+        output_path: Optional[str] = None,
+        progress_callback: Optional[Callable[[str], None]] = None,
     ) -> Tuple[str, Dict]:
         """
         Download and extract audio from a YouTube or X(Twitter) video.
@@ -124,6 +126,7 @@ class YouTubeClient:
             "--quiet",
             "--no-warnings",
             "--progress",
+            "--newline",
             url
         ]
 
@@ -137,6 +140,8 @@ class YouTubeClient:
                 text=True
             )
 
+            last_percent = -1
+            notified_converting = False
             while True:
                 output = process.stdout.readline()
                 if output == '' and process.poll() is not None:
@@ -144,6 +149,17 @@ class YouTubeClient:
                 if output:
                     if "[download]" in output and "%" in output:
                         print(f"\r{output.strip()}", end='', flush=True)
+                    parsed = parse_ytdlp_progress(output)
+                    if parsed is not None:
+                        fraction, eta = parsed
+                        percent = int(fraction * 100)
+                        if percent != last_percent:
+                            last_percent = percent
+                            suffix = f"(残り {eta})" if eta else ""
+                            emit_progress(progress_callback, f"ダウンロード中 {percent}%{suffix}", fraction)
+                        if fraction >= 1.0 and not notified_converting:
+                            notified_converting = True
+                            emit_progress(progress_callback, "音声をwavに変換中(長い動画は数分かかります)")
 
             stdout, stderr = process.communicate()
 

@@ -16,6 +16,7 @@ from enum import Enum
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional
 
 from core.logging import get_logger
+from core.progress import ProgressMessage
 
 if TYPE_CHECKING:
     from core.cli_workflow import InputResolution
@@ -114,6 +115,8 @@ class QueueItem:
     gdrive_url: Optional[str] = None
     error_message: Optional[str] = None
     resolve_error: Optional[BaseException] = None
+    progress: Optional[float] = None  # 0.0〜1.0。None=進捗率は不明(経過時間のみ表示)
+    progress_text: str = ""
 
 
 class TranscriptionJobQueue:
@@ -159,6 +162,7 @@ class TranscriptionJobQueue:
         logger.info("状態遷移 item_id=%s RESOLVING->QUEUED label=%s", item.item_id, item.label)
         item.resolution = resolution
         item.state = QueueItemState.QUEUED
+        item.progress, item.progress_text = None, ""  # 解決段階の進捗(ダウンロード)を文字起こし段階へ持ち越さない
 
     def resolve_failed(self, item: QueueItem, error: BaseException) -> None:
         """`RESOLVING`項目の解決(ダウンロード等)が失敗した場合に`FAILED`へ遷移する(tc-ops #440是正3)。
@@ -208,6 +212,7 @@ class TranscriptionJobQueue:
         item.job = starter(item)
         item.state = QueueItemState.PROCESSING
         item.started_at = time.time()
+        item.progress, item.progress_text = None, ""
         logger.info("状態遷移 item_id=%s QUEUED->PROCESSING label=%s", item.item_id, item.label)
         return item
 
@@ -225,6 +230,31 @@ class TranscriptionJobQueue:
         item.state = QueueItemState.FAILED
         item.error_message = error_message
         item.finished_at = time.time()
+
+
+def apply_progress(item: QueueItem, message: str) -> bool:
+    """進捗率付きメッセージ(`ProgressMessage`)なら項目の進捗表示に反映して`True`を返す。
+    通常のメッセージは`False`を返す(呼び出し側がログへ追記する)。進捗は頻繁に届くため、ログには積まない。"""
+    if isinstance(message, ProgressMessage):
+        item.progress = message.fraction
+        item.progress_text = str(message)
+        return True
+    return False
+
+
+def format_elapsed(seconds: float) -> str:
+    """経過・残り時間を`m:ss`(1時間以上は`h:mm:ss`)で表す。"""
+    total = max(int(seconds), 0)
+    hours, rest = divmod(total, 3600)
+    minutes, secs = divmod(rest, 60)
+    return f"{hours}:{minutes:02d}:{secs:02d}" if hours else f"{minutes}:{secs:02d}"
+
+
+def estimate_remaining(elapsed: float, fraction: Optional[float]) -> Optional[float]:
+    """経過時間と進捗率から残り時間(秒)を見積もる。進捗率が不明、または序盤(3%未満)で当てにならない場合は`None`。"""
+    if fraction is None or fraction < 0.03:
+        return None
+    return elapsed * (1.0 - fraction) / fraction
 
 
 def drain_progress(job: TranscriptionJob) -> List[str]:

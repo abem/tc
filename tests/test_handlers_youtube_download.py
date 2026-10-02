@@ -277,3 +277,43 @@ class TestDownloadAudioOutputFilename:
 
         with pytest.raises(FileNotFoundError, match="Output file not found"):
             client.download_audio(YOUTUBE_URL, output_path=str(requested))
+
+
+class TestDownloadAudioProgress:
+    """進捗コールバック(WebUIの進捗バー用)。"""
+
+    def test_reports_percent_then_conversion(self, make_client, tmp_path):
+        """偽yt-dlpの50%/100%行が進捗率つきで通知され、100%到達後に「wav変換中」(率なし)が1回通知される。"""
+        client = make_client()
+        messages = []
+
+        client.download_audio(
+            YOUTUBE_URL, output_path=str(tmp_path / "out" / "p.wav"), progress_callback=messages.append
+        )
+
+        fractions = [m.fraction for m in messages]
+        assert fractions == [0.5, 1.0, None]
+        assert messages[0].startswith("ダウンロード中 50%")
+        assert "wav" in messages[-1]
+
+    def test_requests_one_progress_line_per_update(self, make_client, tmp_path):
+        """yt-dlpの進捗を行単位で読むため--newlineを付けている(\\r区切りだと行が来ない)。"""
+        client = make_client()
+
+        client.download_audio(YOUTUBE_URL, output_path=str(tmp_path / "out" / "p.wav"))
+
+        args = [c for c in read_calls(tmp_path) if "--dump-json" not in c][0]
+        assert "--newline" in args
+
+    def test_callback_error_does_not_break_download(self, make_client, tmp_path):
+        """進捗通知側の例外でダウンロード自体は失敗しない。"""
+        client = make_client()
+
+        def boom(_message):
+            raise RuntimeError("UI側の不具合")
+
+        path, _ = client.download_audio(
+            YOUTUBE_URL, output_path=str(tmp_path / "out" / "p.wav"), progress_callback=boom
+        )
+
+        assert os.path.exists(path)

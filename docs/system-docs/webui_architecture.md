@@ -132,9 +132,10 @@ Detected WSL. Using poll-based file watching for better compatibility. To force 
 
 **実行モデル**: Streamlitはユーザー操作(ウィジェット操作等)のたびに**スクリプト全体を再実行**し、
 差分をWebSocket経由でブラウザへ配信する(仮想DOM的な差分配信)。これが `webui.py` の
-`st.session_state` を多用した状態管理(`_start_job()` でのジョブ状態保存等)の設計上の理由である。
+`st.session_state` を多用した状態管理(`st.session_state["job_queue"]` へのジョブキュー
+(`core/webui_workflow.py` の `TranscriptionJobQueue`)の保持等)の設計上の理由である。
 
-**`@st.fragment(run_every="1s")` による部分再実行**: `webui.py` の `_render_progress_and_result()`
+**`@st.fragment(run_every="1s")` による部分再実行**: `webui.py` の `_render_queue_and_result()`
 はフラグメント化されており、画面全体ではなく該当部分のみを1秒間隔で自動再実行してポーリング的に
 進捗を再描画する。この設計の詳細な採用理由は既存設計書で扱い済み:
 
@@ -222,8 +223,8 @@ After=network.target
 
 [Service]
 Type=simple
-WorkingDirectory=/home/<ユーザー名>/Projects/tc
-ExecStart=/home/<ユーザー名>/.local/bin/uv run streamlit run webui.py --server.headless true --server.port 8501
+WorkingDirectory=/home/<ユーザー名>/Projects/tc-prod
+ExecStart=/home/<ユーザー名>/.local/bin/uv run streamlit run webui.py --server.headless true --server.port 8501 --server.fileWatcherType none
 Restart=on-failure
 RestartSec=5
 
@@ -232,7 +233,10 @@ WantedBy=default.target
 ```
 
 (`WorkingDirectory`・`ExecStart`内の`<ユーザー名>`部分は環境固有値のプレースホルダ。
-本開発機での実際の値は`abem`)。
+本開発機での実際の値は`abem`。`WorkingDirectory`は常駐運用用に配置したチェックアウト
+(本開発機では`tc-prod`)で、開発用の作業ツリーとは別である。`--server.fileWatcherType none`は
+ファイル変更の監視を無効にする指定で、ソースを編集しても稼働中のWebUIが自動リロードされない。
+反映するには再起動する)。
 
 ### 有効化コマンド
 

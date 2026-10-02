@@ -11,7 +11,8 @@
 
 - **🏆 最高精度** - Qwen3-ASR-1.7Bによる2026年ベンチマークトップクラスの日本語文字起こし（デフォルト）
 - **⚡ ワンコマンド実行** - `./tc`だけでconfig.yamlから設定を自動読み込み、仮想環境も自動構築
-- **☁️ Google Drive連携** - 音声ファイルの自動ダウンロード・結果アップロード
+- **🎛️ 3つの文字起こしエンジン** - Qwen3-ASR（既定）・Whisper・Nemotron をモデル名で自動切替
+- **☁️ 入力はローカル・Google Drive・YouTube・X（旧Twitter）** - Google Drive / YouTube の音声は結果を自動アップロード
 - **🔧 uv パッケージ管理** - 最新のPython依存関係管理ツール使用
 - **🎯 シンプル設計** - 複雑な設定不要、すぐに使える
 
@@ -29,9 +30,6 @@ cd tc
 
 # 依存関係のインストール(pyproject.tomlのdefault-groupsでdev/qwen3含め自動解決)
 uv sync
-
-# Hugging Faceトークンの設定
-echo "HUGGINGFACE_TOKEN=hf_your_token_here" > .env
 ```
 
 ### 2. Google Drive認証設定
@@ -91,7 +89,7 @@ gdrive:
 whisper:
   model: Qwen/Qwen3-ASR-1.7B   # デフォルト（最高精度）
   language: null                # 既定は自動判定（ja/en等を指定すると強制）
-  device: cuda  # または cpu
+  device: cuda  # または cpu、auto
 ```
 
 ### 4. 実行
@@ -100,7 +98,8 @@ whisper:
 # シンプル実行（推奨）
 ./tc
 
-# 完了！結果はoutput/フォルダとGoogle Driveに保存されます
+# 完了！結果は output/ フォルダ（output/YYYYMMDD_HHMMSS_transcription.txt）に保存されます。
+# 入力が Google Drive / YouTube の場合は Google Drive にもアップロードされます
 ```
 
 ## 💻 使用方法
@@ -116,7 +115,14 @@ whisper:
 
 # ローカルファイルを処理
 ./tc audio.mp3
+
+# YouTube / X（旧Twitter）の動画URLを処理
+./tc <動画のURL>
 ```
+
+> X の動画URLは `https://x.com/<ユーザー>/status/<数字>`（`twitter.com` も可）の形式です。
+> 結果の Google Drive へのアップロードは、入力が Google Drive / YouTube の場合だけ行われます
+> （X とローカルファイルは `output/` への保存のみ）。
 
 ### オプション
 
@@ -130,12 +136,25 @@ whisper:
 # モデルを変更（従来のWhisperエンジンに切り替え）
 ./tc --model kotoba-tech/kotoba-whisper-v2.2
 
-# デバイスを指定
+# 言語を指定（config.yaml の whisper.language を上書き）
+./tc --language ja
+
+# デバイスを指定（cuda / cpu / auto）
 ./tc --device cpu
+
+# アップロード先の Google Drive フォルダIDを指定
+./tc --folder-id <フォルダID>
+
+# 設定読み込み・入力解決までで終了（文字起こしはしない。起動確認用）
+./tc --dry-run
 
 # ヘルプ表示
 ./tc --help
 ```
+
+Rich 画面で対話的に選びたい場合は `./transcribe`（`transcribe.py` を起動するシェルスクリプト）を使います。
+指定できるのは、入力（位置引数）、`--profile`（`-p`、プロファイル番号。`1` 日本語（高速）・`3` English・
+`5` 日本語（最高精度・Qwen3-ASR）・`6` カスタム設定）、`--language`（`-l`、`ja` / `en`）、`--folder-id` です。
 
 ### WebUI（Streamlitプロトタイプ）
 
@@ -152,13 +171,15 @@ systemdによる常駐化・自動起動を含む内部構成の詳細は
 
 **機能概要**:
 
-- **文字起こしタブ**: YouTube / Google DriveのURL入力、またはローカルファイルのアップロードから
-  文字起こしを実行できます。モデル・デバイス・言語の選択、話者分離、タイムスタンプ付与
-  （ForcedAligner使用）、認識ヒント（固有名詞・専門用語のヒント指定）に対応しています。
+- **文字起こしタブ**: YouTube / Google DriveのURL入力（X の動画URLも入力できます）、またはローカルファイルの
+  アップロードから文字起こしを実行できます。モデル（Qwen3-ASR・kotoba-whisper・whisper-large-v3・Nemotron）・
+  デバイス・言語の選択、タイムスタンプ付与（ForcedAligner使用、Nemotron では選べません）、
+  認識ヒント（固有名詞・専門用語のヒント指定）に対応しています。
 - **ジョブキュー**: 複数の入力を投入すると、現在の処理完了後に自動で次の処理を開始します
   （同時並列実行は行わず、逐次処理のみ対応）。待機件数・処理中の対象・完了済み一覧をUI上で
   確認できます。
-- **履歴タブ**: 過去の変換履歴を日付で絞り込んで閲覧できます。
+- **履歴タブ**: 過去の変換履歴（`output/history.db`、SQLite）を日付で絞り込み、キーワード（3文字以上）で
+  検索して閲覧できます。古い履歴の一括削除もできます。
 
 ## 🔧 設定
 
@@ -166,35 +187,30 @@ systemdによる常駐化・自動起動を含む内部構成の詳細は
 
 ```yaml
 gdrive:
-  credentials_file: credentials.json
-  token_file: token.pickle
-  url: "処理対象のGoogle Drive URL"
-  chunk_size: 100
+  url: "処理対象のGoogle Drive URL"      # ./tc を引数なしで実行したときの入力
+  upload_folder_id: "アップロード先フォルダID"  # 省略時は元ファイルと同じフォルダ（--folder-id で上書き可）
 
 whisper:
   model: Qwen/Qwen3-ASR-1.7B   # デフォルト: 最高精度（2026年ベンチマークトップ）
   language: null                # 既定は自動判定（ja/en等を指定すると強制）
-  device: cuda
-  beam_size: 5
-  best_of: 3
-  temperature: 0.1
-
-speaker_diarization:
-  enable: false
-  model: "pyannote/speaker-diarization-3.1"
-
-logging:
-  level: INFO
-  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-  file: logs/transcribe.log
+  device: cuda                  # cuda / cpu / auto
+  context_file: "config/context_hints.txt"  # 認識ヒント（Qwen3-ASR用、任意）
+  include_timestamps: false     # true で行頭に [MM:SS] を付与（Qwen3-ASR専用、後述）
 ```
 
-### .env ファイル
+- `whisper.model` は `whisper:` の下にありますが、Qwen3-ASR・Nemotron を含む全モデル共通の設定です。
+  モデル名で使うエンジンが決まります（「サポートモデル」参照）。
+- `whisper.context_file`: 1行1語彙、`#` 始まりはコメントです。書式は `config/context_hints.txt.sample` を
+  参照してください。ファイルが無い・空の場合はヒントなしで動作します。
+  認識ヒントを使うのは Qwen3-ASR だけです（Whisper・Nemotron は無視します）。
+  音声が長くてチャンク分割される場合、ヒントは最初のチャンクにだけ適用されます。
+- `whisper.include_timestamps`: Qwen3-ASR 専用のオプトイン機能です。詳細は
+  [`docs/feature/timestamp_feature.md`](docs/feature/timestamp_feature.md) を参照してください。
 
-```bash
-# Hugging Face認証トークン
-HUGGINGFACE_TOKEN=hf_your_token_here
-```
+### 環境変数と .env ファイル
+
+`tc` は起動時にプロジェクト直下の `.env` があれば読み込みます（`python-dotenv`）。
+現行のコードが必須とする環境変数はありません。
 
 ## 🏗️ アーキテクチャ
 
@@ -203,24 +219,33 @@ HUGGINGFACE_TOKEN=hf_your_token_here
 ```
 tc/
 ├── tc                          # メインCLIコマンド
+├── transcribe                  # transcribe.py を起動するシェルスクリプト
 ├── transcribe.py               # Rich UI対話型CLI
+├── webui.py                    # WebUI（Streamlit）
+├── config.py                   # Google Drive 認証（get_drive_service）
+├── suppress_warnings.py        # 警告抑制
 ├── config/
-│   └── config.yaml            # 設定ファイル
+│   ├── config.yaml            # 設定ファイル
+│   └── context_hints.txt.sample  # 認識ヒントの書式サンプル
 ├── core/                      # コア機能
 │   ├── config.py              # 統一設定管理
 │   ├── logging.py             # 統一ロガー
-│   ├── transcription_interface.py  # 文字起こしエンジン
-│   ├── model_manager.py       # モデルキャッシュ管理
+│   ├── transcription_interface.py  # 文字起こしエンジン（Qwen3-ASR / Whisper）と UnifiedTranscriber
+│   ├── nemotron_engine.py     # Nemotron エンジン（隔離venvのサブプロセス）
+│   ├── model_manager.py       # モデルキャッシュ管理（Whisper用）
 │   ├── cli_common.py          # CLI共通ヘルパー
-│   ├── cli_workflow.py        # 入力解決・アップロードフロー
+│   ├── cli_workflow.py        # 入力解決・アップロード・変換履歴
+│   ├── webui_workflow.py      # WebUIのジョブキュー
 │   └── utils.py               # URL検出・デバイス解決
 ├── handlers/                  # 外部サービスハンドラー
 │   ├── gdrive.py              # Google Drive クライアント
-│   └── youtube.py             # YouTube音声抽出
+│   └── youtube.py             # YouTube / X 音声抽出（yt-dlp）
+├── scripts/                   # 補助スクリプト（E2E、Nemotron 用 venv 構築など）
 ├── tests/                     # テストファイル
-├── output/                    # 出力ファイル
+├── output/                    # 出力ファイル（履歴DB output/history.db を含む）
 ├── logs/                      # ログファイル
-├── .env                       # 環境変数
+├── venv-nemotron/             # Nemotron 専用の仮想環境（任意、後述）
+├── .env                       # 環境変数（任意）
 └── credentials.json           # Google Drive認証
 ```
 
@@ -232,18 +257,18 @@ tc/
    - デフォルト値の管理
 
 2. **文字起こしエンジン** (`core/transcription_interface.py`)
-   - Qwen3-ASR / Whisper のデュアルエンジン（モデル名で自動切替）
+   - Qwen3-ASR / Whisper / Nemotron の3エンジン（モデル名で自動切替。Nemotron は `core/nemotron_engine.py`）
    - 音声前処理
-   - 長音声チャンク分割処理（5分単位）
-   - 文節改行フォーマット
+   - Qwen3-ASR は長音声を5分単位でチャンク分割して処理（Nemotron は350秒を超えるとストリーミング推論で処理）
+   - Qwen3-ASR は文節改行フォーマット
 
 3. **Google Drive連携** (`handlers/gdrive.py`)
    - ファイルダウンロード
    - 結果アップロード
    - 権限管理
 
-4. **YouTube音声抽出** (`handlers/youtube.py`)
-   - YouTube動画から音声抽出
+4. **YouTube / X 音声抽出** (`handlers/youtube.py`)
+   - YouTube・X の動画から音声抽出（yt-dlp）
    - メタデータ取得
 
 5. **CLIインターフェース** (`tc`)
@@ -269,8 +294,21 @@ tc/
 - openai/whisper-medium
 - openai/whisper-small
 
-> モデル名に `qwen3-asr` を含む場合は Qwen3ASREngine、
-> それ以外は WhisperTranscriptionEngine が自動選択されます。
+### Nemotron（専用の仮想環境が必要）
+- **nvidia/nemotron-3.5-asr-streaming-0.6b**
+  - `./tc --model nvidia/nemotron-3.5-asr-streaming-0.6b` で使えます
+  - 本体の `.venv`（`qwen-asr` が `transformers<5` を要求）とは依存関係が両立しないため、
+    専用の仮想環境 `venv-nemotron/` のPythonをサブプロセスとして起動して推論します
+  - 事前に `./scripts/setup_nemotron_venv.sh` で `venv-nemotron/` を作成してください
+    （`venv-nemotron/` が既にある場合は何もしません）。未作成のまま実行すると、
+    未構築を知らせるエラーで停止します
+  - 認識ヒントとタイムスタンプ付与には対応していません。出力は1つのテキストです
+  - 実際に読み込まれるモデルは `scripts/nemotron_infer.py` に固定されており、
+    モデル名は `nemotron` を含むかどうかでエンジンを選ぶためだけに使われます
+
+> モデル名に `nemotron` を含む場合は NemotronSubprocessEngine、`qwen3-asr`（または `qwen3_asr`）を含む場合は
+> Qwen3ASREngine、それ以外は WhisperTranscriptionEngine が自動選択されます。
+> 既定のモデルは `config/config.yaml` の `whisper.model` です（現在 `Qwen/Qwen3-ASR-1.7B`）。
 
 ## 📊 出力形式
 
@@ -288,13 +326,22 @@ tc/
 
 > Whisperエンジン（`--model kotoba-tech/kotoba-whisper-v2.2`）を選択した場合は、
 > 30秒毎の `[MM:SS]` タイムスタンプ付き形式になります。
+> Qwen3-ASR でも `whisper.include_timestamps: true`（`tc` が読みます）にすると、各行の行頭に
+> `[MM:SS]` が付きます（[タイムスタンプ機能](docs/feature/timestamp_feature.md)）。
+> Nemotron の出力はタイムスタンプなしの1つのテキストです。
 
-### メタデータ
-- 処理時間
-- 使用モデル
-- 言語設定
-- 文字数統計
-- デバイス情報
+ファイル名は `output/YYYYMMDD_HHMMSS_transcription.txt` です（`--output-dir` で出力先を変更できます）。
+
+### 変換履歴（メタデータ）
+
+`tc`・`transcribe.py`・WebUI は、変換のたびに `output/history.db`（SQLite）へ次の項目を記録します
+（記録に失敗しても文字起こし自体は失敗として扱いません）。
+- 処理日時・入力の種別と元のURL/パス・タイトル
+- 使用モデル・デバイス・言語
+- 文字数・音声長・処理時間
+- チャンク失敗数・反復検出数
+- タイムスタンプ付与・認識ヒント使用の有無
+- 結果テキスト・出力ファイルのパス・Google Drive の URL
 
 ## 🔍 トラブルシューティング
 
@@ -344,35 +391,39 @@ uv sync
 ./tc --device cpu
 ```
 
-#### 5. Hugging Face認証エラー
-```bash
-# トークンの確認
-cat .env
-
-# 形式の確認（HUGGINGFACE_TOKEN=hf_xxx）
-```
-
-#### 6. ModuleNotFoundError: No module named 'googleapiclient'
+#### 5. ModuleNotFoundError: No module named 'googleapiclient'
 ```bash
 # 依存関係を再同期(pyproject.toml/uv.lockが情報源)
 uv sync
+```
+
+#### 6. Nemotron を指定したのに「Nemotron隔離venvが未構築です」で止まる
+```bash
+# 専用の仮想環境 venv-nemotron/ を作成
+./scripts/setup_nemotron_venv.sh
 ```
 
 ### ログ確認
 
 ```bash
 # 詳細ログの確認
-tail -f logs/transcribe.log
+tail -f logs/transcription.log
 
 # エラーログの検索
-grep -i error logs/transcribe.log
+grep -i error logs/transcription.log
 ```
 
 ## 🧪 開発・デバッグ
 
-## 🧪 E2Eテスト
+### テスト
 
-### ローカルE2E（推奨）
+```bash
+uv run pytest
+```
+
+### E2Eテスト
+
+#### ローカルE2E（推奨）
 
 ドライラン（依存最小で入口確認）:
 ```bash
@@ -384,21 +435,20 @@ grep -i error logs/transcribe.log
 E2E_MODE=full ./scripts/e2e_local.sh
 ```
 
-### pytestでドライラン確認
+#### pytestでドライラン確認
 
 ```bash
 uv run pytest tests/test_e2e_dry_run.py -v
 ```
 
-このテストは `tc` に `--dry-run` オプションを実装したことで復旧済みです。
-ローカルの音声ファイルのみを使い、GPU/ネットワークを一切使用せずに
+このテストは `tc --dry-run` を使い、ローカルの音声ファイルのみで、GPU/ネットワークを一切使用せずに
 ランチャー起動確認（設定読み込み・入力解決）を行います。
 
 ### 依存関係管理
 
 ```bash
-# パッケージの追加
-uv pip install package_name
+# パッケージの追加（pyproject.toml と uv.lock が更新される）
+uv add <パッケージ名>
 
 # 依存関係の同期 (uv が pyproject.toml/uv.lock を情報源とする)
 uv sync

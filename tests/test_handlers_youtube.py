@@ -97,20 +97,22 @@ class TestYouTubeClient:
 
 
 class TestCheckYtDlpInstalled:
-    """Tests for check_yt_dlp_installed function."""
+    """Tests for check_yt_dlp_installed function.
 
-    @patch("subprocess.run")
-    def test_installed(self, mock_run):
+    検出は find_yt_dlp() に一本化した(tc-ops #567 Task 5.3)。検出自体の詳細は
+    tests/test_handlers_youtube_detection.py。
+    """
+
+    @patch("handlers.youtube.find_yt_dlp", return_value="/venv/bin/yt-dlp")
+    def test_installed(self, mock_find):
         """Test when yt-dlp is installed."""
         from handlers.youtube import check_yt_dlp_installed
 
-        mock_run.return_value = Mock(returncode=0)
         assert check_yt_dlp_installed() is True
 
-    @patch("subprocess.run")
-    def test_not_installed(self, mock_run):
+    @patch("handlers.youtube.find_yt_dlp", return_value=None)
+    def test_not_installed(self, mock_find):
         """Test when yt-dlp is not installed."""
         from handlers.youtube import check_yt_dlp_installed
 
-        mock_run.side_effect = FileNotFoundError()
         assert check_yt_dlp_installed() is False

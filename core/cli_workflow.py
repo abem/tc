@@ -113,11 +113,14 @@ def resolve_input_audio(
 
     if source_type in ("youtube", "twitter"):
         status("YouTube URLを検出" if source_type == "youtube" else "X(Twitter)動画URLを検出")
-        from handlers.youtube import YouTubeClient, check_yt_dlp_installed, install_yt_dlp
+        from handlers.youtube import YouTubeClient, YtDlpNotFoundError, check_yt_dlp_installed
 
         if ensure_yt_dlp and not check_yt_dlp_installed():
-            status("yt-dlpがインストールされていないためインストールを試行します")
-            install_yt_dlp()
+            # D6: 自動インストールはしない(uv 管理の .venv を書き換えない)
+            raise YtDlpNotFoundError(
+                "yt-dlp が見つかりません。プロジェクトのディレクトリで `uv sync` を実行して"
+                "依存関係をインストールしてください(自動インストールは行いません)。"
+            )
 
         youtube_handler = YouTubeClient(output_dir=str(output_dir))
         if on_status:

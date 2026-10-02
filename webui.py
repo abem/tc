@@ -42,6 +42,7 @@ from core.history import (
 from core.logging import get_logger, setup_logging
 from core.nemotron_engine import is_nemotron_model
 from core.transcription_interface import UnifiedTranscriber
+from core.utils import sanitize_upload_filename
 from core.webui_workflow import (
     QueueItem,
     QueueItemState,
@@ -198,7 +199,12 @@ def _resolve_input(
     if form_values["uploaded_file"] is not None:
         upload_dir = Path("output/uploads")
         upload_dir.mkdir(parents=True, exist_ok=True)
-        local_path = upload_dir / form_values["uploaded_file"].name
+        # Streamlitの`UploadedFile.name`はクライアントが送った文字列のまま(`../`等を含み得る)なので、
+        # 区切り文字を除いた単一のファイル名にしてから連結し、保存先が必ず`output/uploads/`直下になるようにする。
+        safe_name = sanitize_upload_filename(form_values["uploaded_file"].name)
+        local_path = upload_dir / safe_name
+        if local_path.resolve().parent != upload_dir.resolve():
+            raise ValueError(f"アップロード先が想定の場所の外になります: {form_values['uploaded_file'].name!r}")
         with open(local_path, "wb") as f:
             f.write(form_values["uploaded_file"].getbuffer())
         return InputResolution(

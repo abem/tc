@@ -124,3 +124,30 @@ def get_audio_duration(audio_path: str, fallback_sec: float = DEFAULT_AUDIO_DURA
         return float(librosa.get_duration(path=audio_path))
     except Exception:
         return fallback_sec
+
+
+MAX_UPLOAD_FILENAME_LENGTH = 200
+DEFAULT_UPLOAD_FILENAME = "upload"
+
+
+def sanitize_upload_filename(name: object, default: str = DEFAULT_UPLOAD_FILENAME) -> str:
+    """アップロードされたファイル名を、区切り文字を含まない単一のファイル名にする。
+
+    クライアントが送るファイル名(Streamlitの`UploadedFile.name`はそのまま通す)に`../`や
+    `/`・`\\`が含まれていても、保存先ディレクトリの外へ書き込めないようにする。ディレクトリ部分は
+    捨て、末尾の要素だけを使う。制御文字(NUL・改行を含む)は除く。空・`.`・`..`になる場合は
+    `default`を返す。長すぎる名前は拡張子を残して切り詰める。
+    """
+    if not isinstance(name, str):
+        return default
+    base = name.replace("\\", "/").rsplit("/", 1)[-1]
+    base = "".join(ch for ch in base if ord(ch) >= 32 and ord(ch) != 127).strip()
+    if base in ("", ".", ".."):
+        return default
+    if len(base) > MAX_UPLOAD_FILENAME_LENGTH:
+        stem, dot, ext = base.rpartition(".")
+        if dot and 0 < len(ext) <= 20:
+            base = stem[: MAX_UPLOAD_FILENAME_LENGTH - len(ext) - 1] + "." + ext
+        else:
+            base = base[:MAX_UPLOAD_FILENAME_LENGTH]
+    return base

@@ -2,7 +2,7 @@
 
 > この文書は現行の実装に合わせて更新しています（ファイル名の `2025` は初版の年です）。
 > セットアップ手順は `CONTRIBUTING.md` / `DEVELOPMENT.md`、設定の詳細は `docs/user-guides/` を参照してください。
-> 2025年7月時点の記録は `docs/system-docs/current_status_2025_july.md` にあります。
+> 2025年7月時点の記録は `docs/historical-records/current_status_2025_july.md` にあります。
 
 ## 📊 システム概要
 

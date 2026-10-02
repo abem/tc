@@ -4,18 +4,22 @@ Shared workflow helpers for CLI entry points.
 
 from __future__ import annotations
 
+import logging
+import os
 import sqlite3
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable, Dict, Optional
 
-from core.cli_common import detect_input_type, upload_text_to_gdrive_sibling
+from core.cli_common import build_output_file, detect_input_type, upload_text_to_gdrive_sibling
 
 if TYPE_CHECKING:
     from core.transcription_interface import TranscriptionResult
 
 StatusCallback = Callable[[str], None]
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -26,6 +30,70 @@ class InputResolution:
     is_temp_file: bool
     metadata: Optional[Dict[str, Any]]
     youtube_handler: Optional[Any]  # YouTubeClient
+
+    @property
+    def needs_cleanup(self) -> bool:
+        """処理終了時に `local_audio_path` を削除すべきか(D5)。
+
+        yt-dlp が作った音声(youtube/twitter)と Google Drive からダウンロードした音声は
+        一時ファイルなので削除対象。`GDriveClient.download()` は常に
+        `NamedTemporaryFile(delete=False)` へ保存するが、`resolve_input_audio` は
+        gdrive で `is_temp_file=False` を返すため、source_type でも判定する。
+        ローカルファイル入力は削除しない。
+        """
+        return self.is_temp_file or self.source_type == "gdrive"
+
+
+def cleanup_input_audio(resolution: "InputResolution") -> Optional[str]:
+    """`resolution.needs_cleanup` のとき一時音声ファイルを削除する(D5)。
+
+    成功・失敗・中断いずれの経路でも呼べる。削除に失敗しても例外は出さず、
+    警告メッセージを返す(呼び出し側が表示する。core に UI は持ち込まない)。
+    正常に削除した場合・対象外・既に無い場合は None。
+    """
+    if not resolution.needs_cleanup:
+        return None
+    path = resolution.local_audio_path
+    try:
+        if not os.path.exists(path):
+            return None
+        if resolution.youtube_handler:
+            resolution.youtube_handler.cleanup_temp_file(path)
+        else:
+            os.remove(path)
+            logger.info("一時ファイルを削除: %s", path)
+    except Exception as e:
+        message = f"一時ファイルの削除に失敗しました: {e}"
+        logger.warning(message)
+        return message
+    return None
+
+
+def format_mmss(seconds: float) -> str:
+    total = max(0, int(seconds))
+    return f"{total // 60:02d}:{total % 60:02d}"
+
+
+def format_transcript_text(result: "TranscriptionResult") -> str:
+    """保存用テキストを作る(D4)。
+
+    `result.metadata["timestamps_included"]` が真で `result.segments` があるときだけ、
+    各セグメント先頭に `[MM:SS] ` を付けて 1 行 1 セグメントにする。それ以外は
+    `result.text` をそのまま返す。
+    """
+    timestamps_included = bool((result.metadata or {}).get("timestamps_included", False))
+    if timestamps_included and result.segments:
+        return "\n".join(f"[{format_mmss(seg.start)}] {seg.text}" for seg in result.segments)
+    return result.text
+
+
+def save_transcription_text(result: "TranscriptionResult", output_dir: Path) -> Path:
+    """文字起こし結果をタイムスタンプ付きファイル名で保存し、パスを返す(D4)。"""
+    output_path = build_output_file(Path(output_dir))
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text(format_transcript_text(result), encoding="utf-8")
+    logger.info("結果を保存: %s", output_path)
+    return output_path
 
 
 def resolve_input_audio(
@@ -45,11 +113,14 @@ def resolve_input_audio(
 
     if source_type in ("youtube", "twitter"):
         status("YouTube URLを検出" if source_type == "youtube" else "X(Twitter)動画URLを検出")
-        from handlers.youtube import YouTubeClient, check_yt_dlp_installed, install_yt_dlp
+        from handlers.youtube import YouTubeClient, YtDlpNotFoundError, check_yt_dlp_installed
 
         if ensure_yt_dlp and not check_yt_dlp_installed():
-            status("yt-dlpがインストールされていないためインストールを試行します")
-            install_yt_dlp()
+            # D6: 自動インストールはしない(uv 管理の .venv を書き換えない)
+            raise YtDlpNotFoundError(
+                "yt-dlp が見つかりません。プロジェクトのディレクトリで `uv sync` を実行して"
+                "依存関係をインストールしてください(自動インストールは行いません)。"
+            )
 
         youtube_handler = YouTubeClient(output_dir=str(output_dir))
         if on_status:
@@ -128,6 +199,79 @@ def upload_transcription_result(
         return upload_text_to_gdrive_sibling(output_file, original_source, override_folder_id=folder_id)
 
     return None
+
+
+@dataclass
+class FinalizeOutcome:
+    """`finalize_transcription` の結果。UI 固有の通知は呼び出し側がこの内容から表示する。"""
+
+    output_file: Path
+    gdrive_url: Optional[str] = None
+    upload_attempted: bool = False
+    upload_error: Optional[Exception] = None
+    history_error: Optional[Exception] = None
+    cleanup_warning: Optional[str] = None
+
+
+def finalize_transcription(
+    *,
+    result: "TranscriptionResult",
+    resolution: InputResolution,
+    output_dir: Path,
+    settings: "Dict[str, Any] | Callable[[], Dict[str, Any]]",
+    upload: bool = True,
+    folder_id: Optional[str] = None,
+    raise_upload_errors: bool = False,
+    on_saved: Optional[Callable[[Path], None]] = None,
+    on_uploading: Optional[Callable[[], None]] = None,
+) -> FinalizeOutcome:
+    """保存 → アップロード → 履歴記録 → 一時ファイル削除を行う(tc / transcribe.py / webui 共通)。
+
+    - 保存形式は D4(`format_transcript_text`)、削除は D5(`cleanup_input_audio`)。
+      一時ファイルの削除は保存・アップロードが例外で失敗した場合も行う。
+    - アップロードは `upload` が真で source_type が youtube/gdrive のときだけ。
+      アップロード失敗は既定で `outcome.upload_error` に入れて続行する。
+      `raise_upload_errors=True` なら例外を伝播する(履歴記録は行わない。tc の従来挙動)。
+    - 履歴記録の失敗は常に `outcome.history_error` に入れて続行する(処理結果は失敗にしない)。
+    - `settings` は dict か、履歴記録の直前に評価する引数なしの関数(評価の失敗も history_error 扱い)。
+    - UI 固有の通知(print・st.warning)は持たない。進行の合図用に `on_saved` / `on_uploading` を任意で呼ぶ。
+    """
+    outcome = FinalizeOutcome(output_file=Path())
+    try:
+        outcome.output_file = save_transcription_text(result, output_dir)
+        if on_saved:
+            on_saved(outcome.output_file)
+
+        if upload and resolution.source_type in {"youtube", "gdrive"}:
+            outcome.upload_attempted = True
+            if on_uploading:
+                on_uploading()
+            try:
+                outcome.gdrive_url = upload_transcription_result(
+                    source_type=resolution.source_type,
+                    original_source=resolution.original_source,
+                    output_file=outcome.output_file,
+                    metadata=resolution.metadata,
+                    folder_id=folder_id,
+                )
+            except Exception as e:
+                if raise_upload_errors:
+                    raise
+                outcome.upload_error = e
+
+        try:
+            record_transcription_history(
+                result=result,
+                resolution=resolution,
+                output_file=outcome.output_file,
+                settings=settings() if callable(settings) else settings,
+                gdrive_url=outcome.gdrive_url,
+            )
+        except Exception as e:
+            outcome.history_error = e
+    finally:
+        outcome.cleanup_warning = cleanup_input_audio(resolution)
+    return outcome
 
 
 # 変換履歴DB(設計書: 作から計への設計書_変換履歴DB設計_20260806.md §3 DDL準拠)

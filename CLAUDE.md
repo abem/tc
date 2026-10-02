@@ -130,11 +130,19 @@
 - `core/`: 統一アーキテクチャ（新機能の基盤）
   - `core/logging.py`: 統一ロガー（`from core.logging import get_logger`）
   - `core/config.py`: TranscriptionConfig, SystemConfig, UnifiedConfig
-  - `core/transcription_interface.py`: UnifiedTranscriber（3エンジン構成: NemotronSubprocessEngine / Qwen3ASREngine / WhisperTranscriptionEngine をモデル名で自動切替）
+  - `core/transcription_interface.py`: UnifiedTranscriber（ファサード。既存の import 名を再 export）
+  - `core/engine_factory.py`: `create_engine`（モデル名で NemotronSubprocessEngine / Qwen3ASREngine / WhisperTranscriptionEngine を選ぶ。判定はここ 1 か所）
+  - `core/qwen3_engine.py` / `core/qwen3_chunking.py` / `core/qwen3_text.py`: Qwen3-ASR エンジン（長音声の分割処理、反復検出・整形）
+  - `core/whisper_engine.py` / `core/whisper_text.py`: Whisper エンジンと `[MM:SS]` 整形
+  - `core/transcription_types.py`: TranscriptionSegment / TranscriptionResult / TranscriptionEngine
   - `core/nemotron_engine.py`: Nemotron系モデル用サブプロセスエンジン
+  - `core/history.py`: 変換履歴 DB の検索・件数・削除
+  - `core/progress.py`: 進捗通知（ProgressMessage）
+  - `docs/spec/00-project-spec.md`: 利用者に見える挙動の正本（保存形式・一時ファイル削除・yt-dlp 不在時）
   - `core/utils.py`: URL検出・デバイス解決ユーティリティ
 - `handlers/`: 外部サービスハンドラー
   - `handlers/gdrive.py`: GDriveClient（Google Drive操作）
+  - `handlers/gdrive_auth.py`: Google Drive の OAuth 認証（`get_drive_service`）
   - `handlers/youtube.py`: YouTubeClient（YouTube音声抽出）
 - `transcribe.py`: Rich UI対話型CLI（プロファイル選択式）
 - `tc`: config/config.yaml連携の推奨CLI（argparseベース、オプション指定可）
@@ -297,7 +305,7 @@ print('✓ Core system check passed')
 "
 
 # 3. 重要システムの確認
-uv run python -c "from config import get_drive_service; print('✓ Drive service check passed')"
+uv run python -c "from handlers.gdrive_auth import get_drive_service; print('✓ Drive service check passed')"
 ```
 
 ---

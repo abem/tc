@@ -22,6 +22,7 @@ from unittest.mock import MagicMock
 import pytest
 
 import webui
+from core import cli_workflow
 from core.cli_workflow import InputResolution
 from core.transcription_interface import TranscriptionResult, TranscriptionSegment
 from core.webui_workflow import TranscriptionJob
@@ -333,7 +334,7 @@ class TestCleanupTempFile:
         def _boom(path):
             raise PermissionError("denied")
 
-        monkeypatch.setattr(webui.os, "remove", _boom)
+        monkeypatch.setattr(os, "remove", _boom)
 
         webui._cleanup_temp_file(_resolution("twitter", local_audio_path=audio, is_temp_file=True))
 
@@ -369,9 +370,10 @@ def workflow_mocks(monkeypatch):
     upload.side_effect = lambda **kw: calls.append("upload") or "https://drive.example/file/1"
     record.side_effect = lambda **kw: calls.append("record")
     cleanup.side_effect = lambda r: calls.append("cleanup")
-    monkeypatch.setattr(webui, "upload_transcription_result", upload)
-    monkeypatch.setattr(webui, "record_transcription_history", record)
-    monkeypatch.setattr(webui, "_cleanup_temp_file", cleanup)
+    # 流れは core.cli_workflow.finalize_transcription に集約済み(tc-ops #567 Task 5.2)。
+    monkeypatch.setattr(cli_workflow, "upload_transcription_result", upload)
+    monkeypatch.setattr(cli_workflow, "record_transcription_history", record)
+    monkeypatch.setattr(cli_workflow, "cleanup_input_audio", cleanup)
     return SimpleNamespace(upload=upload, record=record, cleanup=cleanup, calls=calls)
 
 
@@ -404,6 +406,15 @@ class TestSaveAndRecordFile:
             assert (in_tmp_cwd / output_file).read_text(encoding="utf-8") == "本文のみ"
             assert "セグメント別テキスト" not in (in_tmp_cwd / output_file).read_text(encoding="utf-8")
 
+    def test_timestamps_included_saves_mmss_prefixed_lines(self, in_tmp_cwd, workflow_mocks, warning_mock):
+        """D4: tc・transcribe.py と同じく、timestamps_included が真なら [MM:SS] 付き 1 行 1 セグメントで保存する。"""
+        result = _result("本文")
+        result.metadata = {"timestamps_included": True}
+
+        output_file, _ = webui._save_and_record(_job(result), _resolution("local"), _SETTINGS)
+
+        assert (in_tmp_cwd / output_file).read_text(encoding="utf-8") == "[00:00] セグメント別テキスト"
+
     def test_empty_text_creates_empty_file(self, in_tmp_cwd, workflow_mocks, warning_mock):
         output_file, _ = webui._save_and_record(_job(_result("")), _resolution("local"), _SETTINGS)
 
@@ -425,22 +436,21 @@ class TestSaveAndRecordFile:
         assert gdrive_url == "https://drive.example/file/1"
         assert workflow_mocks.upload.call_args.kwargs["output_file"] == Path(output_file)
 
-    def test_job_without_result_raises_attribute_error_and_leaves_empty_file(
+    def test_job_without_result_raises_attribute_error_and_leaves_no_file(
         self, in_tmp_cwd, workflow_mocks, warning_mock
     ):
-        """job.result が None のときの現状: `result.text` で AttributeError。ただし open("w") が先に
-        実行されるため、空の出力ファイルが残る(アップロード・履歴・一時削除は実行されない)。"""
+        """job.result が None のときの現状: AttributeError。保存前に失敗するため出力ファイルは残らない
+        (共通化前は open("w") が先に実行され空ファイルが残っていた)。アップロード・履歴は実行されず、
+        一時ファイル削除(D5: 失敗時も削除)だけは実行される。"""
         job = TranscriptionJob()  # result=None
 
         with pytest.raises(AttributeError):
             webui._save_and_record(job, _resolution("local"), _SETTINGS)
 
-        leftovers = list((in_tmp_cwd / "output").glob("*_transcription.txt"))
-        assert len(leftovers) == 1
-        assert leftovers[0].read_bytes() == b""
+        assert list((in_tmp_cwd / "output").glob("*_transcription.txt")) == []
         workflow_mocks.upload.assert_not_called()
         workflow_mocks.record.assert_not_called()
-        workflow_mocks.cleanup.assert_not_called()
+        workflow_mocks.cleanup.assert_called_once()
 
 
 class TestSaveAndRecordUploadAndHistory:
@@ -458,6 +468,7 @@ class TestSaveAndRecordUploadAndHistory:
             original_source="https://src.example/x",
             output_file=Path(output_file),
             metadata=metadata,
+            folder_id=None,
         )
         assert gdrive_url == "https://drive.example/file/1"
 
@@ -557,7 +568,7 @@ class TestSaveAndRecordFailures:
         assert messages[1].startswith("変換履歴の記録に失敗しました")
         workflow_mocks.cleanup.assert_called_once()
 
-    def test_unwritable_output_dir_propagates_and_skips_upload_record_cleanup(
+    def test_unwritable_output_dir_propagates_and_skips_upload_and_record(
         self, tmp_path, monkeypatch, workflow_mocks, warning_mock
     ):
         """ファイル保存自体の失敗は握りつぶされず例外が伝播する(アップロード・履歴・削除は実行されない)。"""
@@ -569,7 +580,8 @@ class TestSaveAndRecordFailures:
 
         workflow_mocks.upload.assert_not_called()
         workflow_mocks.record.assert_not_called()
-        workflow_mocks.cleanup.assert_not_called()
+        # D5: 保存に失敗しても一時ファイルの削除は行う
+        workflow_mocks.cleanup.assert_called_once()
 
 
 class TestSaveAndRecordWithRealCleanup:
@@ -577,8 +589,8 @@ class TestSaveAndRecordWithRealCleanup:
     ローカルファイルは残る。"""
 
     def test_temp_download_removed_and_local_upload_kept(self, in_tmp_cwd, monkeypatch, warning_mock):
-        monkeypatch.setattr(webui, "upload_transcription_result", MagicMock(return_value=None))
-        monkeypatch.setattr(webui, "record_transcription_history", MagicMock())
+        monkeypatch.setattr(cli_workflow, "upload_transcription_result", MagicMock(return_value=None))
+        monkeypatch.setattr(cli_workflow, "record_transcription_history", MagicMock())
         temp_audio = in_tmp_cwd / "dl.wav"
         temp_audio.write_bytes(b"x")
         local_audio = in_tmp_cwd / "keep.wav"

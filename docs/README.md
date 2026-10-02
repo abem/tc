@@ -22,6 +22,7 @@
 ## 🔧 System / Feature Documentation
 - **[📊 System Overview](system-docs/system_overview_2025.md)** - システム構成
 - **[🖥️ WebUI Architecture](system-docs/webui_architecture.md)** - WebUI の構成と運用
+- **[📐 Project Spec](spec/00-project-spec.md)** - 利用者に見える挙動の正本（保存形式・一時ファイル削除・yt-dlp 不在時）
 - **[⏱️ Timestamp Feature](feature/timestamp_feature.md)** - タイムスタンプ機能
 
 ## 📜 Historical Records

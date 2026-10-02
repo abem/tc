@@ -55,7 +55,7 @@ gdrive:
   `--folder-id` 引数 > `upload_folder_id` > 元ファイルと同じフォルダ。YouTube 入力のアップロード先は
   この設定の対象外です（`handlers/gdrive.py` の `upload_youtube_transcription` が決めるフォルダに保存されます）。
 - **認証ファイル**: `credentials.json` と `token.pickle` は、実行したディレクトリ直下の固定名のファイルを使います
-  （`config.py` の `get_drive_service`）。`config.yaml` でファイル名は変えられません。
+  （`handlers/gdrive_auth.py` の `get_drive_service`）。`config.yaml` でファイル名は変えられません。
   `token.pickle` が無い・無効な場合は、初回に認証URLが表示され、ブラウザで認証後に
   リダイレクト先の完全なURLを貼り付ける対話式の認証になります。
 
@@ -78,7 +78,7 @@ whisper:
   | `qwen3-asr` / `qwen3_asr` | Qwen3ASREngine（既定） |
   | 上記以外 | WhisperTranscriptionEngine |
 
-  判定は `core/transcription_interface.py` の `UnifiedTranscriber.__init__` で行います。
+  判定は `core/engine_factory.py` の `create_engine`（`UnifiedTranscriber.__init__` から呼ばれる）で行います。
   Nemotron の準備は `./scripts/setup_nemotron_venv.sh`（詳細は [多言語対応ガイド](language_support_guide.md)）。
 - **`language`**: エンジンごとの扱いは [多言語対応ガイド](language_support_guide.md) を参照。
 - **`device`**: `auto` は CUDA が使えれば `cuda`、使えなければ `cpu` になります。

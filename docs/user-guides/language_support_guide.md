@@ -44,16 +44,15 @@ Nemotron では `whisper.context_file`（認識ヒント）と `whisper.include_
 
 ### 1. エンジン自動選択（モデル名ベース）
 
-`core/transcription_interface.py` の `UnifiedTranscriber.__init__` が `whisper.model` の値だけを見て判定する:
+`core/engine_factory.py` の `create_engine`（`UnifiedTranscriber.__init__` から呼ばれる）が `whisper.model` の値だけを見て判定する:
 
 ```python
-# core/transcription_interface.py (UnifiedTranscriber.__init__)
-if is_nemotron_model(transcription_config.model):
-    self.transcription_engine = NemotronSubprocessEngine(transcription_config)
-elif Qwen3ASREngine.is_qwen3_model(transcription_config.model):
-    self.transcription_engine = Qwen3ASREngine(transcription_config)
-else:
-    self.transcription_engine = WhisperTranscriptionEngine(transcription_config)
+# core/engine_factory.py (create_engine)
+if is_nemotron_model(config.model):
+    return NemotronSubprocessEngine(config)
+if Qwen3ASREngine.is_qwen3_model(config.model):
+    return Qwen3ASREngine(config)
+return WhisperTranscriptionEngine(config)
 ```
 
 - `is_nemotron_model()` は、モデル名（小文字化）に `nemotron` を含むかどうかで判定する。
@@ -67,7 +66,7 @@ else:
 ### 2. 言語の扱い(エンジンごとに異なる)
 
 - **Qwen3ASREngine**: `ja` → `Japanese`、`en` → `English` に変換して Qwen3-ASR の `language` 引数として渡す
-  （`core/transcription_interface.py` の `lang_map = {"ja": "Japanese", "en": "English"}`）。
+  （`core/qwen3_engine.py` の `lang_map = {"ja": "Japanese", "en": "English"}`）。
   それ以外の値と `null` は指定なし（自動判定）になる。モデル自体は切り替わらない。
 - **WhisperTranscriptionEngine**: `whisper.language` の値をそのまま Whisper の `language` へ渡す。
 - **NemotronSubprocessEngine**: `ja` → `ja-JP`、`en` → `en-US` に変換して渡す。

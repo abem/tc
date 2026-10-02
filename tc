@@ -2,7 +2,6 @@
 """Transcribe CLI - config/config.yaml対応の音声文字起こしツール。"""
 
 import argparse
-import os
 import sys
 from pathlib import Path
 from typing import Any, Dict, Optional
@@ -22,10 +21,16 @@ sys.path.insert(0, str(PROJECT_ROOT))
 # 警告抑制を統一設定(suppress_warnings.py は import 時に自動で全抑制を実行)
 import suppress_warnings  # noqa: F401
 
-from core.cli_common import build_output_file, resolve_device, update_whisper_config
-from core.cli_workflow import record_transcription_history, resolve_input_audio, upload_transcription_result
+from core.cli_common import resolve_device, update_whisper_config
+from core.cli_workflow import (
+    cleanup_input_audio,
+    finalize_transcription,
+    format_mmss,
+    resolve_input_audio,
+    save_transcription_text,
+)
 from core.config import TranscriptionConfig
-from core.logging import get_logger
+from core.logging import get_logger, setup_logging
 from core.progress import throttled
 from core.transcription_interface import TranscriptionResult, UnifiedTranscriber
 from core.utils import load_context_hints
@@ -82,32 +87,18 @@ def transcribe_audio(audio_path: str, config: Dict[str, Any]) -> TranscriptionRe
     return result
 
 
-def _format_mmss(seconds: float) -> str:
-    total = max(0, int(seconds))
-    return f"{total // 60:02d}:{total % 60:02d}"
+_format_mmss = format_mmss
 
 
 def save_result(result: TranscriptionResult, output_dir: str = "output") -> str:
-    """文字起こし結果をテキストファイルに保存する。
+    """文字起こし結果をテキストファイルに保存する(形式は core.cli_workflow.format_transcript_text、D4)。"""
+    return str(save_transcription_text(result, Path(output_dir)))
 
-    result.metadata["timestamps_included"]がTrueの場合(config.include_timestamps=True
-    かつForcedAlignerによる整合に成功した場合)、segments各要素の先頭に[MM:SS]を
-    付与する。それ以外(タイムスタンプ未使用/失敗時のフォールバック)は従来どおり
-    result.textをそのまま書き出し、既存の出力形式を維持する。
-    """
-    output_path = build_output_file(Path(output_dir))
-    output_path.parent.mkdir(parents=True, exist_ok=True)
 
-    timestamps_included = bool((result.metadata or {}).get("timestamps_included", False))
-    if timestamps_included and result.segments:
-        lines = [f"[{_format_mmss(seg.start)}] {seg.text}" for seg in result.segments]
-        content = "\n".join(lines)
-    else:
-        content = result.text
-
-    output_path.write_text(content, encoding="utf-8")
-    logger.info(f"結果を保存: {output_path}")
-    return str(output_path)
+def _cleanup(resolution) -> None:
+    warning = cleanup_input_audio(resolution)
+    if warning:
+        print(f"⚠️  {warning}")
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -131,6 +122,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main():
+    setup_logging()
     args = build_parser().parse_args()
 
     config = load_config()
@@ -150,76 +142,53 @@ def main():
         sys.exit(1)
 
     audio_path = resolution.local_audio_path
-    # GDriveClient.download()はStorageBackendインターフェース経由で常に
-    # NamedTemporaryFile(delete=False)へ保存する。resolve_input_audioの
-    # is_temp_fileはgdriveでは常にFalseだが、実体は一時ファイルであるため
-    # source_type=="gdrive"も削除対象に含める（tcの従来挙動を維持）。
-    needs_cleanup = resolution.is_temp_file or resolution.source_type == "gdrive"
 
     if args.dry_run:
         print(f"ドライラン: 起動確認OK (input={audio_path})")
-        if needs_cleanup and os.path.exists(audio_path):
-            if resolution.youtube_handler:
-                resolution.youtube_handler.cleanup_temp_file(audio_path)
-            else:
-                os.remove(audio_path)
-                logger.info(f"一時ファイルを削除: {audio_path}")
+        _cleanup(resolution)
         return
 
     try:
         result = transcribe_audio(audio_path, config)
-        transcribed_text = result.text
-        upload_url: Optional[str] = None
-        output_path = save_result(result, args.output_dir)
-        print(f"文字起こし完了: {output_path}")
+    except BaseException:
+        # 文字起こしの失敗・中断でも一時音声を削除する(D5)。成功後の削除は finalize_transcription が行う。
+        _cleanup(resolution)
+        raise
 
-        if resolution.source_type in {"youtube", "gdrive"} and not args.no_upload:
-            # フォルダID決定: 引数 > config.yaml > 元ファイルと同じフォルダ
-            folder_id = args.folder_id or config.get("gdrive", {}).get("upload_folder_id")
-            upload_url = upload_transcription_result(
-                source_type=resolution.source_type,
-                original_source=resolution.original_source,
-                output_file=Path(output_path),
-                metadata=resolution.metadata,
-                folder_id=folder_id,
-            )
-            if upload_url:
-                print(f"アップロード完了: {upload_url}")
-            else:
-                print("アップロードに失敗しました")
+    transcribed_text = result.text
+    whisper_config = config.get("whisper", {})
 
-        # 変換履歴の記録(失敗しても文字起こし処理そのものは失敗として扱わない)
-        try:
-            whisper_config = config.get("whisper", {})
-            history_settings = {
-                "device": resolve_device(whisper_config.get("device", "cuda")),
-                "context": load_context_hints(whisper_config.get("context_file", "config/context_hints.txt")),
-                "diarization": False,
-                "include_timestamps": whisper_config.get("include_timestamps", False),
-            }
-            record_transcription_history(
-                result=result,
-                resolution=resolution,
-                output_file=Path(output_path),
-                settings=history_settings,
-                gdrive_url=upload_url,
-            )
-        except Exception as e:
-            print(f"変換履歴の記録に失敗しました: {e}")
+    def history_settings() -> Dict[str, Any]:
+        return {
+            "device": resolve_device(whisper_config.get("device", "cuda")),
+            "context": load_context_hints(whisper_config.get("context_file", "config/context_hints.txt")),
+            "diarization": False,
+            "include_timestamps": whisper_config.get("include_timestamps", False),
+        }
 
-        preview = transcribed_text[:500]
-        print("\n文字起こし結果（最初の500文字）:")
-        print(preview)
-        if len(transcribed_text) > 500:
-            print(f"... (全{len(transcribed_text)}文字)")
+    outcome = finalize_transcription(
+        result=result,
+        resolution=resolution,
+        output_dir=Path(args.output_dir),
+        settings=history_settings,
+        upload=not args.no_upload,
+        # フォルダID決定: 引数 > config.yaml > 元ファイルと同じフォルダ
+        folder_id=args.folder_id or config.get("gdrive", {}).get("upload_folder_id"),
+        raise_upload_errors=True,
+        on_saved=lambda path: print(f"文字起こし完了: {path}"),
+    )
+    if outcome.upload_attempted:
+        print(f"アップロード完了: {outcome.gdrive_url}" if outcome.gdrive_url else "アップロードに失敗しました")
+    if outcome.history_error is not None:
+        print(f"変換履歴の記録に失敗しました: {outcome.history_error}")
+    if outcome.cleanup_warning:
+        print(f"⚠️  {outcome.cleanup_warning}")
 
-    finally:
-        if needs_cleanup and os.path.exists(audio_path):
-            if resolution.youtube_handler:
-                resolution.youtube_handler.cleanup_temp_file(audio_path)
-            else:
-                os.remove(audio_path)
-                logger.info(f"一時ファイルを削除: {audio_path}")
+    preview = transcribed_text[:500]
+    print("\n文字起こし結果（最初の500文字）:")
+    print(preview)
+    if len(transcribed_text) > 500:
+        print(f"... (全{len(transcribed_text)}文字)")
 
 
 if __name__ == "__main__":

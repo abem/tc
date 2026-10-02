@@ -7,7 +7,9 @@ import json
 import os
 import re
 import selectors
+import shutil
 import subprocess
+import sys
 import tempfile
 from pathlib import Path
 from typing import Callable, Dict, Optional, Tuple
@@ -38,25 +40,8 @@ class YouTubeClient:
         self.yt_dlp_path = self._find_yt_dlp()
 
     def _find_yt_dlp(self) -> str:
-        """Find yt-dlp executable path."""
-        # Check .venv first (uv が管理する仮想環境)
-        venv_path = Path(".venv/bin/yt-dlp")
-        if venv_path.exists():
-            return str(venv_path)
-
-        # Check system
-        try:
-            result = subprocess.run(
-                ["which", "yt-dlp"],
-                capture_output=True,
-                text=True
-            )
-            if result.returncode == 0:
-                return result.stdout.strip()
-        except Exception:
-            pass
-
-        return "yt-dlp"
+        """Find yt-dlp executable path (見つからなければコマンド名のまま返す)。"""
+        return find_yt_dlp() or "yt-dlp"
 
     def is_youtube_url(self, url: str) -> bool:
         """Check if URL is a YouTube URL."""
@@ -235,21 +220,34 @@ class YouTubeClient:
             logger.warning(f"Failed to remove temporary file: {e}")
 
 
+class YtDlpNotFoundError(ValueError):
+    """yt-dlp が見つからない。自動インストールはせず、対処(uv sync)を案内して止める(D6)。
+
+    tc は ValueError を「入力を解決できない」として exit 1 で処理するため ValueError を継承する。
+    """
+
+
+def find_yt_dlp() -> Optional[str]:
+    """yt-dlp 実行ファイルの検出(唯一の方法)。見つからなければ None。
+
+    優先順: PATH(`shutil.which`)→ 現在の Python と同じ `bin/`(uv の `.venv` を
+    `uv run` を介さず直接呼んだ場合)→ カレントの `.venv/bin/yt-dlp`。
+    `YouTubeClient.yt_dlp_path` と `check_yt_dlp_installed()` はどちらもこれを使う。
+    """
+    found = shutil.which("yt-dlp")
+    if found:
+        return found
+
+    candidates = [
+        Path(sys.executable).parent / "yt-dlp",
+        Path(".venv/bin/yt-dlp"),
+    ]
+    for candidate in candidates:
+        if candidate.is_file() and os.access(candidate, os.X_OK):
+            return str(candidate)
+    return None
+
+
 def check_yt_dlp_installed() -> bool:
-    """Check if yt-dlp is installed."""
-    try:
-        subprocess.run(["yt-dlp", "--version"], capture_output=True, check=True)
-        return True
-    except (subprocess.CalledProcessError, FileNotFoundError):
-        return False
-
-
-def install_yt_dlp():
-    """Install yt-dlp."""
-    try:
-        logger.info("Installing yt-dlp...")
-        subprocess.run(["pip", "install", "yt-dlp"], check=True)
-        logger.info("yt-dlp installed successfully")
-    except subprocess.CalledProcessError as e:
-        logger.error(f"yt-dlp installation failed: {e}")
-        raise
+    """Check if yt-dlp is installed (`find_yt_dlp` と同じ検出)。"""
+    return find_yt_dlp() is not None

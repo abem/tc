@@ -13,7 +13,8 @@ from .config import (
 from .logging import (
     UnifiedLogger,
     PerformanceLogger,
-    get_logger
+    get_logger,
+    setup_logging
 )
 
 from .utils import (
@@ -60,6 +61,7 @@ __all__ = [
     "UnifiedLogger",
     "PerformanceLogger",
     "get_logger",
+    "setup_logging",
 
     # Utils
     "is_youtube_url",
@@ -78,32 +80,6 @@ __all__ = [
     "TranscriptionSegment"
 ]
 
-# Initialize logging system
-#
-# pytest実行時は本番ログファイル(logs/transcription.log)へ書き込まない
-# (tc-ops #548是正、2026-09-27)。core.__init__は`import core`されるだけで
-# 無条件にこのUnifiedLogger.configure()を実行する副作用を持つため、テスト実行時にも
-# 本番ログへテスト由来の行が混入していた。"pytest" in sys.modules はpytest実行時に
-# 必ずTrueになる(pytest自身がインポートされて実行されているため)標準的な判定方法。
-# テスト時のログ出力先は既存パターン(core/logging.py L188、__main__ブロックの
-# logs/transcription_test.log)に倣う。
-import sys as _sys
-
-_TRANSCRIPTION_LOG_FILE = (
-    "logs/transcription_test.log" if "pytest" in _sys.modules else "logs/transcription.log"
-)
-
-UnifiedLogger.configure(
-    log_level="INFO",
-    log_file=_TRANSCRIPTION_LOG_FILE,
-    enable_console=True,
-    enable_file=True
-)
-
-# Get logger for this module
+# ログ初期化は import 時には行わない(副作用なし)。
+# エントリポイント(tc / transcribe.py / webui.py)が core.logging.setup_logging() を明示的に呼ぶ。
 logger = UnifiedLogger.get_logger(__name__)
-logger.info(f"Core unified modules initialized (v{__version__})")
-if not _model_manager_available:
-    logger.info("Model manager modules not available (missing optional dependencies).")
-if not _transcription_available:
-    logger.info("Transcription modules not available (missing optional dependencies).")

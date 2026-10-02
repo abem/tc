@@ -26,20 +26,38 @@ core/__init__.py のpytest実行時ログ分離ガードの回帰テスト(tc-op
 そのため本ファイルは、外部要因に左右されない決定的な検証方法として、
 `UnifiedLogger`の実際の設定状態(`_log_file`クラス属性)を直接検証する。
 """
-from core.logging import UnifiedLogger
+import logging
+
+import core.logging as core_logging
+from core.logging import UnifiedLogger, setup_logging
+
+# 注記(Task 5.6): ログ初期化は `import core` の副作用から、エントリポイントが呼ぶ
+# core.logging.setup_logging() に移った。ガードの性質(pytest実行下では本番ログを
+# 汚さず logs/transcription_test.log へ出す)は setup_logging() 側で維持しており、
+# 本テストは setup_logging() を呼んだ結果の設定先を検証する。
+# ルートロガー・クラス状態は終了時に復元し、cwdはtmp_pathに隔離する。
 
 
 class TestPytestLogGuard:
-    def test_unified_logger_uses_test_log_file_under_pytest(self):
-        """`core`パッケージのimport副作用により、pytest実行下では
-        UnifiedLoggerの設定先が本番ログ(logs/transcription.log)ではなく
-        logs/transcription_test.logになっていることを確認する。
-
-        このテスト自体がpytest配下で実行される時点で`sys.modules`に"pytest"が
-        含まれるため、`core/__init__.py`のガードが機能していれば必ずこの状態になる。
-        """
-        assert UnifiedLogger._log_file == "logs/transcription_test.log"
-        assert UnifiedLogger._log_file != "logs/transcription.log"
+    def test_unified_logger_uses_test_log_file_under_pytest(self, tmp_path, monkeypatch):
+        """pytest実行下で setup_logging() を呼ぶと、UnifiedLoggerの設定先が
+        本番ログ(logs/transcription.log)ではなく logs/transcription_test.log になる。"""
+        root = logging.getLogger()
+        saved_handlers, saved_level = list(root.handlers), root.level
+        saved_state = (UnifiedLogger._log_file, UnifiedLogger._configured, UnifiedLogger._log_level)
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setattr(core_logging, "_setup_done", False)
+        try:
+            setup_logging()
+            assert UnifiedLogger._log_file == "logs/transcription_test.log"
+            assert UnifiedLogger._log_file != "logs/transcription.log"
+        finally:
+            for h in list(root.handlers):
+                if h not in saved_handlers:
+                    h.close()
+            root.handlers[:] = saved_handlers
+            root.setLevel(saved_level)
+            UnifiedLogger._log_file, UnifiedLogger._configured, UnifiedLogger._log_level = saved_state
 
     def test_pytest_is_actually_in_sys_modules(self):
         """テスト自身の前提(pytest配下で実行されていること)を確認する

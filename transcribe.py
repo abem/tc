@@ -17,12 +17,16 @@ from rich.prompt import Prompt
 
 # プロジェクトモジュール
 from core.cli_common import (
-    build_output_file,
     detect_input_type,
     resolve_device,
 )
-from core.cli_workflow import record_transcription_history, resolve_input_audio, upload_transcription_result
+from core.cli_workflow import (
+    cleanup_input_audio,
+    finalize_transcription,
+    resolve_input_audio,
+)
 from core.config import UnifiedConfig, TranscriptionConfig
+from core.logging import setup_logging
 from core.progress import throttled
 from core.transcription_interface import UnifiedTranscriber
 from core.utils import load_context_hints
@@ -126,14 +130,13 @@ class TranscribeLoader:
     
     def process_with_progress(self, input_info: Dict[str, Any], settings: Dict[str, Any], folder_id=None):
         """シンプルな処理"""
+        resolution = resolve_input_audio(
+            input_info["source"],
+            Path("output"),
+            ensure_yt_dlp=True,
+            on_status=throttled(console.print),
+        )
         try:
-            resolution = resolve_input_audio(
-                input_info["source"],
-                Path("output"),
-                ensure_yt_dlp=True,
-                on_status=throttled(console.print),
-            )
-
             if resolution.source_type == "youtube" and resolution.metadata:
                 console.print(f"ダウンロード完了: {resolution.metadata.get('title', 'unknown')}")
             elif resolution.source_type == "gdrive":
@@ -157,75 +160,59 @@ class TranscribeLoader:
             transcriber = UnifiedTranscriber(transcription_config)
 
             result = transcriber.transcribe(resolution.local_audio_path)
-
-            # チャンク失敗があれば警告表示(長音声分割時に一部欠落の可能性)
-            failed = (result.metadata or {}).get("failed_chunks", 0)
-            if failed:
-                console.print(f"⚠️  警告: {failed}個のチャンクが失敗し、該当区間に[チャンクN失敗]プレースホルダが挿入されました")
-
-            # 反復ループ検出があれば警告表示(該当区間は再試行後も反復のため破棄)
-            repeated = (result.metadata or {}).get("repeated_chunks", 0)
-            if repeated:
-                console.print(f"⚠️  警告: {repeated}個のチャンクで反復ループを検出しました(再試行後に解消しなかった区間は[チャンクN反復検出のため破棄]プレースホルダが挿入されています)")
-
-            # 結果保存
-            self.save_results(result, resolution, settings, folder_id=folder_id)
-            
-            # クリーンアップ
-            if resolution.is_temp_file and resolution.youtube_handler:
-                resolution.youtube_handler.cleanup_temp_file(resolution.local_audio_path)
-            
-        except Exception as e:
-            console.print(f"エラー: {str(e)}")
+        except BaseException as e:
+            # 文字起こしの失敗・中断でも一時音声を削除する(D5)。成功後の削除は save_results() 内の
+            # finalize_transcription が行う。
+            if isinstance(e, Exception):
+                console.print(f"エラー: {str(e)}")
+            warning = cleanup_input_audio(resolution)
+            if warning:
+                console.print(f"警告: {warning}")
             raise
-    
+
+        # チャンク失敗があれば警告表示(長音声分割時に一部欠落の可能性)
+        failed = (result.metadata or {}).get("failed_chunks", 0)
+        if failed:
+            console.print(f"⚠️  警告: {failed}個のチャンクが失敗し、該当区間に[チャンクN失敗]プレースホルダが挿入されました")
+
+        # 反復ループ検出があれば警告表示(該当区間は再試行後も反復のため破棄)
+        repeated = (result.metadata or {}).get("repeated_chunks", 0)
+        if repeated:
+            console.print(f"⚠️  警告: {repeated}個のチャンクで反復ループを検出しました(再試行後に解消しなかった区間は[チャンクN反復検出のため破棄]プレースホルダが挿入されています)")
+
+        # 結果保存・アップロード・履歴記録・一時ファイル削除
+        self.save_results(result, resolution, settings, folder_id=folder_id)
+
     def save_results(self, result, resolution, settings, folder_id=None):
-        """結果保存"""
-        output_file = build_output_file(Path("output"))
+        """結果保存(保存・アップロード・履歴記録・一時ファイル削除は finalize_transcription、D4/D5)。"""
 
-        output_file.parent.mkdir(parents=True, exist_ok=True)
+        def on_saved(output_file):
+            console.print("文字起こし完了")
+            console.print(f"ローカル保存先: {output_file}")
 
-        with open(output_file, 'w', encoding='utf-8') as f:
-            f.write(result.text)
+        outcome = finalize_transcription(
+            result=result,
+            resolution=resolution,
+            output_dir=Path("output"),
+            settings=settings,
+            folder_id=folder_id,
+            on_saved=on_saved,
+            on_uploading=lambda: console.print("Google Driveにアップロード中..."),
+        )
 
-        # 結果表示
-        console.print("文字起こし完了")
-        console.print(f"ローカル保存先: {output_file}")
+        if outcome.upload_error is not None:
+            console.print(f"Google Driveアップロードエラー: {outcome.upload_error}")
+        elif outcome.upload_attempted:
+            if outcome.gdrive_url:
+                console.print("Google Drive URL:")
+                console.print(f"{outcome.gdrive_url}")
+            else:
+                console.print("Google Driveアップロードに失敗")
+        if outcome.history_error is not None:
+            console.print(f"変換履歴の記録に失敗しました: {outcome.history_error}")
+        if outcome.cleanup_warning:
+            console.print(f"警告: {outcome.cleanup_warning}")
 
-        full_url: Optional[str] = None
-
-        # Google Driveアップロード
-        try:
-            if resolution.source_type in {"youtube", "gdrive"}:
-                console.print("Google Driveにアップロード中...")
-                full_url = upload_transcription_result(
-                    source_type=resolution.source_type,
-                    original_source=resolution.original_source,
-                    output_file=output_file,
-                    metadata=resolution.metadata,
-                    folder_id=folder_id,
-                )
-                if full_url:
-                    console.print("Google Drive URL:")
-                    console.print(f"{full_url}")
-                else:
-                    console.print("Google Driveアップロードに失敗")
-
-        except Exception as e:
-            console.print(f"Google Driveアップロードエラー: {e}")
-
-        # 変換履歴の記録(失敗しても文字起こし処理そのものは失敗として扱わない)
-        try:
-            record_transcription_history(
-                result=result,
-                resolution=resolution,
-                output_file=output_file,
-                settings=settings,
-                gdrive_url=full_url,
-            )
-        except Exception as e:
-            console.print(f"変換履歴の記録に失敗しました: {e}")
-    
     def run(self):
         """メイン実行"""
         self.show_banner()
@@ -310,6 +297,7 @@ class TranscribeLoader:
 
 def main():
     """エントリーポイント"""
+    setup_logging()
     loader = TranscribeLoader()
     sys.exit(loader.run())
 

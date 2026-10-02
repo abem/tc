@@ -12,8 +12,6 @@ Phase2最小構成(URL入力→文字起こし→履歴表示)。設計書:
 
 from __future__ import annotations
 
-import os
-import sqlite3
 import threading
 import time
 import uuid
@@ -26,16 +24,22 @@ import streamlit as st
 # 警告抑制を統一設定(suppress_warnings.py は import 時に自動で全抑制を実行)
 import suppress_warnings  # noqa: F401
 
-from core.cli_common import build_output_file, detect_input_type, resolve_device
+from core.cli_common import detect_input_type, resolve_device
 from core.cli_workflow import (
     DEFAULT_HISTORY_DB_PATH,
     InputResolution,
-    record_transcription_history,
+    cleanup_input_audio,
+    finalize_transcription,
     resolve_input_audio,
-    upload_transcription_result,
 )
 from core.config import SystemConfig, TranscriptionConfig, UnifiedConfig
-from core.logging import get_logger
+from core.history import (
+    connect_history,
+    count_history_before,
+    delete_history_before,
+    search_history,
+)
+from core.logging import get_logger, setup_logging
 from core.nemotron_engine import is_nemotron_model
 from core.transcription_interface import UnifiedTranscriber
 from core.webui_workflow import (
@@ -310,19 +314,11 @@ def _dispatch_next_job(job_queue: TranscriptionJobQueue) -> None:
 
 
 def _cleanup_temp_file(resolution: InputResolution) -> None:
-    """ダウンロードした一時音声ファイルを削除する(成功・失敗いずれの経路でも呼び出す)。
-    ローカルアップロードファイルは削除しない(tc/transcribe.pyの既存挙動と整合)。"""
-    needs_cleanup = resolution.is_temp_file or resolution.source_type == "gdrive"
-    if not needs_cleanup:
-        return
-    try:
-        if os.path.exists(resolution.local_audio_path):
-            if resolution.youtube_handler:
-                resolution.youtube_handler.cleanup_temp_file(resolution.local_audio_path)
-            else:
-                os.remove(resolution.local_audio_path)
-    except Exception as e:
-        st.warning(f"一時ファイルの削除に失敗しました: {e}")
+    """ダウンロードした一時音声ファイルを削除する(文字起こし失敗時の経路用。D5)。
+    削除対象の判定・削除は `core.cli_workflow.cleanup_input_audio`、ここでは警告表示だけを行う。"""
+    warning = cleanup_input_audio(resolution)
+    if warning:
+        st.warning(warning)
 
 
 def _save_and_record(
@@ -330,42 +326,27 @@ def _save_and_record(
 ) -> tuple[str, Optional[str]]:
     """完了したジョブの結果を保存し、変換履歴を記録する(設計書§5-2の統合パターンをWebUI側でも踏襲)。
 
+    保存・アップロード・履歴記録・一時ファイル削除は `core.cli_workflow.finalize_transcription`
+    (tc / transcribe.py と共通)で行い、ここでは結果を `st.warning` で表示するだけにする。
+
     戻り値は `(output_file, gdrive_url)`。呼び出し元(キュー項目単位)が結果の保持先を持つため、
     ここでは `st.session_state` の共有キーへは書き込まない(tc-ops #440: 複数ジョブが並行して
     キューに存在するため、単一の共有キーに書くと後続ジョブに上書きされる)。
     """
-    result = job.result
-    output_file = build_output_file(Path("output"))
-    output_file.parent.mkdir(parents=True, exist_ok=True)
-    with open(output_file, "w", encoding="utf-8") as f:
-        f.write(result.text)
+    outcome = finalize_transcription(
+        result=job.result,
+        resolution=resolution,
+        output_dir=Path("output"),
+        settings=settings_values,
+    )
+    if outcome.upload_error is not None:
+        st.warning(f"Google Driveアップロードに失敗しました: {outcome.upload_error}")
+    if outcome.history_error is not None:
+        st.warning(f"変換履歴の記録に失敗しました: {outcome.history_error}")
+    if outcome.cleanup_warning:
+        st.warning(outcome.cleanup_warning)
 
-    gdrive_url: Optional[str] = None
-    try:
-        if resolution.source_type in {"youtube", "gdrive"}:
-            gdrive_url = upload_transcription_result(
-                source_type=resolution.source_type,
-                original_source=resolution.original_source,
-                output_file=output_file,
-                metadata=resolution.metadata,
-            )
-    except Exception as e:
-        st.warning(f"Google Driveアップロードに失敗しました: {e}")
-
-    try:
-        record_transcription_history(
-            result=result,
-            resolution=resolution,
-            output_file=output_file,
-            settings=settings_values,
-            gdrive_url=gdrive_url,
-        )
-    except Exception as e:
-        st.warning(f"変換履歴の記録に失敗しました: {e}")
-
-    _cleanup_temp_file(resolution)
-
-    return str(output_file), gdrive_url
+    return str(outcome.output_file), outcome.gdrive_url
 
 
 def _format_time(epoch: Optional[float]) -> str:
@@ -501,26 +482,10 @@ def _render_queue_and_result() -> None:
                     st.error(f"文字起こしに失敗しました: {item.error_message}")
 
 
-def _count_history_before(conn: sqlite3.Connection, cutoff_date: date) -> int:
-    """`processed_at`が`cutoff_date`より前(境界日当日は含まない)の変換履歴件数を返す
-    (WebUI履歴削除機能)。既存の日付絞り込み(`date(processed_at) >= date(?)`等)と同じ
-    パターン(SQLiteの`date()`関数で日付部分のみ比較、値自体はPython側で計算)を踏襲する。"""
-    row = conn.execute(
-        "SELECT COUNT(*) FROM transcription_history WHERE date(processed_at) < date(?)",
-        (cutoff_date.isoformat(),),
-    ).fetchone()
-    return row[0] if row else 0
-
-
-def _delete_history_before(conn: sqlite3.Connection, cutoff_date: date) -> int:
-    """`processed_at`が`cutoff_date`より前の変換履歴を削除し、実際の削除件数を返す。
-    `output/`配下のファイル実体・Google Drive上のファイルは削除しない(要件どおり、DB行のみ)。"""
-    cursor = conn.execute(
-        "DELETE FROM transcription_history WHERE date(processed_at) < date(?)",
-        (cutoff_date.isoformat(),),
-    )
-    conn.commit()
-    return cursor.rowcount
+# 履歴DB操作は core.history へ移設済み。既存テスト(tests/test_webui_history_cleanup.py)が
+# webui._count_history_before / _delete_history_before を参照するため同名エイリアスを残す。
+_count_history_before = count_history_before
+_delete_history_before = delete_history_before
 
 
 def _render_history_cleanup_section() -> None:
@@ -537,9 +502,9 @@ def _render_history_cleanup_section() -> None:
         )
         if st.button("① 対象件数を確認", key="history_cleanup_check"):
             cutoff = date.today() - timedelta(days=int(n_days))
-            conn = sqlite3.connect(str(DEFAULT_HISTORY_DB_PATH))
+            conn = connect_history(DEFAULT_HISTORY_DB_PATH)
             try:
-                count = _count_history_before(conn, cutoff)
+                count = count_history_before(conn, cutoff)
             finally:
                 conn.close()
             st.session_state["history_cleanup_confirm"] = {
@@ -557,9 +522,9 @@ def _render_history_cleanup_section() -> None:
                     "ファイルは削除されません)。"
                 )
                 if st.button(f"② {confirm['count']}件を削除する", key="history_cleanup_execute"):
-                    conn = sqlite3.connect(str(DEFAULT_HISTORY_DB_PATH))
+                    conn = connect_history(DEFAULT_HISTORY_DB_PATH)
                     try:
-                        deleted = _delete_history_before(conn, confirm["cutoff_date"])
+                        deleted = delete_history_before(conn, confirm["cutoff_date"])
                     finally:
                         conn.close()
                     st.session_state.pop("history_cleanup_confirm", None)
@@ -585,29 +550,9 @@ def _render_history_tab() -> None:
 
     _render_history_cleanup_section()
 
-    conn = sqlite3.connect(str(DEFAULT_HISTORY_DB_PATH))
-    conn.row_factory = sqlite3.Row
+    conn = connect_history(DEFAULT_HISTORY_DB_PATH)
     try:
-        query = "SELECT * FROM transcription_history"
-        conditions = []
-        params: list = []
-        if date_from:
-            conditions.append("date(processed_at) >= date(?)")
-            params.append(date_from.isoformat())
-        if date_to:
-            conditions.append("date(processed_at) <= date(?)")
-            params.append(date_to.isoformat())
-        if search_keyword:
-            # フレーズ全体を1トークン列として扱う(MATCH演算子の誤解釈を避けるため" "で囲む)。
-            escaped_keyword = search_keyword.replace('"', '""')
-            conditions.append(
-                "id IN (SELECT rowid FROM transcription_history_fts WHERE transcription_history_fts MATCH ?)"
-            )
-            params.append(f'"{escaped_keyword}"')
-        if conditions:
-            query += " WHERE " + " AND ".join(conditions)
-        query += " ORDER BY processed_at DESC"
-        rows = conn.execute(query, params).fetchall()
+        rows = search_history(conn, date_from=date_from, date_to=date_to, keyword=search_keyword)
     finally:
         conn.close()
 
@@ -649,6 +594,7 @@ def _render_history_tab() -> None:
 
 
 def main() -> None:
+    setup_logging()
     _load_config()
     _warmup_qwen_asr()
     st.title("Transcribe Audio WebUI")

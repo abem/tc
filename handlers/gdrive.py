@@ -15,7 +15,7 @@ from typing import Optional, Dict, Any, Union
 
 from googleapiclient.http import MediaIoBaseDownload, MediaIoBaseUpload, MediaFileUpload
 
-from config import get_drive_service
+from handlers.gdrive_auth import get_drive_service
 from core.logging import get_logger
 
 logger = get_logger(__name__)

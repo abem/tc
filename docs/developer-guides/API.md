@@ -20,10 +20,10 @@
 このシステムは以下の主要コンポーネントで構成されています：
 
 - **UnifiedTranscriber**（`core/transcription_interface.py`）: 統一された音声転写インターフェース。
-  モデル名で次の3つのエンジンから1つを選びます。
+  モデル名で次の3つのエンジンから1つを選びます（判定は `core/engine_factory.py` の `create_engine`）。
   - `NemotronSubprocessEngine`（`core/nemotron_engine.py`）: モデル名に `nemotron` を含む場合
-  - `Qwen3ASREngine`（`core/transcription_interface.py`）: モデル名に `qwen3-asr`（または `qwen3_asr`）を含む場合
-  - `WhisperTranscriptionEngine`（`core/transcription_interface.py`）: それ以外
+  - `Qwen3ASREngine`（`core/qwen3_engine.py`）: モデル名に `qwen3-asr`（または `qwen3_asr`）を含む場合
+  - `WhisperTranscriptionEngine`（`core/whisper_engine.py`）: それ以外
 - **UnifiedConfig / TranscriptionConfig / SystemConfig**（`core/config.py`）: 設定管理
 - **GDriveClient / YouTubeClient**（`handlers/`）: Google Drive の入出力と、YouTube・X の音声抽出
 - **core/cli_workflow.py**: 入力の解決・アップロード・変換履歴の記録（`tc`・`transcribe.py`・WebUI 共通）
@@ -226,7 +226,7 @@ url = client.get_file_url(file_id)
 ```
 
 `GDriveClient(credentials_path: str = "credentials.json")` です。Drive のサービスは最初に必要になった時点で
-初期化されます（認証は `config.py` の `get_drive_service()`）。主なメソッド:
+初期化されます（認証は `handlers/gdrive_auth.py` の `get_drive_service()`）。主なメソッド:
 
 - `download_file(file_id: str, output_path: str) -> None`
 - `download(file_id_or_url: str) -> Path`: URL またはファイルIDから一時ファイルへダウンロードします
@@ -323,7 +323,8 @@ from core.logging import get_logger, UnifiedLogger, PerformanceLogger
 logger = get_logger(__name__)
 ```
 
-`core` パッケージをインポートすると、INFO レベルのログがコンソールと `logs/transcription.log`
+`core` パッケージはインポートしただけではログを設定しません。エントリポイント（`tc`、`transcribe.py`、`webui.py`）が
+起動時に `core.logging.setup_logging()` を呼ぶと、INFO レベルのログがコンソールと `logs/transcription.log`
 （pytest 実行中は `logs/transcription_test.log`）へ出力されるように構成されます。
 出力先などを変える場合は `UnifiedLogger.configure(log_level, log_file, enable_console, enable_file, log_format)` を使います。
 `PerformanceLogger(name)` は処理時間の計測（`start_timing` / `end_timing`）とメトリクス記録（`log_metric`）に使います。

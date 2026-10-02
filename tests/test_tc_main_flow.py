@@ -21,6 +21,7 @@ from pathlib import Path
 import pytest
 import yaml
 
+from core import cli_workflow
 from core.cli_workflow import InputResolution
 from core.config import TranscriptionConfig
 from core.transcription_interface import TranscriptionResult, TranscriptionSegment
@@ -496,8 +497,10 @@ class MainEnv:
         monkeypatch.chdir(tmp_path)
         monkeypatch.setattr(tc_module, "load_config", lambda: self.config)
         monkeypatch.setattr(tc_module, "resolve_input_audio", self._resolve)
-        monkeypatch.setattr(tc_module, "upload_transcription_result", self._upload)
-        monkeypatch.setattr(tc_module, "record_transcription_history", self._history)
+        # 保存→アップロード→履歴記録→削除の流れは core.cli_workflow.finalize_transcription に集約済み
+        # (tc-ops #567 Task 5.2)。差し替え先は tc ではなく core.cli_workflow の名前になる。
+        monkeypatch.setattr(cli_workflow, "upload_transcription_result", self._upload)
+        monkeypatch.setattr(cli_workflow, "record_transcription_history", self._history)
 
     def _resolve(self, source, output_dir, **kwargs):
         self.resolve_calls.append((source, output_dir, kwargs))
@@ -841,7 +844,7 @@ class TestMainTranscriptionFailure:
         def failing_upload(**kwargs):
             raise OSError("drive down")
 
-        env.monkeypatch.setattr(env.tc, "upload_transcription_result", failing_upload)
+        env.monkeypatch.setattr(cli_workflow, "upload_transcription_result", failing_upload)
 
         with pytest.raises(OSError, match="drive down"):
             env.run("https://drive.google.com/file/d/FILEID123/view", "--output-dir", str(env.output_dir))

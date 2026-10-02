@@ -2,7 +2,7 @@
 
 作成日: 2026-10-02
 記録先: Redmine tc-ops #566
-状態: 実行中（harness-work、2026-10-02 開始）。Phase 1〜4 は承認済み、Phase 5 は未承認
+状態: 実行中（harness-work、2026-10-02 開始）。Phase 1〜4 は完了・dev/main 統合済み（2026-10-02〜03）。Phase 5 は 2026-10-03 にユーザーが承認（「Phase 5 に進んで」）
 
 ---
 
@@ -120,16 +120,16 @@ Purpose: 同じ処理の重複実装を 1 か所にまとめる。利用者に�
 
 | Task | 内容 | DoD | Depends | Status |
 |------|------|-----|---------|--------|
-| 5.0 | `[Contract]` `[lane:gate]` `[tdd:skip:docs-contract]` `docs/spec/00-project-spec.md` を新設し、未決事項 D2 の決定（正とする CLI、保存形式、一時ファイルの削除対象、yt-dlp が無いときの挙動）を記録する | ファイルが存在し、4 項目すべてに決定と決定日が書かれている | Phase 3 | cc:TODO |
-| 5.1 | `[Refactor]` `[lane:gate]` `[tdd:required]` CLI を整理する。`tc`（228 行）と `transcribe.py`（318 行）が同じ流れを別々に実装し、gdrive の一時ファイル削除と `[MM:SS]` 付き保存の挙動が食い違っている。D2 の決定どおり両方を残し、食い違う挙動を 5.0 で決めた側に揃える。`transcribe`（bash）は `transcribe.py` の shebang と役割が重なるため扱いを 5.0 で決める | 5.0 で決めた挙動を、`tc` と `transcribe.py` の両方について確認するテストが pass | 5.0, 2.6 | cc:TODO |
-| 5.2 | `[Refactor]` `[lane:gate]` `[tdd:required]` 保存 → アップロード → 履歴記録 → 一時ファイル削除の流れを `core/` の 1 関数にまとめ、`tc` と `webui.py` の両方から呼ぶ | `tc` と `webui.py` に同じ流れの重複実装が無い。2.3 / 2.5 / 2.6 のテストが pass | 5.1, 2.3, 2.5 | cc:TODO |
-| 5.3 | `[Refactor]` `[lane:gate]` `[tdd:required]` `handlers/youtube.py` の `install_yt_dlp`（`pip install` で uv 管理の `.venv` を書き換える経路）を除き、yt-dlp の検出を 1 つの方法に揃える。挙動が変わるため 5.0 の決定に従う | `grep -rn "pip install" handlers/ core/` が 0 件。yt-dlp が無い場合のエラーメッセージを確認するテストが pass | 5.0, 2.2 | cc:TODO |
-| 5.4 | `[Refactor]` `[lane:gate]` `[tdd:required]` `core/transcription_interface.py`（1,123 行）を、型と抽象基底 / Whisper / Qwen3 / テキスト整形 / ファサードに分ける。あわせてエンジン判定を 1 か所に集め、`core/nemotron_engine.py` との相互 import を解消する。公開名 `core.transcription_interface.*` の import は維持する。反復検出の論理と閾値は変えない | 分割後の各ファイルが 500 行以下。既存の `tests/test_core_transcription_interface*.py` と `tests/test_core_nemotron_*.py` が pass。関数内 import による循環回避が 0 件 | 5.4-pre | cc:TODO |
-| 5.4-pre | `[Test]` `[lane:gate]` `[tdd:required]` `WhisperTranscriptionEngine` のテキスト整形（`_parse_timestamped_text`、`_add_timestamps_to_text`、`_ensure_timestamps_at_line_start`、`_create_chunks`）に、現在の出力を固定するテストを足す | 追加テストが pass | Phase 3 | cc:TODO |
-| 5.5 | `[Refactor]` `[lane:gate]` `[tdd:skip:needs-manual-auth-check]` `[needs-spike]` ルート `config.py`（実体は Drive 認証）を `handlers/` 配下へ移して改名し、import 時の `OAUTHLIB_INSECURE_TRANSPORT=1` 設定と、`config.yaml` の読まれていないキー（`credentials_file` / `token_file` / `logging:`）を整理する。`CLAUDE.md` の確認コマンドも同時に更新する | `uv run python -c "<新しい import 文>; print('ok')"` が成功。実機での Drive 認証をユーザーが 1 回確認 | 5.5-spike | cc:TODO |
-| 5.5-spike | `[spike]` WebUI のバックグラウンドスレッドから再認証に入ったとき、`config.py:58-77` の `input()` で止まるかを確認する（コードの読み取りでは止まり得るが未確認） | 「止まる / 止まらない」を再現手順とともに Redmine に記録 | Phase 3 | cc:TODO |
-| 5.6 | `[Refactor]` `[lane:gate]` `[tdd:required]` `core/__init__.py` の import 時の副作用（ルートロガーの付け替えとログファイル作成）を、エントリポイントからの明示的な初期化に変える | `import core` だけではログファイルが作られないことを確認するテストが pass。`tests/test_core_init_pytest_log_guard.py` が pass | Phase 3 | cc:TODO |
-| 5.7 | `[Refactor]` `[lane:gate]` `[tdd:required]` 履歴 DB の操作を `core/history.py` に集める。`webui.py` 482〜501・566〜590 行に直書きされた SELECT / DELETE を移す。DDL と FTS トリガーは変えない | `grep -nE "SELECT|DELETE FROM" webui.py` が 0 件。`tests/test_core_cli_workflow_history_fts.py` と `tests/test_webui_history_cleanup.py` が pass | Phase 3 | cc:TODO |
+| 5.0 | `[Contract]` `[lane:gate]` `[tdd:skip:docs-contract]` `docs/spec/00-project-spec.md` を新設し、未決事項 D2 の決定（正とする CLI、保存形式、一時ファイルの削除対象、yt-dlp が無いときの挙動）を記録する | ファイルが存在し、4 項目すべてに決定と決定日が書かれている | Phase 3 | cc:完了 [e7ad0a7] |
+| 5.1 | `[Refactor]` `[lane:gate]` `[tdd:required]` CLI を整理する。`tc`（228 行）と `transcribe.py`（318 行）が同じ流れを別々に実装し、gdrive の一時ファイル削除と `[MM:SS]` 付き保存の挙動が食い違っている。D2 の決定どおり両方を残し、食い違う挙動を 5.0 で決めた側に揃える。`transcribe`（bash）は `transcribe.py` の shebang と役割が重なるため扱いを 5.0 で決める | 5.0 で決めた挙動を、`tc` と `transcribe.py` の両方について確認するテストが pass | 5.0, 2.6 | cc:完了 [ebcfa57] |
+| 5.2 | `[Refactor]` `[lane:gate]` `[tdd:required]` 保存 → アップロード → 履歴記録 → 一時ファイル削除の流れを `core/` の 1 関数にまとめ、`tc` と `webui.py` の両方から呼ぶ | `tc` と `webui.py` に同じ流れの重複実装が無い。2.3 / 2.5 / 2.6 のテストが pass | 5.1, 2.3, 2.5 | cc:完了 [155b2ab] |
+| 5.3 | `[Refactor]` `[lane:gate]` `[tdd:required]` `handlers/youtube.py` の `install_yt_dlp`（`pip install` で uv 管理の `.venv` を書き換える経路）を除き、yt-dlp の検出を 1 つの方法に揃える。挙動が変わるため 5.0 の決定に従う | `grep -rn "pip install" handlers/ core/` が 0 件。yt-dlp が無い場合のエラーメッセージを確認するテストが pass | 5.0, 2.2 | cc:完了 [cd777f1] |
+| 5.4 | `[Refactor]` `[lane:gate]` `[tdd:required]` `core/transcription_interface.py`（1,123 行）を、型と抽象基底 / Whisper / Qwen3 / テキスト整形 / ファサードに分ける。あわせてエンジン判定を 1 か所に集め、`core/nemotron_engine.py` との相互 import を解消する。公開名 `core.transcription_interface.*` の import は維持する。反復検出の論理と閾値は変えない | 分割後の各ファイルが 500 行以下。既存の `tests/test_core_transcription_interface*.py` と `tests/test_core_nemotron_*.py` が pass。関数内 import による循環回避が 0 件 | 5.4-pre | cc:完了 [da03ddb] |
+| 5.4-pre | `[Test]` `[lane:gate]` `[tdd:required]` `WhisperTranscriptionEngine` のテキスト整形（`_parse_timestamped_text`、`_add_timestamps_to_text`、`_ensure_timestamps_at_line_start`、`_create_chunks`）に、現在の出力を固定するテストを足す | 追加テストが pass | Phase 3 | cc:完了 [fd18f17] |
+| 5.5 | `[Refactor]` `[lane:gate]` `[tdd:skip:needs-manual-auth-check]` `[needs-spike]` ルート `config.py`（実体は Drive 認証）を `handlers/` 配下へ移して改名し、import 時の `OAUTHLIB_INSECURE_TRANSPORT=1` 設定と、`config.yaml` の読まれていないキー（`credentials_file` / `token_file` / `logging:`）を整理する。`CLAUDE.md` の確認コマンドも同時に更新する | `uv run python -c "<新しい import 文>; print('ok')"` が成功。実機での Drive 認証をユーザーが 1 回確認 | 5.5-spike | cc:完了 [896f889] ※実機Drive認証のユーザー確認待ち |
+| 5.5-spike | `[spike]` WebUI のバックグラウンドスレッドから再認証に入ったとき、`config.py:58-77` の `input()` で止まるかを確認する（コードの読み取りでは止まり得るが未確認） | 「止まる / 止まらない」を再現手順とともに Redmine に記録 | Phase 3 | cc:完了（コード読み取り+標準入力の確認。Redmine #567 に記録） |
+| 5.6 | `[Refactor]` `[lane:gate]` `[tdd:required]` `core/__init__.py` の import 時の副作用（ルートロガーの付け替えとログファイル作成）を、エントリポイントからの明示的な初期化に変える | `import core` だけではログファイルが作られないことを確認するテストが pass。`tests/test_core_init_pytest_log_guard.py` が pass | Phase 3 | cc:完了 [ae7e3b9] |
+| 5.7 | `[Refactor]` `[lane:gate]` `[tdd:required]` 履歴 DB の操作を `core/history.py` に集める。`webui.py` 482〜501・566〜590 行に直書きされた SELECT / DELETE を移す。DDL と FTS トリガーは変えない | `grep -nE "SELECT|DELETE FROM" webui.py` が 0 件。`tests/test_core_cli_workflow_history_fts.py` と `tests/test_webui_history_cleanup.py` が pass | Phase 3 | cc:完了 [b0e9d00] |
 
 ---
 
@@ -167,11 +167,11 @@ Purpose: 同じ処理の重複実装を 1 か所にまとめる。利用者に�
 |----|-----------|------|
 | D1 | 実行体制 | harness-work で進める。Git 操作を計の専任とする ccc のロール規則とは両立しないため、harness のワーカーがコミットする範囲は feature ブランチと dev に限る |
 | D2 | 正とする CLI | `tc` と `transcribe.py` を両方残し、共通処理に寄せる。廃止はしない |
-| D3 | Phase 5 を行うか | 未決。Phase 4 まで終えた時点で判断する |
+| D3 | Phase 5 を行うか | 行う（2026-10-03、ユーザー「Phase 5 に進んで」）。D4〜D6 は `docs/spec/00-project-spec.md` に記録 |
 
 ## 事前確認
 
-ユーザーの承認: Phase 1〜4 を承認、Phase 5 は未承認。削除と push は `.claude/state/plan-preapprovals.json` に記録済み（期限 2026-10-16）。依存・`config.yaml`・`CLAUDE.md` の変更は記録形式の対象外のため、本節の記載を承認の記録とする。
+ユーザーの承認: Phase 1〜4 を承認、Phase 5 は 2026-10-03 に承認。main の更新は都度ユーザーの GO を得る。削除と push は `.claude/state/plan-preapprovals.json` に記録済み（期限 2026-10-16）。依存・`config.yaml`・`CLAUDE.md` の変更は記録形式の対象外のため、本節の記載を承認の記録とする。
 - 事項: destructive — 追跡中のファイルの削除（`scripts/` の 5 本、`.github/workflows/` の 4 本）
   理由: 起動不能または常に失敗し、うち 1 本は `.venv` 削除に到達しうる
   scope: Phase 1 / Task 1.1, 1.2、Phase 2 / Task 2.8

@@ -222,7 +222,6 @@ tc/
 ├── transcribe                  # transcribe.py を起動するシェルスクリプト
 ├── transcribe.py               # Rich UI対話型CLI
 ├── webui.py                    # WebUI（Streamlit）
-├── config.py                   # Google Drive 認証（get_drive_service）
 ├── suppress_warnings.py        # 警告抑制
 ├── config/
 │   ├── config.yaml            # 設定ファイル
@@ -230,7 +229,11 @@ tc/
 ├── core/                      # コア機能
 │   ├── config.py              # 統一設定管理
 │   ├── logging.py             # 統一ロガー
-│   ├── transcription_interface.py  # 文字起こしエンジン（Qwen3-ASR / Whisper）と UnifiedTranscriber
+│   ├── transcription_interface.py  # UnifiedTranscriber（ファサード）
+│   ├── engine_factory.py      # モデル名でエンジンを選ぶ（create_engine）
+│   ├── qwen3_engine.py        # Qwen3-ASR エンジン（+ qwen3_chunking.py / qwen3_text.py）
+│   ├── whisper_engine.py      # Whisper エンジン（+ whisper_text.py）
+│   ├── history.py             # 変換履歴 DB の検索・件数・削除
 │   ├── nemotron_engine.py     # Nemotron エンジン（隔離venvのサブプロセス）
 │   ├── model_manager.py       # モデルキャッシュ管理（Whisper用）
 │   ├── cli_common.py          # CLI共通ヘルパー
@@ -239,6 +242,7 @@ tc/
 │   └── utils.py               # URL検出・デバイス解決
 ├── handlers/                  # 外部サービスハンドラー
 │   ├── gdrive.py              # Google Drive クライアント
+│   ├── gdrive_auth.py         # Google Drive の OAuth 認証（get_drive_service）
 │   └── youtube.py             # YouTube / X 音声抽出（yt-dlp）
 ├── scripts/                   # 補助スクリプト（E2E、Nemotron 用 venv 構築など）
 ├── tests/                     # テストファイル
@@ -256,7 +260,7 @@ tc/
    - 環境変数との統合
    - デフォルト値の管理
 
-2. **文字起こしエンジン** (`core/transcription_interface.py`)
+2. **文字起こしエンジン** (`core/transcription_interface.py`、判定は `core/engine_factory.py`)
    - Qwen3-ASR / Whisper / Nemotron の3エンジン（モデル名で自動切替。Nemotron は `core/nemotron_engine.py`）
    - 音声前処理
    - Qwen3-ASR は長音声を5分単位でチャンク分割して処理（Nemotron は350秒を超えるとストリーミング推論で処理）
@@ -476,7 +480,7 @@ MIT License
 
 ### v2025.11.21 - WSL環境対応とOAuth認証改善
 - 🔧 **WSL環境での認証フロー改善**
-  - `OAUTHLIB_INSECURE_TRANSPORT`環境変数の設定
+  - `OAUTHLIB_INSECURE_TRANSPORT`環境変数の設定（現在は再認証に入るときだけ設定）
   - 手動認証フロー（localhostリダイレクト対応）
   - WSL環境でのブラウザ起動問題を解決
 - 🎯 **音声処理エンジンの安定化**

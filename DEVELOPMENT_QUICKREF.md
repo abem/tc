@@ -101,7 +101,7 @@ uv sync
 ### 転写品質劣化
 ```bash
 # 統一システムに問題がある場合
-# core/transcription_interface.py の _transcribe_with_original_logic() を確認
+# core/whisper_engine.py の _transcribe_with_original_logic() を確認
 # max_new_tokens パラメータを調整（通常400）
 ```
 

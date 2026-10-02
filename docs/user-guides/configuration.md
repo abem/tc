@@ -78,7 +78,7 @@ whisper:
   | `qwen3-asr` / `qwen3_asr` | Qwen3ASREngine（既定） |
   | 上記以外 | WhisperTranscriptionEngine |
 
-  判定は `core/transcription_interface.py` の `UnifiedTranscriber.__init__` で行います。
+  判定は `core/engine_factory.py` の `create_engine`（`UnifiedTranscriber.__init__` から呼ばれる）で行います。
   Nemotron の準備は `./scripts/setup_nemotron_venv.sh`（詳細は [多言語対応ガイド](language_support_guide.md)）。
 - **`language`**: エンジンごとの扱いは [多言語対応ガイド](language_support_guide.md) を参照。
 - **`device`**: `auto` は CUDA が使えれば `cuda`、使えなければ `cpu` になります。

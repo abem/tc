@@ -76,7 +76,7 @@
 ### 使えるモデルとエンジン
 
 `--model`（または `whisper.model`）の文字列でエンジンが自動で切り替わります
-（`core/transcription_interface.py` の `UnifiedTranscriber.__init__`）。
+（`core/engine_factory.py` の `create_engine`）。
 
 | モデル名に含まれる文字列 | エンジン | 例 |
 |--------------------------|----------|----|

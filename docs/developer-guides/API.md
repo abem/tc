@@ -20,10 +20,10 @@
 このシステムは以下の主要コンポーネントで構成されています：
 
 - **UnifiedTranscriber**（`core/transcription_interface.py`）: 統一された音声転写インターフェース。
-  モデル名で次の3つのエンジンから1つを選びます。
+  モデル名で次の3つのエンジンから1つを選びます（判定は `core/engine_factory.py` の `create_engine`）。
   - `NemotronSubprocessEngine`（`core/nemotron_engine.py`）: モデル名に `nemotron` を含む場合
-  - `Qwen3ASREngine`（`core/transcription_interface.py`）: モデル名に `qwen3-asr`（または `qwen3_asr`）を含む場合
-  - `WhisperTranscriptionEngine`（`core/transcription_interface.py`）: それ以外
+  - `Qwen3ASREngine`（`core/qwen3_engine.py`）: モデル名に `qwen3-asr`（または `qwen3_asr`）を含む場合
+  - `WhisperTranscriptionEngine`（`core/whisper_engine.py`）: それ以外
 - **UnifiedConfig / TranscriptionConfig / SystemConfig**（`core/config.py`）: 設定管理
 - **GDriveClient / YouTubeClient**（`handlers/`）: Google Drive の入出力と、YouTube・X の音声抽出
 - **core/cli_workflow.py**: 入力の解決・アップロード・変換履歴の記録（`tc`・`transcribe.py`・WebUI 共通）

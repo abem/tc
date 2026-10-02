@@ -62,7 +62,13 @@ tc/
 ├── core/                      # コア機能(統一アーキテクチャ)
 │   ├── config.py              # TranscriptionConfig/SystemConfig/UnifiedConfig
 │   ├── logging.py             # 統一ロガー
-│   ├── transcription_interface.py  # UnifiedTranscriber・Qwen3ASREngine・WhisperTranscriptionEngine
+│   ├── transcription_interface.py  # UnifiedTranscriber(ファサード。既存の import 名を再 export)
+│   ├── engine_factory.py      # create_engine(モデル名でエンジンを選ぶ)
+│   ├── transcription_types.py # TranscriptionSegment / TranscriptionResult / TranscriptionEngine
+│   ├── qwen3_engine.py        # Qwen3ASREngine(+ qwen3_chunking.py / qwen3_text.py)
+│   ├── whisper_engine.py      # WhisperTranscriptionEngine(+ whisper_text.py)
+│   ├── history.py             # 変換履歴 DB の検索・件数・削除
+│   ├── progress.py            # 進捗通知(ProgressMessage)
 │   ├── nemotron_engine.py     # NemotronSubprocessEngine(Nemotron系モデル用)
 │   ├── model_manager.py       # モデルキャッシュ管理
 │   ├── cli_common.py          # CLI共通ヘルパー
@@ -85,14 +91,12 @@ tc/
 パターンマッチのみで行われるシンプルな実装に置き換わっている:
 
 ```python
-# core/transcription_interface.py (UnifiedTranscriber.__init__)
-from core.nemotron_engine import is_nemotron_model, NemotronSubprocessEngine
-if is_nemotron_model(transcription_config.model):
-    self.transcription_engine = NemotronSubprocessEngine(transcription_config)
-elif Qwen3ASREngine.is_qwen3_model(transcription_config.model):
-    self.transcription_engine = Qwen3ASREngine(transcription_config)
-else:
-    self.transcription_engine = WhisperTranscriptionEngine(transcription_config)
+# core/engine_factory.py (create_engine。UnifiedTranscriber.__init__ から呼ばれる)
+if is_nemotron_model(config.model):
+    return NemotronSubprocessEngine(config)
+if Qwen3ASREngine.is_qwen3_model(config.model):
+    return Qwen3ASREngine(config)
+return WhisperTranscriptionEngine(config)
 ```
 
 言語(`whisper.language`)は `Qwen3ASREngine.transcribe()` 内の `lang_map` で `Qwen3-ASR` の
@@ -267,7 +271,7 @@ def test_with_mock(mock_dependency):
 
 ### Strategy相当: TranscriptionEngine(抽象基底クラス)
 
-`core/transcription_interface.py` の `TranscriptionEngine(ABC)` を
+`core/transcription_types.py` の `TranscriptionEngine(ABC)` を
 `Qwen3ASREngine`・`WhisperTranscriptionEngine` が実装する、素朴な継承ベースの
 Strategyパターン。`patterns/strategies.py` のような専用レジストリ・登録機構は無い。
 
@@ -284,8 +288,8 @@ class TranscriptionEngine(ABC):
 
 ### Factory相当: エンジン選択ロジック
 
-専用のFactoryクラスは無く、`UnifiedTranscriber.__init__`(前掲「エンジン自動選択の
-仕組み」参照)がモデル名を見て `if/elif/else` で直接インスタンス化する。
+専用のFactoryクラスは無く、`core/engine_factory.py` の関数 `create_engine`(前掲「エンジン自動選択の
+仕組み」参照。`UnifiedTranscriber.__init__` から呼ばれる)がモデル名を見て `if/elif/else` で直接インスタンス化する。
 
 ### Command Pattern / Observer Pattern
 
@@ -360,12 +364,12 @@ uv run python -m cProfile -o profile.stats tc
 > ⚠️ 以前ここに記載していた例(`patterns/strategies.py`・`patterns/factories.py`・
 > `patterns/observers.py`・`BatchSizeStrategy`・`LanguageAwareModelSelector`・
 > `WhisperTranscriber`・`Observer`等)はいずれも削除済みモジュール/クラスを
-> 前提にしていた。現在の実装(core/transcription_interface.py)に即して是正した。
+> 前提にしていた。現在の実装(core/transcription_types.py 等)に即して是正した。
 
 ### 1. 新しいTranscriptionEngine追加
 
 ```python
-# core/transcription_interface.py に追加
+# core/ に新しいモジュールとして追加し、core/engine_factory.py の create_engine に判定を足す
 
 class MyCustomEngine(TranscriptionEngine):
     def get_engine_name(self) -> str:
@@ -374,14 +378,14 @@ class MyCustomEngine(TranscriptionEngine):
     def transcribe(self, audio_path: str, **kwargs) -> TranscriptionResult:
         ...
 
-# UnifiedTranscriber.__init__ のモデル名判定にも分岐を追加する
+# core/engine_factory.py の create_engine のモデル名判定にも分岐を追加する
 # (現状は is_nemotron_model() / Qwen3ASREngine.is_qwen3_model() の if/elif/else)
 ```
 
 ### 2. 新しい言語サポート追加
 
 言語ごとに専用のトランスクライバーを作るのではなく、`whisper.language` の値を
-`Qwen3ASREngine.lang_map`(`core/transcription_interface.py`)に追加するだけでよい:
+`Qwen3ASREngine.lang_map`(`core/qwen3_engine.py`)に追加するだけでよい:
 
 ```python
 lang_map = {"ja": "Japanese", "en": "English", "zh": "Chinese"}  # 追加例

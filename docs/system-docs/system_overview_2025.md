@@ -99,7 +99,11 @@ tc/
 │   ├── __init__.py            # パッケージ初期化（ロガー構成）
 │   ├── config.py              # 統一設定管理
 │   ├── logging.py             # 統一ロガー
-│   ├── transcription_interface.py  # UnifiedTranscriber・Qwen3-ASR / Whisper エンジン
+│   ├── transcription_interface.py  # UnifiedTranscriber（ファサード）
+│   ├── engine_factory.py      # モデル名でエンジンを選ぶ（create_engine）
+│   ├── qwen3_engine.py        # Qwen3-ASR エンジン（+ qwen3_chunking.py / qwen3_text.py）
+│   ├── whisper_engine.py      # Whisper エンジン（+ whisper_text.py）
+│   ├── history.py             # 変換履歴 DB の検索・件数・削除
 │   ├── nemotron_engine.py     # Nemotron エンジン（サブプロセス）
 │   ├── model_manager.py       # モデルキャッシュ管理（Whisper用）
 │   ├── cli_common.py          # CLI共通ヘルパー
@@ -135,7 +139,7 @@ whisper:
   include_timestamps: false     # true で行頭に [MM:SS]（Qwen3-ASR専用）
 ```
 
-エンジンの選択規則（`core/transcription_interface.py` の `UnifiedTranscriber.__init__`）:
+エンジンの選択規則（`core/engine_factory.py` の `create_engine`。`UnifiedTranscriber.__init__` から呼ばれる）:
 
 | モデル名 | エンジン |
 |---|---|

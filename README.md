@@ -229,7 +229,11 @@ tc/
 ├── core/                      # コア機能
 │   ├── config.py              # 統一設定管理
 │   ├── logging.py             # 統一ロガー
-│   ├── transcription_interface.py  # 文字起こしエンジン（Qwen3-ASR / Whisper）と UnifiedTranscriber
+│   ├── transcription_interface.py  # UnifiedTranscriber（ファサード）
+│   ├── engine_factory.py      # モデル名でエンジンを選ぶ（create_engine）
+│   ├── qwen3_engine.py        # Qwen3-ASR エンジン（+ qwen3_chunking.py / qwen3_text.py）
+│   ├── whisper_engine.py      # Whisper エンジン（+ whisper_text.py）
+│   ├── history.py             # 変換履歴 DB の検索・件数・削除
 │   ├── nemotron_engine.py     # Nemotron エンジン（隔離venvのサブプロセス）
 │   ├── model_manager.py       # モデルキャッシュ管理（Whisper用）
 │   ├── cli_common.py          # CLI共通ヘルパー
@@ -256,7 +260,7 @@ tc/
    - 環境変数との統合
    - デフォルト値の管理
 
-2. **文字起こしエンジン** (`core/transcription_interface.py`)
+2. **文字起こしエンジン** (`core/transcription_interface.py`、判定は `core/engine_factory.py`)
    - Qwen3-ASR / Whisper / Nemotron の3エンジン（モデル名で自動切替。Nemotron は `core/nemotron_engine.py`）
    - 音声前処理
    - Qwen3-ASR は長音声を5分単位でチャンク分割して処理（Nemotron は350秒を超えるとストリーミング推論で処理）

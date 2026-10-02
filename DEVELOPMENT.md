@@ -112,10 +112,7 @@ tests/
 └── test_e2e_dry_run.py        # tc --dry-run による起動確認
 
 .github/workflows/
-├── ci.yml.disabled            # CI/CDパイプライン(現在無効化)
-├── minimal-test.yml
-├── pre-commit.yml             # 大容量ファイル・機密情報の簡易チェック
-└── simple-test.yml
+└── ci.yml                     # uv + ruff + pytest(push と pull request で実行)
 
 pyproject.toml                 # プロジェクト設定・依存関係・pytest設定([tool.pytest.ini_options])
 uv.lock                        # 依存関係ロックファイル

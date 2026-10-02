@@ -16,8 +16,7 @@
 Phase2設計report §5は「長音声チャンク処理: 要」と結論していたが、Phase2実装・
 緊急是正のいずれにも未実装だった(査sa実測で判明)。査の線形外挿再計算により、
 10分音声でも推定ピークVRAMが総量(16376MiB)を超過する可能性が高いと判明したため、
-既存`Qwen3ASREngine._transcribe_long_audio`(`core/transcription_interface.py`
-L693-826)と同じ`CHUNK_THRESHOLD_SEC=300`秒の閾値を踏襲し、超過時は音声を
+既存`Qwen3ASREngine._transcribe_long_audio`(`core/qwen3_chunking.py`)と同じ`CHUNK_THRESHOLD_SEC=300`秒の閾値を踏襲し、超過時は音声を
 チャンクへ分割する。既存エンジンはメモリ上の`np.ndarray`をそのままモデルへ渡せるが、
 Nemotronはサブプロセス経由(ファイルパスを引数として渡す設計)のため、チャンクは
 一時wavファイルへ実際に切り出す。
@@ -41,7 +40,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     import numpy as np
 
-from core.transcription_interface import (
+from core.transcription_types import (
     TranscriptionEngine,
     TranscriptionResult,
     TranscriptionSegment,

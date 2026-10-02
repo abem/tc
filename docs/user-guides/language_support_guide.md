@@ -61,8 +61,8 @@ else:
 
 **言語(`whisper.language`)は一切見ない** — エンジン選択は完全にモデル名依存。
 
-> **注記**: `core/cli_common.py` の `select_model()` は「言語ごとにデフォルトモデルを選ぶ」関数だが、
-> 現在どこからも呼ばれていない。`config.yaml` に `whisper.language_models` を書いても実行パスには影響しない。
+> **注記**: 言語ごとにデフォルトモデルを選ぶ仕組み(旧 `select_model()`)は削除済みです。
+> `config.yaml` に `whisper.language_models` を書いても実行パスには影響しません。
 
 ### 2. 言語の扱い(エンジンごとに異なる)
 

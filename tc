@@ -25,7 +25,7 @@ import suppress_warnings  # noqa: F401
 from core.cli_common import build_output_file, resolve_device, update_whisper_config
 from core.cli_workflow import record_transcription_history, resolve_input_audio, upload_transcription_result
 from core.config import TranscriptionConfig
-from core.logging import get_logger
+from core.logging import get_logger, setup_logging
 from core.progress import throttled
 from core.transcription_interface import TranscriptionResult, UnifiedTranscriber
 from core.utils import load_context_hints
@@ -131,6 +131,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main():
+    setup_logging()
     args = build_parser().parse_args()
 
     config = load_config()

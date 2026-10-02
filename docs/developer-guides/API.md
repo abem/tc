@@ -323,7 +323,8 @@ from core.logging import get_logger, UnifiedLogger, PerformanceLogger
 logger = get_logger(__name__)
 ```
 
-`core` パッケージをインポートすると、INFO レベルのログがコンソールと `logs/transcription.log`
+`core` パッケージはインポートしただけではログを設定しません。エントリポイント（`tc`、`transcribe.py`、`webui.py`）が
+起動時に `core.logging.setup_logging()` を呼ぶと、INFO レベルのログがコンソールと `logs/transcription.log`
 （pytest 実行中は `logs/transcription_test.log`）へ出力されるように構成されます。
 出力先などを変える場合は `UnifiedLogger.configure(log_level, log_file, enable_console, enable_file, log_format)` を使います。
 `PerformanceLogger(name)` は処理時間の計測（`start_timing` / `end_timing`）とメトリクス記録（`log_metric`）に使います。

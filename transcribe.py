@@ -23,6 +23,7 @@ from core.cli_common import (
 )
 from core.cli_workflow import record_transcription_history, resolve_input_audio, upload_transcription_result
 from core.config import UnifiedConfig, TranscriptionConfig
+from core.logging import setup_logging
 from core.progress import throttled
 from core.transcription_interface import UnifiedTranscriber
 from core.utils import load_context_hints
@@ -310,6 +311,7 @@ class TranscribeLoader:
 
 def main():
     """エントリーポイント"""
+    setup_logging()
     loader = TranscribeLoader()
     sys.exit(loader.run())
 

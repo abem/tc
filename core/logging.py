@@ -8,7 +8,6 @@ import logging.handlers
 import sys
 from pathlib import Path
 from typing import Optional, Dict, Any
-from datetime import datetime
 
 
 class UnifiedLogger:
@@ -69,18 +68,40 @@ class UnifiedLogger:
     def get_logger(cls, name: str) -> logging.Logger:
         """Get or create a logger for the specified module."""
         
-        if not cls._configured:
-            # Auto-configure with defaults if not explicitly configured
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            log_file = f"logs/transcription_{timestamp}.log"
-            cls.configure(log_file=log_file)
-        
+        # 副作用(ルートロガー付け替え・ログファイル作成)を避けるため、ここでは自動設定しない。
+        # ハンドラ設定はエントリポイントが setup_logging() で明示的に行う。
         if name not in cls._loggers:
             logger = logging.getLogger(name)
             logger.setLevel(cls._log_level)
             cls._loggers[name] = logger
         
         return cls._loggers[name]
+
+
+_setup_done = False
+
+
+def setup_logging() -> None:
+    """エントリポイント(tc / transcribe.py / webui.py)から呼ぶ明示的なログ初期化。
+
+    冪等: 2回目以降は何もしない(ハンドラは重複しない)。
+    pytest実行時は本番ログ(logs/transcription.log)を汚さないよう
+    logs/transcription_test.log へ出力する(tc-ops #548)。
+    """
+    global _setup_done
+    if _setup_done:
+        return
+    log_file = (
+        "logs/transcription_test.log" if "pytest" in sys.modules else "logs/transcription.log"
+    )
+    UnifiedLogger.configure(
+        log_level="INFO",
+        log_file=log_file,
+        enable_console=True,
+        enable_file=True,
+    )
+    _setup_done = True
+    logging.getLogger("core").info("Core unified modules initialized")
 
 
 # Convenience functions for backward compatibility

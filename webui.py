@@ -40,7 +40,7 @@ from core.history import (
     delete_history_before,
     search_history,
 )
-from core.logging import get_logger
+from core.logging import get_logger, setup_logging
 from core.nemotron_engine import is_nemotron_model
 from core.transcription_interface import UnifiedTranscriber
 from core.webui_workflow import (
@@ -618,6 +618,7 @@ def _render_history_tab() -> None:
 
 
 def main() -> None:
+    setup_logging()
     _load_config()
     _warmup_qwen_asr()
     st.title("Transcribe Audio WebUI")

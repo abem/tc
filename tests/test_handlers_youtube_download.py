@@ -317,3 +317,52 @@ class TestDownloadAudioProgress:
         )
 
         assert os.path.exists(path)
+
+
+class TestTimeouts:
+    """tc-ops #550: yt-dlpが応答しなくなっても無期限に待たない(偽yt-dlpが固まる場合)。"""
+
+    HANG_SCRIPT = textwrap.dedent(
+        """\
+        #!{python}
+        import sys, time
+        time.sleep(30)
+        """
+    )
+
+    def _hanging_client(self, tmp_path):
+        script = tmp_path / "hang-yt-dlp"
+        script.write_text(self.HANG_SCRIPT.format(python=sys.executable), encoding="utf-8")
+        script.chmod(script.stat().st_mode | stat.S_IXUSR)
+        client = YouTubeClient(output_dir=str(tmp_path))
+        client.yt_dlp_path = str(script)
+        return client
+
+    def test_extract_video_info_times_out_with_empty_dict(self, tmp_path, monkeypatch):
+        monkeypatch.setattr("handlers.youtube.INFO_TIMEOUT_SECONDS", 1)
+
+        assert self._hanging_client(tmp_path).extract_video_info(YOUTUBE_URL) == {}
+
+    def test_download_audio_aborts_when_output_stalls(self, make_client, tmp_path, monkeypatch):
+        """情報取得は成功し、ダウンロード段階でyt-dlpが出力を止めたら TimeoutError で中断する。"""
+        monkeypatch.setattr("handlers.youtube.DOWNLOAD_STALL_TIMEOUT_SECONDS", 1)
+        client = make_client()
+        script = Path(client.yt_dlp_path)
+        script.write_text(
+            script.read_text(encoding="utf-8").replace(
+                'print("[download]  50.0% of 1.00MiB", flush=True)',
+                'import time; time.sleep(30)',
+            ),
+            encoding="utf-8",
+        )
+
+        with pytest.raises(TimeoutError):
+            client.download_audio(YOUTUBE_URL, output_path=str(tmp_path / "out" / "p.wav"))
+
+    def test_socket_timeout_is_passed_to_yt_dlp(self, make_client, tmp_path):
+        client = make_client()
+
+        client.download_audio(YOUTUBE_URL, output_path=str(tmp_path / "out" / "p.wav"))
+
+        for args in read_calls(tmp_path):
+            assert "--socket-timeout" in args

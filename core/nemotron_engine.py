@@ -46,6 +46,7 @@ from core.transcription_interface import (
     TranscriptionResult,
     TranscriptionSegment,
 )
+from core.utils import get_audio_duration
 
 # リポジトリルート(このファイルの1階層上)。venv-nemotron/・scripts/はここを基準に置く。
 _REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -245,19 +246,9 @@ class NemotronSubprocessEngine(TranscriptionEngine):
     def get_engine_name(self) -> str:
         return f"nemotron-{self.config.model}"
 
-    @staticmethod
-    def _get_audio_duration_fallback() -> float:
-        """音声長取得失敗時のフォールバック(既存エンジンと同一パターン)。"""
-        return 600.0  # デフォルト10分
-
     def _get_audio_duration(self, audio_path: str) -> float:
-        """音声ファイルの長さを取得(既存エンジンと同一パターン、soundfile優先)。"""
-        import soundfile as sf
-        try:
-            info = sf.info(audio_path)
-            return info.duration
-        except Exception:
-            return self._get_audio_duration_fallback()
+        """音声ファイルの長さを取得(共通関数 `core.utils.get_audio_duration`)。"""
+        return get_audio_duration(audio_path)
 
     def _resolve_language(self) -> str:
         """TranscriptionConfig.language を Nemotron の言語コード(例: ja-JP)へ変換する。

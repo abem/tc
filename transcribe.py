@@ -258,7 +258,7 @@ class TranscribeLoader:
                     input_source = default_url
                 else:
                     input_source = Prompt.ask("\n🎵 音声ソースを入力してください (URL/ファイルパス)")
-            except:
+            except Exception:
                 input_source = Prompt.ask("\n🎵 音声ソースを入力してください (URL/ファイルパス)")
         
         # 入力タイプ検出
@@ -298,7 +298,7 @@ class TranscribeLoader:
         else:
             try:
                 folder_id = UnifiedConfig.get('gdrive', 'upload_folder_id')
-            except:
+            except Exception:
                 pass
 
         # 処理実行

@@ -24,6 +24,7 @@ if TYPE_CHECKING:
 from core.config import TranscriptionConfig
 from core.logging import UnifiedLogger, PerformanceLogger
 from core.model_manager import get_global_model_manager
+from core.utils import DEFAULT_AUDIO_DURATION_SEC, get_audio_duration
 
 
 @dataclass
@@ -171,16 +172,11 @@ class WhisperTranscriptionEngine(TranscriptionEngine):
     
     def _get_audio_duration_fallback(self) -> float:
         """Fallback audio duration."""
-        return 600.0  # Default 10 minutes
-    
+        return DEFAULT_AUDIO_DURATION_SEC
+
     def _get_audio_duration(self, audio_path: str) -> float:
         """Get audio file duration."""
-        import librosa
-        try:
-            audio, sr = librosa.load(audio_path, sr=None)
-            return len(audio) / sr
-        except:
-            return self._get_audio_duration_fallback()
+        return get_audio_duration(audio_path)
     
     def _transcribe_with_original_logic(self, audio_path: str) -> str:
         """Transcribe using the original WhisperTranscriber logic for quality."""
@@ -923,19 +919,9 @@ class Qwen3ASREngine(TranscriptionEngine):
         mapping = {"japanese": "ja", "english": "en"}
         return mapping.get((name or "").lower(), name or "ja")
 
-    @staticmethod
-    def _get_audio_duration_fallback() -> float:
-        """音声長取得失敗時のフォールバック。"""
-        return 600.0  # デフォルト 10 分
-
     def _get_audio_duration(self, audio_path: str) -> float:
         """音声ファイルの長さを取得。"""
-        import soundfile as sf
-        try:
-            info = sf.info(audio_path)
-            return info.duration
-        except Exception:
-            return self._get_audio_duration_fallback()
+        return get_audio_duration(audio_path)
 
 
 class UnifiedTranscriber:

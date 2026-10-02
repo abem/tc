@@ -222,7 +222,6 @@ tc/
 ├── transcribe                  # transcribe.py を起動するシェルスクリプト
 ├── transcribe.py               # Rich UI対話型CLI
 ├── webui.py                    # WebUI（Streamlit）
-├── config.py                   # Google Drive 認証（get_drive_service）
 ├── suppress_warnings.py        # 警告抑制
 ├── config/
 │   ├── config.yaml            # 設定ファイル
@@ -239,6 +238,7 @@ tc/
 │   └── utils.py               # URL検出・デバイス解決
 ├── handlers/                  # 外部サービスハンドラー
 │   ├── gdrive.py              # Google Drive クライアント
+│   ├── gdrive_auth.py         # Google Drive の OAuth 認証（get_drive_service）
 │   └── youtube.py             # YouTube / X 音声抽出（yt-dlp）
 ├── scripts/                   # 補助スクリプト（E2E、Nemotron 用 venv 構築など）
 ├── tests/                     # テストファイル
@@ -476,7 +476,7 @@ MIT License
 
 ### v2025.11.21 - WSL環境対応とOAuth認証改善
 - 🔧 **WSL環境での認証フロー改善**
-  - `OAUTHLIB_INSECURE_TRANSPORT`環境変数の設定
+  - `OAUTHLIB_INSECURE_TRANSPORT`環境変数の設定（現在は再認証に入るときだけ設定）
   - 手動認証フロー（localhostリダイレクト対応）
   - WSL環境でのブラウザ起動問題を解決
 - 🎯 **音声処理エンジンの安定化**

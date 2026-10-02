@@ -55,7 +55,7 @@ gdrive:
   `--folder-id` 引数 > `upload_folder_id` > 元ファイルと同じフォルダ。YouTube 入力のアップロード先は
   この設定の対象外です（`handlers/gdrive.py` の `upload_youtube_transcription` が決めるフォルダに保存されます）。
 - **認証ファイル**: `credentials.json` と `token.pickle` は、実行したディレクトリ直下の固定名のファイルを使います
-  （`config.py` の `get_drive_service`）。`config.yaml` でファイル名は変えられません。
+  （`handlers/gdrive_auth.py` の `get_drive_service`）。`config.yaml` でファイル名は変えられません。
   `token.pickle` が無い・無効な場合は、初回に認証URLが表示され、ブラウザで認証後に
   リダイレクト先の完全なURLを貼り付ける対話式の認証になります。
 

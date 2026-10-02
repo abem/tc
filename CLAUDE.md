@@ -135,6 +135,7 @@
   - `core/utils.py`: URL検出・デバイス解決ユーティリティ
 - `handlers/`: 外部サービスハンドラー
   - `handlers/gdrive.py`: GDriveClient（Google Drive操作）
+  - `handlers/gdrive_auth.py`: Google Drive の OAuth 認証（`get_drive_service`）
   - `handlers/youtube.py`: YouTubeClient（YouTube音声抽出）
 - `transcribe.py`: Rich UI対話型CLI（プロファイル選択式）
 - `tc`: config/config.yaml連携の推奨CLI（argparseベース、オプション指定可）
@@ -297,7 +298,7 @@ print('✓ Core system check passed')
 "
 
 # 3. 重要システムの確認
-uv run python -c "from config import get_drive_service; print('✓ Drive service check passed')"
+uv run python -c "from handlers.gdrive_auth import get_drive_service; print('✓ Drive service check passed')"
 ```
 
 ---

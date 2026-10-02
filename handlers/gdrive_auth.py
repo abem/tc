@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+"""Google Drive API の認証(OAuth)。`get_drive_service()` が Drive サービスを返す。"""
 from __future__ import annotations
 import os
 from typing import Any
@@ -7,9 +7,6 @@ from google.auth.transport.requests import Request
 from googleapiclient.discovery import build
 import pickle
 from core.logging import get_logger
-
-# ローカル開発環境でのHTTP使用を許可（localhostのみ）
-os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1'
 
 # ロガーの設定
 logger = get_logger(__name__)
@@ -66,6 +63,9 @@ def get_drive_service(credentials_path: str = "credentials.json", token_path: st
                 print("="*70)
 
                 redirect_response = input("\nリダイレクトされた完全なURLを貼り付けてEnterを押してください: ").strip()
+                # localhostリダイレクト(http)のトークン交換を許可する。import時ではなく、この対話的な
+                # 再認証に入るときだけ設定する(再認証しない通常起動でプロセス環境を変えない)。
+                os.environ.setdefault("OAUTHLIB_INSECURE_TRANSPORT", "1")
                 flow.fetch_token(authorization_response=redirect_response)
                 creds = flow.credentials
 

@@ -91,7 +91,6 @@ tc/
 ├── transcribe                  # transcribe.py を起動するシェルスクリプト
 ├── transcribe.py               # Rich UI対話型CLI
 ├── webui.py                    # WebUI（Streamlit）
-├── config.py                   # Google Drive 認証（get_drive_service）
 ├── suppress_warnings.py        # 警告抑制システム
 ├── config/
 │   ├── config.yaml            # 設定ファイル
@@ -110,6 +109,7 @@ tc/
 ├── handlers/                  # 外部サービスハンドラー
 │   ├── __init__.py
 │   ├── gdrive.py              # Google Drive クライアント
+│   ├── gdrive_auth.py         # Google Drive の OAuth 認証（get_drive_service）
 │   └── youtube.py             # YouTube / X 音声抽出
 ├── scripts/                   # E2E、Nemotron 用 venv 構築などの補助スクリプト
 ├── docs/                      # ドキュメント

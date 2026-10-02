@@ -226,7 +226,7 @@ url = client.get_file_url(file_id)
 ```
 
 `GDriveClient(credentials_path: str = "credentials.json")` です。Drive のサービスは最初に必要になった時点で
-初期化されます（認証は `config.py` の `get_drive_service()`）。主なメソッド:
+初期化されます（認証は `handlers/gdrive_auth.py` の `get_drive_service()`）。主なメソッド:
 
 - `download_file(file_id: str, output_path: str) -> None`
 - `download(file_id_or_url: str) -> Path`: URL またはファイルIDから一時ファイルへダウンロードします

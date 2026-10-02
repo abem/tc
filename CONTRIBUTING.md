@@ -152,7 +152,7 @@ def transcribe_audio(audio_path: str, language: str = "ja") -> TranscriptionResu
 - Report security issues privately
 
 ### Credential Management
-Google Drive の認証ファイルは、`config.py` の `get_drive_service()` が既定でカレントディレクトリの
+Google Drive の認証ファイルは、`handlers/gdrive_auth.py` の `get_drive_service()` が既定でカレントディレクトリの
 `credentials.json` / `token.pickle` を読み書きする(`handlers/gdrive.py` の `GDriveClient` は引数なしで呼ぶ)。
 どちらもコミットしない。
 

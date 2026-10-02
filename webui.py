@@ -13,7 +13,6 @@ Phase2最小構成(URL入力→文字起こし→履歴表示)。設計書:
 from __future__ import annotations
 
 import os
-import sqlite3
 import threading
 import time
 import uuid
@@ -35,6 +34,12 @@ from core.cli_workflow import (
     upload_transcription_result,
 )
 from core.config import SystemConfig, TranscriptionConfig, UnifiedConfig
+from core.history import (
+    connect_history,
+    count_history_before,
+    delete_history_before,
+    search_history,
+)
 from core.logging import get_logger
 from core.nemotron_engine import is_nemotron_model
 from core.transcription_interface import UnifiedTranscriber
@@ -501,26 +506,10 @@ def _render_queue_and_result() -> None:
                     st.error(f"文字起こしに失敗しました: {item.error_message}")
 
 
-def _count_history_before(conn: sqlite3.Connection, cutoff_date: date) -> int:
-    """`processed_at`が`cutoff_date`より前(境界日当日は含まない)の変換履歴件数を返す
-    (WebUI履歴削除機能)。既存の日付絞り込み(`date(processed_at) >= date(?)`等)と同じ
-    パターン(SQLiteの`date()`関数で日付部分のみ比較、値自体はPython側で計算)を踏襲する。"""
-    row = conn.execute(
-        "SELECT COUNT(*) FROM transcription_history WHERE date(processed_at) < date(?)",
-        (cutoff_date.isoformat(),),
-    ).fetchone()
-    return row[0] if row else 0
-
-
-def _delete_history_before(conn: sqlite3.Connection, cutoff_date: date) -> int:
-    """`processed_at`が`cutoff_date`より前の変換履歴を削除し、実際の削除件数を返す。
-    `output/`配下のファイル実体・Google Drive上のファイルは削除しない(要件どおり、DB行のみ)。"""
-    cursor = conn.execute(
-        "DELETE FROM transcription_history WHERE date(processed_at) < date(?)",
-        (cutoff_date.isoformat(),),
-    )
-    conn.commit()
-    return cursor.rowcount
+# 履歴DB操作は core.history へ移設済み。既存テスト(tests/test_webui_history_cleanup.py)が
+# webui._count_history_before / _delete_history_before を参照するため同名エイリアスを残す。
+_count_history_before = count_history_before
+_delete_history_before = delete_history_before
 
 
 def _render_history_cleanup_section() -> None:
@@ -537,9 +526,9 @@ def _render_history_cleanup_section() -> None:
         )
         if st.button("① 対象件数を確認", key="history_cleanup_check"):
             cutoff = date.today() - timedelta(days=int(n_days))
-            conn = sqlite3.connect(str(DEFAULT_HISTORY_DB_PATH))
+            conn = connect_history(DEFAULT_HISTORY_DB_PATH)
             try:
-                count = _count_history_before(conn, cutoff)
+                count = count_history_before(conn, cutoff)
             finally:
                 conn.close()
             st.session_state["history_cleanup_confirm"] = {
@@ -557,9 +546,9 @@ def _render_history_cleanup_section() -> None:
                     "ファイルは削除されません)。"
                 )
                 if st.button(f"② {confirm['count']}件を削除する", key="history_cleanup_execute"):
-                    conn = sqlite3.connect(str(DEFAULT_HISTORY_DB_PATH))
+                    conn = connect_history(DEFAULT_HISTORY_DB_PATH)
                     try:
-                        deleted = _delete_history_before(conn, confirm["cutoff_date"])
+                        deleted = delete_history_before(conn, confirm["cutoff_date"])
                     finally:
                         conn.close()
                     st.session_state.pop("history_cleanup_confirm", None)
@@ -585,29 +574,9 @@ def _render_history_tab() -> None:
 
     _render_history_cleanup_section()
 
-    conn = sqlite3.connect(str(DEFAULT_HISTORY_DB_PATH))
-    conn.row_factory = sqlite3.Row
+    conn = connect_history(DEFAULT_HISTORY_DB_PATH)
     try:
-        query = "SELECT * FROM transcription_history"
-        conditions = []
-        params: list = []
-        if date_from:
-            conditions.append("date(processed_at) >= date(?)")
-            params.append(date_from.isoformat())
-        if date_to:
-            conditions.append("date(processed_at) <= date(?)")
-            params.append(date_to.isoformat())
-        if search_keyword:
-            # フレーズ全体を1トークン列として扱う(MATCH演算子の誤解釈を避けるため" "で囲む)。
-            escaped_keyword = search_keyword.replace('"', '""')
-            conditions.append(
-                "id IN (SELECT rowid FROM transcription_history_fts WHERE transcription_history_fts MATCH ?)"
-            )
-            params.append(f'"{escaped_keyword}"')
-        if conditions:
-            query += " WHERE " + " AND ".join(conditions)
-        query += " ORDER BY processed_at DESC"
-        rows = conn.execute(query, params).fetchall()
+        rows = search_history(conn, date_from=date_from, date_to=date_to, keyword=search_keyword)
     finally:
         conn.close()
 

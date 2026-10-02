@@ -1,4 +1,4 @@
-"""アップロード領域(output/uploads)の古いファイルの整理(tc-ops #578)。"""
+"""WebUIの作業領域(output/uploads、output/queue_downloads)の古い項目の整理(tc-ops #578)。"""
 
 import os
 import time
@@ -7,7 +7,7 @@ from unittest.mock import patch
 
 import pytest
 
-from core.uploads import cleanup_old_uploads
+from core.housekeeping import cleanup_old_entries
 
 DAY = 86400
 
@@ -31,7 +31,7 @@ class TestCleanupOldUploads:
         old = _make_upload(tmp_path, "old", age_days=10)
         recent = _make_upload(tmp_path, "recent", age_days=1)
 
-        removed = cleanup_old_uploads(tmp_path, max_age_days=7)
+        removed = cleanup_old_entries(tmp_path, max_age_days=7)
 
         assert removed == ["old"]
         assert not old.exists()
@@ -40,7 +40,7 @@ class TestCleanupOldUploads:
     def test_boundary_just_under_the_limit_is_kept(self, tmp_path):
         kept = _make_upload(tmp_path, "kept", age_days=6.9)
 
-        assert cleanup_old_uploads(tmp_path, max_age_days=7) == []
+        assert cleanup_old_entries(tmp_path, max_age_days=7) == []
         assert kept.exists()
 
     def test_removes_old_legacy_flat_files_from_before_per_upload_dirs(self, tmp_path):
@@ -50,7 +50,7 @@ class TestCleanupOldUploads:
         fresh = tmp_path / "fresh.wav"
         fresh.write_bytes(b"x")
 
-        removed = cleanup_old_uploads(tmp_path, max_age_days=7)
+        removed = cleanup_old_entries(tmp_path, max_age_days=7)
 
         assert removed == ["meeting.wav"]
         assert not legacy.exists() and fresh.exists()
@@ -59,7 +59,7 @@ class TestCleanupOldUploads:
         busy = _make_upload(tmp_path, "busy", age_days=30)
         idle = _make_upload(tmp_path, "idle", age_days=30)
 
-        removed = cleanup_old_uploads(tmp_path, max_age_days=7, protected_paths=[busy / "a.wav"])
+        removed = cleanup_old_entries(tmp_path, max_age_days=7, protected_paths=[busy / "a.wav"])
 
         assert removed == ["idle"]
         assert busy.exists() and not idle.exists()
@@ -74,14 +74,14 @@ class TestCleanupOldUploads:
         link.symlink_to(outside, target_is_directory=True)
         os.utime(link, (time.time() - 30 * DAY,) * 2, follow_symlinks=False)
 
-        removed = cleanup_old_uploads(area, max_age_days=7)
+        removed = cleanup_old_entries(area, max_age_days=7)
 
         assert removed == []
         assert link.is_symlink()
         assert (outside / "precious.txt").read_text() == "keep"
 
     def test_missing_directory_is_a_noop(self, tmp_path):
-        assert cleanup_old_uploads(tmp_path / "nope", max_age_days=7) == []
+        assert cleanup_old_entries(tmp_path / "nope", max_age_days=7) == []
 
     def test_one_failure_does_not_stop_the_rest(self, tmp_path):
         _make_upload(tmp_path, "a_old", age_days=10)
@@ -93,8 +93,8 @@ class TestCleanupOldUploads:
                 raise OSError("busy")
             return real_rmtree(path, *args, **kwargs)
 
-        with patch("core.uploads.shutil.rmtree", side_effect=flaky):
-            removed = cleanup_old_uploads(tmp_path, max_age_days=7)
+        with patch("core.housekeeping.shutil.rmtree", side_effect=flaky):
+            removed = cleanup_old_entries(tmp_path, max_age_days=7)
 
         assert removed == ["b_old"]
         assert (tmp_path / "a_old").exists() and not (tmp_path / "b_old").exists()
@@ -104,12 +104,12 @@ class TestCleanupOldUploads:
         _make_upload(tmp_path, "x", age_days=100)
 
         with pytest.raises(ValueError):
-            cleanup_old_uploads(tmp_path, max_age_days=bad)
+            cleanup_old_entries(tmp_path, max_age_days=bad)
         assert (tmp_path / "x").exists()
 
 
 class TestWebuiSweep:
-    """webui._sweep_old_uploads: 処理待ち・処理中のアップロードは古くても消さない。"""
+    """webui._sweep_old_files: 処理待ち・処理中のジョブが使うファイルは古くても消さない。"""
 
     def _setup(self, tmp_path, monkeypatch):
         import webui
@@ -141,7 +141,7 @@ class TestWebuiSweep:
             ]
         )
 
-        webui._sweep_old_uploads(queue)
+        webui._sweep_old_files(queue)
 
         assert queued.exists() and recent.exists()
         assert not done.exists()
@@ -150,6 +150,44 @@ class TestWebuiSweep:
         from types import SimpleNamespace
 
         webui, _ = self._setup(tmp_path, monkeypatch)
-        monkeypatch.setattr(webui, "cleanup_old_uploads", lambda *a, **k: (_ for _ in ()).throw(OSError("boom")))
+        monkeypatch.setattr(webui, "cleanup_old_entries", lambda *a, **k: (_ for _ in ()).throw(OSError("boom")))
 
-        webui._sweep_old_uploads(SimpleNamespace(items=[]))  # 例外を出さない
+        webui._sweep_old_files(SimpleNamespace(items=[]))  # 例外を出さない
+
+
+class TestWebuiSweepQueueDownloads:
+    """output/queue_downloads/<トークン>/ (URL入力のダウンロード)は1日で整理する。"""
+
+    def test_removes_old_token_dirs_but_keeps_recent_and_in_use(self, tmp_path, monkeypatch):
+        from types import SimpleNamespace
+
+        import webui
+        from core.webui_workflow import QueueItemState
+
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setattr(webui, "UPLOAD_DIR", Path("output/uploads"))
+        monkeypatch.setattr(webui, "DOWNLOAD_DIR", Path("output/queue_downloads"))
+        area = tmp_path / "output" / "queue_downloads"
+        old_done = _make_upload(area, "olddone", name="x.wav", age_days=3)
+        old_failed = _make_upload(area, "oldfail", name="v.mp4.part", age_days=40)
+        in_use = _make_upload(area, "inuse", name="y.wav", age_days=3)
+        recent = _make_upload(area, "recent", name="z.wav", age_days=0)
+        queue = SimpleNamespace(
+            items=[
+                SimpleNamespace(
+                    state=QueueItemState.QUEUED,
+                    resolution=SimpleNamespace(source_type="youtube", local_audio_path=str(in_use / "y.wav")),
+                )
+            ]
+        )
+
+        webui._sweep_old_files(queue)
+
+        assert not old_done.exists() and not old_failed.exists()
+        assert in_use.exists() and recent.exists()
+
+    def test_retention_constants(self):
+        import webui
+
+        assert webui.UPLOAD_RETENTION_DAYS == 7
+        assert webui.DOWNLOAD_RETENTION_DAYS == 1

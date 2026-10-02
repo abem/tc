@@ -43,7 +43,7 @@ from core.history import (
 from core.logging import get_logger, setup_logging
 from core.nemotron_engine import is_nemotron_model
 from core.transcription_interface import UnifiedTranscriber
-from core.uploads import cleanup_old_uploads
+from core.housekeeping import cleanup_old_entries
 from core.utils import sanitize_upload_filename
 from core.webui_workflow import (
     QueueItem,
@@ -64,6 +64,8 @@ logger = get_logger(__name__)
 
 UPLOAD_DIR = Path("output/uploads")
 UPLOAD_RETENTION_DAYS = 7  # アップロードの保持日数。これを過ぎた項目は新しい投入のたびに整理する(docs/spec D7)
+DOWNLOAD_DIR = Path("output/queue_downloads")  # URL入力のダウンロード(<トークン>/ごと)
+DOWNLOAD_RETENTION_DAYS = 1  # 処理後の音声は消えるので、残るのは空ディレクトリや失敗時の部分ファイル(docs/spec D8)
 
 
 def _load_config() -> None:
@@ -285,20 +287,19 @@ def _start_resolution_job(
     threading.Thread(target=_run, daemon=True).start()
 
 
-def _sweep_old_uploads(job_queue: TranscriptionJobQueue) -> None:
-    """保持期間を過ぎたアップロードを整理する。処理待ち・処理中のジョブが使うファイルは消さない。
-    整理の失敗で投入を止めない。"""
+def _sweep_old_files(job_queue: TranscriptionJobQueue) -> None:
+    """保持期間を過ぎたアップロードとダウンロードの作業領域を整理する。処理待ち・処理中のジョブが
+    使うファイルは消さない。整理の失敗で投入を止めない。"""
     try:
         in_use = [
             item.resolution.local_audio_path
             for item in job_queue.items
-            if item.state in (QueueItemState.QUEUED, QueueItemState.PROCESSING)
-            and item.resolution is not None
-            and item.resolution.source_type == "local"
+            if item.state in (QueueItemState.QUEUED, QueueItemState.PROCESSING) and item.resolution is not None
         ]
-        cleanup_old_uploads(UPLOAD_DIR, UPLOAD_RETENTION_DAYS, protected_paths=in_use)
-    except Exception as e:  # noqa: BLE001 - 整理は付随処理。投入そのものは続ける
-        logger.warning("アップロードの整理に失敗しました(投入は続行): %s", e)
+        cleanup_old_entries(UPLOAD_DIR, UPLOAD_RETENTION_DAYS, protected_paths=in_use)
+        cleanup_old_entries(DOWNLOAD_DIR, DOWNLOAD_RETENTION_DAYS, protected_paths=in_use)
+    except Exception as e:  # noqa: BLE001 - 整理は付随処理。投入そのものは続行する
+        logger.warning("作業領域の整理に失敗しました(投入は続行): %s", e)
 
 
 def _enqueue_job(form_values: Dict[str, Any], settings_values: Dict[str, Any], context_value: str) -> None:
@@ -322,7 +323,7 @@ def _enqueue_job(form_values: Dict[str, Any], settings_values: Dict[str, Any], c
         form_values.get("source_url") or "(none)",
         form_values["uploaded_file"].name if form_values.get("uploaded_file") is not None else "(none)",
     )
-    download_dir = Path("output") / "queue_downloads" / token
+    download_dir = DOWNLOAD_DIR / token
 
     # 解決済みdevice・context_valueをjob_settingsへ書き戻す(record_transcription_history()に
     # 渡る際、未解決の"auto"のままcontext_hints_used=0固定で記録されるのを防ぐため。査sa指摘是正)。
@@ -333,7 +334,7 @@ def _enqueue_job(form_values: Dict[str, Any], settings_values: Dict[str, Any], c
     label = form_values["source_url"] or form_values["uploaded_file"].name
 
     job_queue = _get_queue()
-    _sweep_old_uploads(job_queue)
+    _sweep_old_files(job_queue)
     item = job_queue.enqueue_pending(label=label, settings=job_settings)
     logger.info("enqueue(pending)完了 token=%s item_id=%s", token, item.item_id)
 

@@ -18,6 +18,7 @@ from core.logging import get_logger
 from core.progress import emit_progress, parse_ytdlp_progress
 from core.utils import is_youtube_url as check_is_youtube_url
 from core.utils import is_twitter_url as check_is_twitter_url
+from core.utils import one_line
 
 logger = get_logger(__name__)
 
@@ -72,7 +73,7 @@ class YouTubeClient:
                 return {}
 
         except subprocess.TimeoutExpired:
-            logger.error(f"Timed out getting video info ({INFO_TIMEOUT_SECONDS}s): {url}")
+            logger.error(f"Timed out getting video info ({INFO_TIMEOUT_SECONDS}s): {one_line(url)}")
             return {}
         except Exception as e:
             logger.error(f"Error extracting video info: {e}")
@@ -105,7 +106,7 @@ class YouTubeClient:
         video_id = video_info.get('id', 'unknown')
         duration = video_info.get('duration', 0)
 
-        logger.info(f"Video title: {video_title}")
+        logger.info(f"Video title: {one_line(video_title)}")
         logger.info(f"Video duration: {duration}s")
 
         if output_path is None:
@@ -130,7 +131,7 @@ class YouTubeClient:
         ]
 
         try:
-            logger.info(f"Starting audio extraction: {url}")
+            logger.info(f"Starting audio extraction: {one_line(url)}")
 
             process = subprocess.Popen(
                 cmd,

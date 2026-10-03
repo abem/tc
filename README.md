@@ -105,6 +105,16 @@ whisper:
 
 動作だけ確認したいときは `./tc --dry-run` を使います（設定読み込みと入力解決までで終了し、文字起こしはしません）。
 
+ブラウザから使いたいときは WebUI（Streamlit）を起動します。URL またはファイルを投入すると、進捗バーつきで順に処理し、
+履歴も検索できます。
+
+```bash
+uv run streamlit run webui.py --server.headless true --server.port 8501
+# 起動後、ブラウザで http://localhost:8501 を開く
+```
+
+機能・保存先・自動削除・本番での常駐（systemd）は、[WebUI（Streamlit）](#webuistreamlit) の節を参照してください。
+
 ## 💻 使用方法
 
 ### 基本実行

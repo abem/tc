@@ -42,7 +42,7 @@ for a in "$@"; do
     --dry-run) DRY_RUN=1 ;;
     --force-restart) FORCE_RESTART=1 ;;
     --no-restart) NO_RESTART=1 ;;
-    -h|--help) sed -n '2,31p' "$0"; exit 0 ;;
+    -h|--help) awk 'NR>1 && /^#/ {print substr($0,3); next} NR>1 {exit}' "$0"; exit 0 ;;
     --*) echo "不明なオプション: $a (--help を参照)" >&2; exit 2 ;;
     *) ARGS+=("$a") ;;
   esac
@@ -113,7 +113,11 @@ from datetime import datetime
 log, since = sys.argv[1], sys.argv[2]
 ts_re = re.compile(r"^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})")
 tr_re = re.compile(r"状態遷移 item_id=(\d+) (?:\(新規\)|\w+)->(\w+)")
-state = {}
+# item_id はブラウザセッションごとに 1 から採番されるため、別セッションの項目と衝突する。
+# item_id で最後の状態を上書きすると、別セッションの終了(DONE / FAILED)が、処理中の項目を隠してしまう。
+# そこで、項目の作成(`(新規)->...`)と終了(`->DONE` / `->FAILED`)の回数を item_id ごとに数え、
+# 作成が終了を上回っている(=終了していない項目がある)かで判断する。
+open_count = {}
 last_dispatch = None
 with open(log, encoding="utf-8", errors="replace") as f:
     for line in f:
@@ -122,13 +126,19 @@ with open(log, encoding="utf-8", errors="replace") as f:
             continue
         t = tr_re.search(line)
         if t:
-            state[t.group(1)] = t.group(2)
+            item_id, to_state = t.group(1), t.group(2)
+            if "(新規)->" in line:
+                open_count[item_id] = open_count.get(item_id, 0) + 1
+            elif to_state in ("DONE", "FAILED"):
+                # ログの窓の外(ローテーションなど)で作られた項目の終了は、他の項目の開始を打ち消さない
+                open_count[item_id] = max(open_count.get(item_id, 0) - 1, 0)
         if "dispatch_next呼び出し" in line:
             last_dispatch = (m.group(1), line)
-busy = {i: s for i, s in state.items() if s not in ("DONE", "FAILED")}
+busy = {i: c for i, c in open_count.items() if c > 0}
 if busy:
-    i, s = sorted(busy.items())[0]
-    print(f"BUSY: ジョブが終了していません(item_id={i} が {s}。ほか{len(busy) - 1}件)")
+    i, c = sorted(busy.items())[0]
+    total = sum(busy.values())
+    print(f"BUSY: ジョブが終了していません(item_id={i} など{total}件。ログに開始があり終了が無い)")
     sys.exit(0)
 if last_dispatch:
     when, line = last_dispatch

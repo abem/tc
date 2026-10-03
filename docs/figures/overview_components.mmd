@@ -1,0 +1,12 @@
+flowchart TD
+  IN["入口<br/>tc<br/>transcribe.py<br/>webui.py"]
+  WF["共通の処理<br/>cli_workflow<br/>入力解決と<br/>保存・履歴"]
+  ENG["エンジン<br/>Qwen3-ASR<br/>Whisper<br/>Nemotron"]
+  YT["yt-dlp<br/>YouTube・X"]
+  GD["Google Drive"]
+  OUT["output/<br/>テキスト<br/>history.db"]
+  IN --> WF
+  IN --> ENG
+  WF --> YT
+  WF --> GD
+  WF --> OUT

@@ -1,6 +1,10 @@
 # トラブルシューティングガイド 🛠️
 
-音声文字起こしシステムで発生する可能性のある問題と解決方法を網羅的にまとめました。
+音声文字起こしシステムで発生する可能性のある問題と解決方法をまとめました。
+
+見出しの書き方は 2 種類です。`エラー: ...` は、このリポジトリのコードが出す文言（画面やログにそのまま出ます）です。
+`現象: ...` は、外部ライブラリ（PyTorch、yt-dlp、Google API など）が原因で、エラーの文が一定しないものです。
+外部ライブラリが出す文言には、出典を書きました。
 
 ## 📋 目次
 
@@ -50,21 +54,17 @@ uv sync
 #   pyproject.toml の依存を編集して uv sync してください。
 ```
 
-### エラー: `Python version 3.x.x is not supported`
+### 現象: `uv sync` が Python 3.12 を要求して失敗する
 
-**原因:** Python のバージョンが古い
+**原因:** このプロジェクトは Python 3.12 以上が必要です（`pyproject.toml` の `requires-python = ">=3.12"`）。
+uv が使える Python 3.12 以上を見つけられていません。エラーの文は uv が出すもので、このリポジトリには無い文言です。
 
 **解決策:**
 ```bash
-# Pythonバージョン確認
-python3 --version
+# Python 3.12 を uv で入れる
+uv python install 3.12
 
-# Python 3.12以上が必要
-# Ubuntu/Debian の場合
-sudo apt update
-sudo apt install python3.12 python3.12-venv
-
-# uv で依存関係インストール (.venv を自動作成)
+# 依存関係をインストール (.venv を自動作成)
 uv sync
 ```
 
@@ -110,7 +110,9 @@ rm -rf venv-nemotron
 
 ## ⚡ GPU・CUDA関連
 
-### エラー: `CUDA out of memory`
+### 現象: `CUDA out of memory`
+
+出典: PyTorch が出す文言です（このリポジトリのコードには無い）。
 
 **原因:** GPU メモリ不足
 
@@ -131,9 +133,15 @@ sudo kill -9 <process_id>
 # Pythonプロセス再起動
 ```
 
-### エラー: `CUDA device not found`
+### 現象: CUDA が使えない（`torch.cuda.is_available()` が `False`）
+
+このリポジトリのコードに `CUDA device not found` という文言はありません。`--device cuda`（または `config.yaml` の
+`device: cuda`）で GPU が使えないときの文は PyTorch 側のもので、一定しません。
 
 **原因:** CUDA ドライバーまたはPyTorchのCUDA版がインストールされていない
+
+**まず試すこと:** `--device auto` なら、CUDA が使えるときは `cuda`、使えないときは `cpu` になります
+（`core/utils.py` の `resolve_device`）。
 
 **解決策:**
 ```bash
@@ -150,7 +158,9 @@ rm -rf .venv
 uv sync
 ```
 
-### エラー: `RuntimeError: No CUDA GPUs are available`
+### 現象: `RuntimeError: No CUDA GPUs are available`
+
+出典: PyTorch が出す文言です（このリポジトリのコードには無い）。
 
 **原因:** GPU が認識されていない、またはドライバーの問題
 
@@ -171,7 +181,9 @@ sudo apt install nvidia-driver-535  # 適切なバージョン
 sudo reboot
 ```
 
-### エラー: `torch.cuda.OutOfMemoryError` (継続的に発生)
+### 現象: `torch.cuda.OutOfMemoryError` (継続的に発生)
+
+出典: PyTorch の例外名です（このリポジトリのコードには無い）。
 
 **原因:** GPUメモリリークまたは断片化
 
@@ -193,9 +205,9 @@ sudo nvidia-smi --gpu-reset
 
 ## 🎵 音声処理関連
 
-### エラー: `入力を認識できません` / `Audio file not found`
+### エラー: `入力を認識できません: <入力>`
 
-**原因:** 入力のファイルが存在しない、またはURLの形式が対応外
+**原因:** 入力のファイルが存在しない、またはURLの形式が対応外（`./tc` は終了コード 1 で止まります）
 
 `./tc` が受け付ける入力は、YouTube の動画URL、X（旧 Twitter）の動画投稿URL
 （`https://x.com/<ユーザー名>/status/<数字>` 形式）、Google Drive のURL（`https://drive.google.com/...`）、
@@ -217,6 +229,10 @@ ffmpeg -i audio.ogg audio.wav
 
 WebUI でアップロードできるファイルは `wav` / `mp3` / `mp4` / `m4a` / `flac` / `ogg` です
 （`core/config.py` の `SystemConfig.allowed_file_types`）。
+
+`Audio file not found: <パス>`（`FileNotFoundError`）は、エンジンが音声ファイルを開く直前の確認が出す文言です。
+`./tc` と `./transcribe.py` は、入力の認識の段階で先に `入力を認識できません` で止まるため、通常はこの文言には
+なりません（Python API から直接呼んだときや、入力の認識のあとでファイルが消えたときに出ます）。
 
 ### 警告: `チャンクが失敗し` / `反復ループを検出しました`
 
@@ -241,7 +257,10 @@ ffmpeg -i long_audio.wav -ss 1800 -t 1800 -c copy part2.wav
 ./tc part2.wav --language ja
 ```
 
-### エラー: `Unable to load audio file`
+### 現象: 音声ファイルが読み込めない（`Unable to load audio file` ではない）
+
+このリポジトリのコードに `Unable to load audio file` という文言はありません。音声のデコードは librosa などの
+外部ライブラリが行い、読めないときの文は一定しません。
 
 **原因:** 音声ファイルが破損またはエンコードの問題
 
@@ -257,9 +276,13 @@ ffprobe -v error -show_format -show_streams audio.wav
 ffmpeg -i audio.wav -ar 16000 -ac 1 -c:a pcm_s16le clean_audio.wav
 ```
 
-### エラー: `Sample rate not supported`
+### 現象: サンプリングレートが原因ではないかと疑うとき
 
-**原因:** 非対応のサンプリングレート
+このリポジトリのコードに `Sample rate not supported` という文言はありません。Qwen3-ASR（長音声）・Whisper・Nemotron は、
+音声を読み込む時点で 16 kHz に変換する実装なので、サンプリングレートだけが原因になることは通常ありません。
+読み込みに失敗するときは、前の項目（音声ファイルが読み込めない）と同じ手順を試してください。
+
+手動で 16 kHz に揃えて試す場合:
 
 **解決策:**
 ```bash
@@ -275,10 +298,33 @@ ffmpeg -i audio.wav -ar 16000 audio_16khz.wav
 
 ## 📺 YouTube・Google Drive関連
 
+### エラー: `yt-dlp が見つかりません。プロジェクトのディレクトリで uv sync …`
+
+文言の全体は `yt-dlp が見つかりません。プロジェクトのディレクトリで `uv sync` を実行して依存関係をインストールしてください(自動インストールは行いません)。` です。
+
+**原因:** yt-dlp の実行ファイルを、`PATH`、現在の Python と同じ `bin/`、実行したディレクトリの `.venv/bin/yt-dlp` の
+順に探しても見つからなかった。自動で `pip install` はしません（uv 管理の `.venv` を書き換えないため）。
+
+**解決策:**
+```bash
+# プロジェクトのディレクトリで依存関係を同期する（yt-dlp は pyproject.toml の依存に入っている）
+uv sync
+
+# 確認
+uv run yt-dlp --version
+```
+
+入口ごとの見え方:
+- `./tc`: ログに `ERROR` として出て、終了コード 1 で止まります。
+- `./transcribe.py`: このエラー（`YtDlpNotFoundError`）を捕捉せず、トレースバックで終了します（終了コード 1）。
+- WebUI: 該当の項目が失敗になり、完了済み一覧の `[失敗]` に同じ文が出ます。
+
 ### エラー: `Failed to get video info` / `Audio extraction failed`
 
-**原因:** YouTube / X のURLの形式、プライベート動画、地域制限、または yt-dlp が動画の取得に失敗した
-（YouTube と X の動画は yt-dlp で取得します）
+**原因:** YouTube / X のURLの形式、プライベート動画、削除された動画、地域制限、ネットワークの不調、または
+yt-dlp が動画の取得に失敗した（YouTube と X の動画は yt-dlp で取得します）。取得できなかった理由は、
+同じ時刻のログ（`logs/transcription.log`）の `Failed to get video info: ...` の行に、yt-dlp のエラー文として
+出ます。
 
 **解決策:**
 ```bash
@@ -293,7 +339,29 @@ uv run yt-dlp --extract-audio --audio-format wav "動画のURL"
 uv run yt-dlp --version
 ```
 
-### エラー: `Google Drive authentication failed` / `Google Drive APIの認証に失敗しました`
+ブラウザで開いて公開されていない動画のときは、公開動画のURLで試してください。
+
+### 取得が止まる・タイムアウトで失敗する（yt-dlp）
+
+yt-dlp の呼び出しには、次のタイムアウトがあります（`handlers/youtube.py`）。
+
+| 場面 | 上限 | 画面・ログの文言 |
+|------|------|------------------|
+| メタデータの取得 | 60 秒 | ログに `Timed out getting video info (60s): <URL>`、続けて `Failed to get video info` で止まる |
+| ダウンロード中に yt-dlp の出力が途絶える | 300 秒 | `yt-dlp出力が300秒間停止したため中断: <URL>` |
+| 単発の通信の無応答 | 30 秒 | yt-dlp 自身が検知する（`--socket-timeout 30`）。そのあとの文は yt-dlp が出す |
+
+どれも、再実行すると解消することがあります（一時的なネットワークの不調など）。繰り返すときは、
+`uv run yt-dlp --version` と手動ダウンロード（上の「手動ダウンロード」）で、yt-dlp 単体で取得できるか確認してください。
+ダウンロードの途中で止まったときの部分ファイル（`.part` など）は、削除されずに残ることがあります。`./tc` では
+`--output-dir`（既定は `output/`）に、WebUI では `output/queue_downloads/<トークン>/` に残り、WebUI のものは 1 日を過ぎると
+自動で削除されます。
+
+### エラー: `Google Drive APIの認証に失敗しました: …`
+
+英語の `Google Drive authentication failed` という文言はありません。画面とログには日本語の
+`Google Drive APIの認証に失敗しました: <原因>`（`handlers/gdrive_auth.py`）が出ます。`<原因>` には、
+認証ファイルが無いなどの具体的な理由が入ります。
 
 **原因:** 認証ファイルまたは権限の問題
 
@@ -317,35 +385,34 @@ chmod 600 credentials.json
   バックグラウンド実行や入力を受け付けない環境では先に進めません）。
 - OAuth同意画面の公開ステータスが「テスト」の場合は、自分のGoogleアカウントを「テストユーザー」に追加します。
 
-### エラー: `Google Drive quota exceeded`
+### エラー: `Failed to download file: …` / `Failed to upload file: …`
 
-**原因:** API使用量制限に達している
-
-**解決策:**
-```bash
-# 少し待ってから再実行
-sleep 300  # 5分待機
-./tc "drive_url"
-
-# 別のGoogle アカウント使用
-# 新しいcredentials.jsonを取得
-
-# ローカルファイルで先に処理
-# Drive URLから手動ダウンロード → ローカル処理
-```
-
-### エラー: `YouTube video is private or unavailable`
-
-**原因:** プライベート動画または削除された動画
+Google Drive からのダウンロード、または結果のアップロードに失敗したときの文言です（`handlers/gdrive.py`）。
+`:` のあとに、Google API が返した理由が付きます。API の使用量の制限、権限（共有されていないファイル）、
+ファイルIDの誤りなどが原因になりますが、具体的な文は Google API 側のもので一定しません。
 
 **解決策:**
-```bash
-# 動画の公開状態確認
-# ブラウザでURLにアクセスして確認
+- 少し時間をおいて、同じコマンドを再実行する
+- Drive 上のファイルに、認証したアカウントがアクセスできるか確認する
+- 先に Drive から手動でダウンロードし、ローカルファイルとして処理する（`--no-upload` を付ければ結果は `output/` にだけ残る）
 
-# 公開動画のURLで再試行
-./tc "https://www.youtube.com/watch?v=public_video_id"
-```
+入口ごとの見え方:
+- ダウンロードの失敗: `./tc` は例外のトレースバックで止まります。WebUI は該当の項目が `[失敗]` になります。
+- アップロードの失敗（`./tc`）: 結果のテキストは先に `output/` に保存済みです。そのあと例外で止まるため、
+  変換履歴（`output/history.db`）には記録されません。Drive 入力の一時音声は削除されます。
+- アップロードの失敗（`./transcribe.py`）: `Google Driveアップロードエラー: …` と表示され、処理は続行します。
+- アップロードの失敗（WebUI）: `Google Driveアップロードに失敗しました: …` の警告が出て、結果は保存・履歴記録されます。
+- `アップロードに失敗しました`（`./tc`）: アップロードの処理は例外なく終わったが、Drive 上のURLが得られなかったときです。
+
+### WebUI で失敗したとき
+
+- 文字起こし中の失敗: 画面に `文字起こしに失敗しました: <原因>` が出て、その項目は完了済み一覧に `[失敗]` として残ります。
+  後ろに待っている項目は、そのまま次の処理に進みます。
+- 入力の取得（ダウンロード等）の失敗: 同じく `[失敗]` として残ります。原因の文は、上の各項目（yt-dlp、Google Drive）を
+  参照してください。詳しいログは `logs/transcription.log` にあります（`状態遷移 item_id=... ->FAILED` の行）。
+- 履歴の記録の失敗: `変換履歴の記録に失敗しました: ...` の警告が出ますが、文字起こしの結果は保存されています。
+- 一時音声の削除の失敗: 警告が出るだけで、結果は失敗になりません。
+
 
 ## 📝 文字起こし品質関連
 
@@ -398,17 +465,27 @@ cp config/context_hints.txt.sample config/context_hints.txt
 
 ### 問題: タイムスタンプが付かない
 
-**原因:** タイムスタンプ付与が有効になっていない、または Qwen3-ASR 以外のエンジンを使っている
+**原因:** エンジンと入口によって、付き方が違います。
+
+| 使っているもの（WebUI の行は Qwen3-ASR の場合） | `[MM:SS]` |
+|----------------|-----------|
+| Whisper 系のモデル | 設定に関係なく、常に 30 秒ごとに付く |
+| Qwen3-ASR（既定）を `./tc` で | `whisper.include_timestamps: true` のときだけ付く |
+| Qwen3-ASR を WebUI で | 「タイムスタンプ付与」にチェックを入れたときだけ、**保存ファイル**に付く（画面の結果欄は付かない） |
+| Qwen3-ASR を `./transcribe.py` で | 付かない（設定を渡さないため） |
+| Nemotron | 付かない |
 
 **解決策:**
 ```yaml
 # config/config.yaml
 whisper:
-  include_timestamps: true   # Qwen3-ASR専用。初回は ForcedAligner を追加でダウンロードする
+  include_timestamps: true   # Qwen3-ASRで有効。初回は ForcedAligner を追加でダウンロードする
 ```
 
-Whisper 系モデルと Nemotron では、この設定は使われません。詳細は
-[timestamp_feature.md](../feature/timestamp_feature.md) を参照してください。
+Whisper 系は WebUI の画面の結果欄にも `[MM:SS]` が出ます（エンジンが `result.text` に埋め込むため）。
+
+ForcedAligner の読み込みや実行に失敗したときは、警告のログを出してタイムスタンプなしで保存されます。
+詳細は [timestamp_feature.md](../feature/timestamp_feature.md) を参照してください。
 
 ## ⚙️ 設定・認証関連
 
@@ -441,7 +518,11 @@ whisper:
   include_timestamps: false
 ```
 
-### エラー: `Invalid configuration format`
+### 現象: `config/config.yaml` が YAML として読めない
+
+このリポジトリのコードに `Invalid configuration format` という文言はありません。YAML の構文エラーは PyYAML が
+例外（`yaml.YAMLError` の仲間）として出します。`./tc` はそのままトレースバックで止まり、`./transcribe.py` は
+`設定ファイルエラー: <原因>` と表示して終了コード 1 で終わります。WebUI は読み込みの失敗を無視して起動します。
 
 **原因:** YAML形式エラー
 
@@ -502,6 +583,20 @@ ffmpeg -i long_audio.wav -t 1800 -c copy part1.wav
 
 WebUI は複数の入力を同時には処理せず、キューで順番に処理します。
 
+### 問題: ディスクの空きが減る
+
+```bash
+# output/ の中で何が大きいか確認する
+du -sh output/* | sort -h
+```
+
+- `output/uploads/`: WebUI のアップロード。保存から 7 日を過ぎたものは、新しい入力を追加するたびに削除されますが、
+  それまでは残ります（処理後にすぐには消えません）。
+- `output/queue_downloads/`: WebUI の URL 入力の作業領域。処理後の音声は削除され、空のディレクトリや失敗時の
+  部分ファイルが残ります。1 日を過ぎたものは、同じタイミングで削除されます。
+- `output/*_transcription.txt` と `output/history.db`: 自動では削除されません。
+- Google Drive からダウンロードした音声は、システムの一時ディレクトリに保存され、処理の終了時に削除されます。
+
 ## 📊 ログ・デバッグ関連
 
 ### 問題: ログが出力されない
@@ -509,7 +604,8 @@ WebUI は複数の入力を同時には処理せず、キューで順番に処�
 **原因:** ログディレクトリの権限、または実行したディレクトリの違い
 
 実行ログは標準出力と `logs/transcription.log`（実行したディレクトリ直下の `logs/`、10MBごとにローテーション、
-5世代保持）に出力されます。ログレベルは INFO 固定で、設定では変えられません。
+5世代保持）に出力されます。ログレベルは INFO 固定で、設定では変えられません。pytest の実行中だけは、本番のログを汚さないよう
+`logs/transcription_test.log` に出力されます。
 
 **解決策:**
 ```bash
@@ -571,6 +667,16 @@ git checkout config/config.yaml
 ```
 
 **重大な問題の場合:**
+
+先に次のファイルを退避してください（リポジトリの外にコピーする）。
+
+- `config/config.yaml`（Git 管理下のファイル。`git reset --hard` で、編集した内容が失われます）
+- `credentials.json`、`token.pickle`、`config/context_hints.txt`、`output/history.db`（`.gitignore` で除外されている
+  ファイルなので、次の `git clean -fd` では消えません。ただし `-x` を付けると消えるので、付けないでください。
+  念のため退避しておくと安全です）
+
+`git clean` は、実行前に `git clean -fdn`（削除せず、対象を表示するだけ）で、消えるものを確認してください。
+
 ```bash
 # 完全なシステムリセット
 git stash  # 未保存の変更を退避

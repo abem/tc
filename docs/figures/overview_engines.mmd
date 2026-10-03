@@ -1,0 +1,12 @@
+flowchart TD
+  M["モデル名<br/>create_engine"]
+  Q1{"nemotron<br/>を含む?"}
+  Q2{"qwen3-asr または<br/>qwen3_asr を含む?"}
+  NE["Nemotron<br/>サブプロセス"]
+  QE["Qwen3-ASR<br/>エンジン"]
+  WE["Whisper<br/>エンジン"]
+  M --> Q1
+  Q1 -->|"はい"| NE
+  Q1 -->|"いいえ"| Q2
+  Q2 -->|"はい"| QE
+  Q2 -->|"いいえ"| WE

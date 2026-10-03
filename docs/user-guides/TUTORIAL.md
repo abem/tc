@@ -18,22 +18,29 @@
 
 **必要な環境:**
 ```
-✅ Python 3.12以上
-✅ 8GB以上のRAM（推奨: 12GB）
-✅ 10GB以上のストレージ空き容量
-✅ NVIDIA GPU（推奨: RTX 4080以上）
+✅ Python 3.12以上（pyproject.toml の requires-python）
+✅ uv（依存関係の管理に使う）
+✅ NVIDIA GPU（推奨。--device cpu でも指定できる）
 ```
+
+GPU メモリの目安は、コード内に残された実測値だけが根拠です（RTX 4080 SUPER 16GB での値）。Qwen3-ASR（bf16）を
+読み込んだ後で約 11.3GB、タイムスタンプ付与（ForcedAligner）を有効にすると約 12.5GB、Nemotron は 5 分の音声で
+最大約 7.3GB です。それ以外の GPU、RAM、ストレージの最低要件と、CPU で処理したときの所要時間は**未確認**です
+（モデルは初回に Hugging Face からダウンロードされます）。
+
+YouTube / X の動画を処理するときは、yt-dlp が音声を wav に変換します。この変換には ffmpeg が使われるはずですが、
+必須かどうかはこのリポジトリのコードでは**未確認**です。ffmpeg が入っているかは `which ffmpeg` で分かります。
 
 **環境確認コマンド:**
 ```bash
 # Python バージョン確認
 python3 --version
 
+# uv の確認
+uv --version
+
 # GPU確認（NVIDIA GPU使用時）
 nvidia-smi
-
-# メモリ確認
-free -h
 ```
 
 ### ステップ2: リポジトリクローン
@@ -72,8 +79,9 @@ Nemotron（`nvidia/nemotron-3.5-asr-streaming-0.6b`）を使う場合だけ、�
 ./tc --help
 ```
 
-**📸 期待される画面:**
+**📸 期待される画面:**（先頭にログ行が 1 行付き、続けて使い方が表示されます）
 ```
+2026-10-04 02:35:04,567 - core - INFO - Core unified modules initialized
 usage: tc [-h] [--output-dir OUTPUT_DIR] [--no-upload] [--model MODEL]
           [--language LANGUAGE] [--device {cuda,cpu,auto}]
           [--folder-id FOLDER_ID] [--dry-run]
@@ -118,13 +126,21 @@ ls -la *.wav
 ./tc audio_sample.wav --language ja
 ```
 
-3. **実行中の画面表示**（表示内容の例）
+3. **実行中の画面表示**（表示内容の例。モデルの読み込みなどのログが間に入ることがあります）
 ```
-設定ファイルを読み込みました
-文字起こし開始: モデル=Qwen/Qwen3-ASR-1.7B, 言語=ja, デバイス=cuda
-文字起こし完了: output/20261002_101530_transcription.txt
+2026-10-04 02:35:04,567 - core - INFO - Core unified modules initialized
+2026-10-04 02:35:04,569 - __main__ - INFO - 設定ファイルを読み込みました
+2026-10-04 02:35:04,570 - __main__ - INFO - 文字起こし開始: モデル=Qwen/Qwen3-ASR-1.7B, 言語=ja, デバイス=cuda
+文字起こし完了: output/20261004_023512_transcription.txt
+
+文字起こし結果（最初の500文字）:
+こんにちは、今日は音声文字起こしのテストを行います。...
 ```
-実行ログは同じ内容が `logs/transcription.log` にも記録されます。
+`日時 - ロガー名 - INFO - ` で始まる行がログで、`logs/transcription.log` にも同じ内容が記録されます。
+`文字起こし完了:` と結果のプレビュー（500 文字を超えると `... (全N文字)` が付く）は、ログではなく画面への出力です。
+300 秒を超える音声では、`文字起こし中 N/M チャンク完了` のような進捗も表示されます。
+処理の記録は `output/history.db` にも追加されます（実行したディレクトリ基準のパスで、`--output-dir` を変えても
+移りません。記録に失敗しても文字起こしは続行され、`変換履歴の記録に失敗しました: ...` と表示されます）。
 
 4. **結果の確認**
 ```bash
@@ -138,8 +154,10 @@ cat output/*_transcription.txt
 こんにちは、今日は音声文字起こしのテストを行います。この機能を使うことで、音声ファイルを自動的にテキストに変換できます。
 ```
 
-既定ではテキストのみが出力されます。各行頭に `[MM:SS]` を付けたい場合は、`config/config.yaml` の
-`whisper.include_timestamps` を `true` にします（Qwen3-ASR のみ対応。[設定ガイド](configuration.md) を参照）。
+既定モデル（Qwen3-ASR）と Nemotron は、既定ではテキストのみが出力されます。Qwen3-ASR で各行頭に `[MM:SS]` を付けたい
+場合は、`config/config.yaml` の `whisper.include_timestamps` を `true` にします（[設定ガイド](configuration.md) を参照）。
+Whisper 系のモデル（`--model kotoba-tech/kotoba-whisper-v2.2` など）は、この設定に関係なく、常に 30 秒ごとの
+`[MM:SS]` が付きます。詳しくは [タイムスタンプ機能](../feature/timestamp_feature.md) を参照してください。
 
 ### シナリオ2: 英語音声の処理
 
@@ -175,14 +193,17 @@ cat output/*_transcription.txt
 ./tc "https://x.com/<ユーザー名>/status/<投稿ID>" --language ja
 ```
 
-3. **実行中の画面表示**（表示内容の例）
+3. **実行中の画面表示**（表示内容の例。ログ行には `日時 - ロガー名 - INFO - ` が付きます）
 ```
 YouTube URLを検出
-...（yt-dlp のダウンロード進捗）
-文字起こし開始: モデル=Qwen/Qwen3-ASR-1.7B, 言語=ja, デバイス=cuda
-文字起こし完了: output/20261002_101530_transcription.txt
+ダウンロード中 10%(残り 00:12)
+...（10% ごとに進捗が出て、yt-dlp 自身のダウンロード進捗行も表示されます）
+音声をwavに変換中(長い動画は数分かかります)
+2026-10-04 02:35:40,100 - __main__ - INFO - 文字起こし開始: モデル=Qwen/Qwen3-ASR-1.7B, 言語=ja, デバイス=cuda
+文字起こし完了: output/20261004_023612_transcription.txt
+アップロード完了: https://drive.google.com/file/d/<結果ファイルID>/view
 ```
-X の URL では「X(Twitter)動画URLを検出」と表示されます。
+X の URL では「X(Twitter)動画URLを検出」と表示され、アップロードはありません。
 
 4. **処理完了確認**
 ```bash
@@ -190,7 +211,15 @@ X の URL では「X(Twitter)動画URLを検出」と表示されます。
 ls -la output/
 ```
 ダウンロードした音声（`<タイトル>_<動画ID>.wav`）は `--output-dir`（既定は `output/`）に一時保存され、
-処理が終わると削除されます。
+処理の終了時（成功・失敗・中断のいずれでも）に削除されます。削除に失敗したときは警告だけが表示されます。
+ローカルファイルを入力したときは、元のファイルは削除されません。
+
+**yt-dlp まわりのエラー:**
+- `yt-dlp が見つかりません。…`: yt-dlp が無いときのエラーです。自動インストールはしません。プロジェクトの
+  ディレクトリで `uv sync` を実行してください（`./tc` は終了コード 1 で止まります）。
+- yt-dlp の呼び出しにはタイムアウトがあります。メタデータ取得は 60 秒（ログに `Timed out getting video info (60s)`、
+  続けて `Failed to get video info` で止まる）、ダウンロード中に yt-dlp の出力が 300 秒途絶えると
+  `yt-dlp出力が300秒間停止したため中断` で止まります。詳細は [TROUBLESHOOTING.md](TROUBLESHOOTING.md) を参照してください。
 
 YouTube 動画は、処理後に Google Drive へ自動アップロードされます（`--no-upload` で止められます）。
 X の動画はアップロードされず、ローカルにのみ保存されます。
@@ -234,10 +263,11 @@ gdrive:
 3. **実行中の画面表示**（表示内容の例）
 ```
 Google Drive URLを検出、ダウンロードを開始
-文字起こし開始: モデル=Qwen/Qwen3-ASR-1.7B, 言語=ja, デバイス=cuda
-文字起こし完了: output/20261002_101530_transcription.txt
+2026-10-04 02:35:10,100 - __main__ - INFO - 文字起こし開始: モデル=Qwen/Qwen3-ASR-1.7B, 言語=ja, デバイス=cuda
+文字起こし完了: output/20261004_023512_transcription.txt
 アップロード完了: https://drive.google.com/file/d/<結果ファイルID>/view
 ```
+ダウンロードした音声は一時ファイルで、処理の終了時に削除されます（削除に失敗したときは警告だけ）。
 
 4. **結果の確認**
 ```bash
@@ -249,6 +279,9 @@ cat output/*_transcription.txt
 ## 🖥️ WebUIで使う
 
 コマンドラインの代わりに、ブラウザから操作できる WebUI（`webui.py`、Streamlit 製）もあります。
+本番環境では systemd のサービス `tc-webui.service` が常駐させているので、通常は起動の操作は要りません
+（常駐化と内部構成は [WebUI内部サーバー構成](../system-docs/webui_architecture.md) を参照）。
+手元で起動する場合は次のコマンドを使います。
 
 ```bash
 uv run streamlit run webui.py --server.headless true --server.port 8501
@@ -256,11 +289,45 @@ uv run streamlit run webui.py --server.headless true --server.port 8501
 
 起動後、ブラウザで `http://localhost:8501` を開きます。
 
-- 「文字起こし」タブ: YouTube / X / Google Drive の URL を入力するか、ファイルをアップロードして、
-  モデル・デバイス・言語を選び「キューに追加」を押す。複数の入力は順番に処理される
-- 「履歴」タブ: 過去の文字起こし結果の検索・確認ができる
+### 文字起こしタブ
 
-詳細は [WebUI内部サーバー構成](../system-docs/webui_architecture.md) を参照してください。
+1. 「YouTube / Google Drive URL」欄に URL を入力するか（ラベルは YouTube / Google Drive ですが X の動画URLも
+   入力できます）、「またはローカルファイルをアップロード」でファイルを選びます。
+2. 「設定」で、モデル・デバイス・言語（既定は「自動判定」）を選びます。
+   「タイムスタンプ付与」にチェックを入れると、保存テキストの各行頭に `[MM:SS]` が付きます（ForcedAligner を
+   追加で読み込みます。Nemotron では選べません）。
+3. 認識ヒント（固有名詞・専門用語）は、「認識ヒント」の折りたたみ欄に 1 行 1 語で入力し、リスク
+   （入力した語が発話されていない区間に混入することがある）を理解したことを示すチェックを入れたときだけ使われます。
+   チェックが無いときはヒントなしで処理されます。
+4. 「キューに追加」を押します。複数の入力は順番に処理されます。
+
+処理中は進捗バーと「経過 m:ss / 残り約 m:ss」が表示されます。進捗率が分かるのは、YouTube / X のダウンロード、
+Qwen3-ASR で 300 秒を超える音声、Whisper 系です。残り時間は進捗が 3% に達してから出ます。Nemotron、300 秒以下の
+Qwen3-ASR、Google Drive のダウンロードは、経過時間だけが表示されます。
+
+完了すると、完了済み一覧に結果のテキストが出ます。結果は `output/<日時>_transcription.txt` に保存され、入力が
+Google Drive / YouTube ならアップロードされます。アップロード先は、Google Drive 入力では常に元ファイルと同じ
+フォルダです（WebUI は `config.yaml` の `gdrive.upload_folder_id` を読みません）。タイムスタンプ付与にチェックを
+入れたときは「SRTプレビュー」も出ます。区間の情報が空のときだけ「SRTを生成できるタイムスタンプ情報がありません」と
+表示されます。Qwen3-ASR でアライナーが失敗したときは、全体が 1 キュー（0 秒から音声長まで）の SRT になります。失敗した項目は `[失敗]` として完了済み一覧に残り、画面にエラーの文が出ます。
+Google Drive 入力の音声は、処理後に削除されます（削除に失敗したときは警告が出ます）。
+
+**アップロードの保存先と自動削除:**
+- アップロードしたファイルは `output/uploads/<一意>/<ファイル名>` に保存され、同じ名前でも上書きされません。
+  7 日を過ぎたものは、新しい入力を追加するたびに削除されます（処理待ち・処理中のファイルは消えません）。
+  履歴に残るアップロード元のパスは、7 日後には存在しなくなります。
+- URL 入力の作業領域 `output/queue_downloads/<トークン>/` は、1 日を過ぎたものが同じタイミングで削除されます。
+
+ディスクの空きが減ってきたら、`output/uploads/` を確認してください（最大 7 日分が残ります）。
+
+### 履歴タブ
+
+- 過去の文字起こし（`output/history.db`）を、開始日・終了日と、キーワードで絞り込めます。
+  **キーワードは 3 文字以上**で入力してください（2 文字以下では結果が得られません）。
+- 各履歴の「出力対象に含める」にチェックを入れると、「選択履歴をまとめ出力」で、選んだ結果を 1 つの Markdown
+  ファイルとしてダウンロードできます。
+- 「古い履歴の一括削除」は、N 日より前の履歴を「① 対象件数を確認」→「② N 件を削除する」の 2 段階で消します。
+  消えるのはデータベースの記録だけで、`output/` のテキストと Google Drive 上のファイルは消えません。
 
 ## ⚙️ 設定のカスタマイズ
 
@@ -282,7 +349,7 @@ whisper:
   language: null                 # null=自動判定。ja / en を指定すると強制
   device: cuda                   # cuda / cpu / auto
   context_file: "config/context_hints.txt"  # 固有名詞のヒント（Qwen3-ASR専用）
-  include_timestamps: false      # true で各行頭に [MM:SS] を付与（Qwen3-ASR専用）
+  include_timestamps: false      # true で Qwen3-ASR の各行頭に [MM:SS] を付与（Whisper系は設定に関係なく常に付く）
 
 gdrive:
   url: "your_default_url"        # 入力を省略したときに処理するURL
@@ -341,9 +408,12 @@ done
 
 ### 出力ファイル形式
 
-**基本テキスト形式（既定）:** 文字起こし結果のテキストのみ。
+**基本テキスト形式（Qwen3-ASR・Nemotron の既定）:** 文字起こし結果のテキストのみ。
 
-**タイムスタンプ付き形式（`whisper.include_timestamps: true`、Qwen3-ASRのみ）:**
+**タイムスタンプ付き形式:** Qwen3-ASR で `whisper.include_timestamps: true`（`./tc`）、または WebUI の
+「タイムスタンプ付与」にチェックを入れると、各行頭に `[MM:SS]` が付きます。Whisper 系は設定に関係なく、
+常に 30 秒ごとに付きます。`transcribe.py` は Qwen3-ASR で付きません。詳細は
+[タイムスタンプ機能](../feature/timestamp_feature.md)。
 ```
 [MM:SS] 文字起こしテキスト
 [MM:SS] 続きのテキスト
@@ -396,16 +466,20 @@ file audio.wav
 ffmpeg -i audio.mp3 audio.wav
 ```
 
-**問題4: YouTube URLが処理できない**
+**問題4: YouTube / X のURLが処理できない**
 ```bash
 # エラーメッセージ例
 Failed to get video info
 Audio extraction failed: ...
+yt-dlp が見つかりません。プロジェクトのディレクトリで `uv sync` を実行して…
+yt-dlp出力が300秒間停止したため中断: <URL>
 
 # 解決策: URLの確認
 echo "https://www.youtube.com/watch?v=VIDEO_ID"
 # プライベート動画でないことを確認
+# yt-dlp が無いと言われたら uv sync を実行する（自動インストールはされない）
 ```
+タイムアウトの意味と対処は [TROUBLESHOOTING.md](TROUBLESHOOTING.md) にあります。
 
 ### デバッグ方法
 

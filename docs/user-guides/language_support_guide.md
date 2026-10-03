@@ -18,12 +18,14 @@
 
 `whisper.model` を書き換える（または `--model` で上書きする）ことで、別のエンジンへ切り替えられます。
 
-| モデル | エンジン | 主な用途 |
-|--------|---------|----------|
-| `Qwen/Qwen3-ASR-1.7B` | Qwen3ASREngine | 日本語・英語（デフォルト） |
-| `kotoba-tech/kotoba-whisper-v2.2` | WhisperTranscriptionEngine | 日本語特化（Whisperベース） |
-| `openai/whisper-large-v3` | WhisperTranscriptionEngine | 多言語対応の標準モデル |
-| `nvidia/nemotron-3.5-asr-streaming-0.6b` | NemotronSubprocessEngine | Nemotron（専用の仮想環境が必要。後述） |
+| モデル | エンジン | 主な用途 | 出力形式 |
+|--------|---------|----------|----------|
+| `Qwen/Qwen3-ASR-1.7B` | Qwen3ASREngine | 日本語・英語（デフォルト） | テキスト（文節ごとに改行）。`include_timestamps` を有効にしたときだけ各行頭に `[MM:SS]` |
+| `kotoba-tech/kotoba-whisper-v2.2` | WhisperTranscriptionEngine | 日本語特化（Whisperベース） | 設定に関係なく、常に 30 秒ごとの `[MM:SS]` 付き |
+| `openai/whisper-large-v3` | WhisperTranscriptionEngine | 多言語対応の標準モデル | 設定に関係なく、常に 30 秒ごとの `[MM:SS]` 付き |
+| `nvidia/nemotron-3.5-asr-streaming-0.6b` | NemotronSubprocessEngine | Nemotron（専用の仮想環境が必要。後述） | テキスト 1 本（タイムスタンプなし） |
+
+`[MM:SS]` の付き方の詳細（入口ごとの違いを含む）は [タイムスタンプ機能](../feature/timestamp_feature.md) を参照してください。
 
 ### Nemotron を使う場合の前提
 
@@ -68,7 +70,9 @@ return WhisperTranscriptionEngine(config)
 - **Qwen3ASREngine**: `ja` → `Japanese`、`en` → `English` に変換して Qwen3-ASR の `language` 引数として渡す
   （`core/qwen3_engine.py` の `lang_map = {"ja": "Japanese", "en": "English"}`）。
   それ以外の値と `null` は指定なし（自動判定）になる。モデル自体は切り替わらない。
-- **WhisperTranscriptionEngine**: `whisper.language` の値をそのまま Whisper の `language` へ渡す。
+- **WhisperTranscriptionEngine**: `whisper.language` の値をそのまま Whisper の `language` へ渡す。`./tc --language` は
+  任意の文字列を受け付けるので、`ja` / `en` 以外もそのまま渡る（Whisper がその値を扱えるかは Whisper 側の仕様で、
+  このリポジトリでは動作を確認していない）。`null` のときは `None` を渡す。
 - **NemotronSubprocessEngine**: `ja` → `ja-JP`、`en` → `en-US` に変換して渡す。
   それ以外の値と `null` は `auto`（自動判定）になる（`core/nemotron_engine.py` の `_resolve_language`）。
 
@@ -129,9 +133,10 @@ uv run pytest -q
 ### よくある問題と解決法
 
 #### 英語音声が日本語として認識される
-**原因**: `whisper.language` / `--language` が `ja` に固定されている
-**解決法**: `--language en` を明示的に指定するか、`config.yaml` の `whisper.language` を確認する
-（`null` なら自動判定）
+**原因**: `whisper.language` / `--language` に `ja` を指定している（指定すると強制されます）。
+`./transcribe.py` のプロファイル 1・5 も `ja` で動きます
+**解決法**: `--language en` を明示的に指定する（`./transcribe.py` ならプロファイル 3 か `--language en`）、
+または `config.yaml` の `whisper.language` を `null`（自動判定）にする
 
 #### 想定と違うモデルが使われる
 **原因**: `config.yaml` の `whisper.model` が想定と異なる値になっている、または `--model` で上書きされている
@@ -168,5 +173,7 @@ tail -f logs/transcription.log | grep -E "(言語|モデル|文字起こし開�
 
 ---
 
-**対応言語**: 日本語、英語（`ja` / `en`）
+**言語の指定**: 既定は自動判定（`whisper.language: null`）。`./tc --language` は任意の文字列、
+`./transcribe.py --language` と WebUI は `ja` / `en`（WebUI は「自動判定」も選べる）。
+エンジンごとの扱いは「言語の扱い」の節のとおりで、Qwen3-ASR と Nemotron は `ja` / `en` 以外の値を指定しても自動判定になります。
 **デフォルトモデル**: Qwen/Qwen3-ASR-1.7B（言語共通・エンジン自動選択はモデル名ベース）

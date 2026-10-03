@@ -20,15 +20,20 @@
 ```bash
 # システム要件
 Python 3.12+
+uv (依存関係管理。必須。https://docs.astral.sh/uv/)
 Git
 CUDA Toolkit (GPU使用時)
 ```
 
+テストの実行に GPU・ネットワーク・Google Drive 認証は不要です(`CUDA_VISIBLE_DEVICES=""` の状態で
+`tests/test_docs_consistency.py` 以外が通ることを 2026-10-04 に確認)。
+`.env` は任意です(`tc` が `load_dotenv()` を例外処理付きで呼びます。`.gitignore` 済み)。
+
 ### 2. プロジェクトクローン・環境構築
 ```bash
 # リポジトリクローン
-git clone https://github.com/yourusername/transcribe_audio.git
-cd transcribe_audio
+git clone https://github.com/abem/tc.git
+cd tc
 
 # 依存関係インストール (uv が .venv を自動作成、dev group も含む)
 uv sync
@@ -57,33 +62,58 @@ lint は `uv run ruff check .` で実行する(整形ツール・型チェッカ
 tc/
 ├── tc                          # メインCLIコマンド(uv run 経由)
 ├── transcribe.py               # インタラクティブ版CLI(uv run 経由)
+├── transcribe                  # transcribe.py を起動するシェルラッパー
+├── webui.py                    # Streamlit の WebUI(進捗バー・経過時間・履歴)
+├── suppress_warnings.py        # 警告抑制(各エントリポイントが import する)
 ├── config/
 │   └── config.yaml            # 設定ファイル
 ├── core/                      # コア機能(統一アーキテクチャ)
 │   ├── config.py              # TranscriptionConfig/SystemConfig/UnifiedConfig
-│   ├── logging.py             # 統一ロガー
+│   ├── logging.py             # 統一ロガー・setup_logging()
 │   ├── transcription_interface.py  # UnifiedTranscriber(ファサード。既存の import 名を再 export)
 │   ├── engine_factory.py      # create_engine(モデル名でエンジンを選ぶ)
 │   ├── transcription_types.py # TranscriptionSegment / TranscriptionResult / TranscriptionEngine
 │   ├── qwen3_engine.py        # Qwen3ASREngine(+ qwen3_chunking.py / qwen3_text.py)
 │   ├── whisper_engine.py      # WhisperTranscriptionEngine(+ whisper_text.py)
-│   ├── history.py             # 変換履歴 DB の検索・件数・削除
-│   ├── progress.py            # 進捗通知(ProgressMessage)
 │   ├── nemotron_engine.py     # NemotronSubprocessEngine(Nemotron系モデル用)
-│   ├── model_manager.py       # モデルキャッシュ管理
-│   ├── cli_common.py          # CLI共通ヘルパー
-│   ├── cli_workflow.py        # 入力解決(resolve_input_audio)・アップロードフロー
-│   ├── webui_workflow.py      # WebUI(webui.py)用ワークフロー
-│   └── utils.py               # URL検出(YouTube/X/GDrive)・デバイス解決・context_hints読込
+│   ├── history.py             # 変換履歴 DB の検索・件数・削除
+│   ├── housekeeping.py        # cleanup_old_entries(WebUI の uploads / queue_downloads の期限切れ削除)
+│   ├── progress.py            # 進捗通知(ProgressMessage / emit_progress / throttled / parse_ytdlp_progress)
+│   ├── model_manager.py       # モデルキャッシュ管理(Whisper 系)
+│   ├── cli_common.py          # CLI共通ヘルパー(出力ファイル名など)
+│   ├── cli_workflow.py        # 入力解決(resolve_input_audio)・finalize_transcription(保存・アップロード・履歴・一時音声の削除)
+│   ├── webui_workflow.py      # WebUI(webui.py)用ワークフロー(ジョブキュー・進捗の反映)
+│   └── utils.py               # URL検出(YouTube/X/GDrive)・デバイス解決・context_hints読込・sanitize_upload_filename・one_line
 ├── handlers/                  # 外部サービスハンドラー
 │   ├── gdrive.py              # GDriveClient
-│   └── youtube.py             # YouTubeClient(yt-dlp経由。YouTube/X両対応)
+│   ├── gdrive_auth.py         # get_drive_service(OAuth 認証)
+│   └── youtube.py             # YouTubeClient(yt-dlp経由。YouTube/X両対応)・find_yt_dlp
+├── scripts/                   # 運用・検査スクリプト(下記)
 ├── tests/                     # テストファイル
-├── output/                    # 出力ファイル
-├── logs/                      # ログファイル
-├── .env                       # 環境変数
-└── credentials.json           # Google Drive認証
+├── docs/spec/00-project-spec.md  # 利用者に見える挙動の正本
+├── output/                    # 出力ファイル(.gitignore)
+├── logs/                      # ログファイル(.gitignore)
+├── .env                       # 環境変数(任意。.gitignore)
+├── credentials.json           # Google Drive認証(.gitignore。コミットしない)
+└── token.pickle               # Drive の認可トークン(.gitignore。コミットしない)
 ```
+
+### 補助関数と集約点
+
+- **`core.cli_workflow.finalize_transcription`**: 保存 → アップロード(youtube / gdrive のみ。X は対象外)→ 履歴 →
+  一時音声の削除を行う集約点。`tc`・`transcribe.py`・`webui.py` が共用します。文字起こし自体が失敗したときは、
+  呼び出し側が `cleanup_input_audio(resolution)` を呼びます。保存形式は `save_transcription_text` / `format_transcript_text`
+  (`timestamps_included` が真で segments があるときだけ `[MM:SS] ` を付ける)
+- **`core.utils.sanitize_upload_filename`**: WebUI のアップロード名を無害化(最大 200 文字)。保存先は
+  `output/uploads/<一意>/<サニタイズ済み名>`(同名でも上書きしない)
+- **`core.utils.one_line`**: ログ・ラベルを 1 行にする(エラー文は 1000 文字まで)
+- **`handlers.youtube.find_yt_dlp`**: yt-dlp の探索(PATH → 現在の Python と同じ `bin/` → `.venv/bin/yt-dlp`)。
+  見つからなければ `YtDlpNotFoundError`(`ValueError` のサブクラス。自動 pip install はせず `uv sync` を案内)。
+  yt-dlp の呼び出しにはタイムアウトがある(`--socket-timeout 30`、メタデータ取得 60 秒、出力が 300 秒途絶えると中断)
+- **`core.logging.setup_logging`**: `tc`・`transcribe.py`・`webui.py` の `main()` が呼びます(`core` は import しただけでは
+  ログを設定しません。pytest 中は `logs/transcription_test.log`)
+
+保存形式・一時ファイル・yt-dlp の挙動の正本は [docs/spec/00-project-spec.md](docs/spec/00-project-spec.md) です。
 
 ### エンジン自動選択の仕組み(旧patterns/の代替)
 
@@ -107,12 +137,18 @@ return WhisperTranscriptionEngine(config)
 tests/
 ├── conftest.py
 ├── fixtures/
-├── test_core_*.py             # core/ 配下(config・logging・utils・transcription_interface・cli_workflow・nemotron・webui_workflow)
-├── test_handlers_*.py         # handlers/(gdrive・youtube)
+├── test_core_*.py             # core/ 配下(config・logging・utils・history・housekeeping・progress・
+│                              #   transcription_interface・cli_workflow・cli_finalize・nemotron・webui_workflow・
+│                              #   import_no_side_effects ほか)
+├── test_handlers_*.py         # handlers/(gdrive・gdrive_auth・youtube・youtube_detection・youtube_download)
 ├── test_tc_*.py               # tc CLI(main フロー・結果保存)
+├── test_cli_unified_behavior.py   # tc / transcribe.py の共通挙動
 ├── test_transcribe_loader.py  # transcribe.py ローダー
-├── test_webui_*.py            # webui.py
-├── test_scripts_*.py          # scripts/ 配下
+├── test_webui_*.py            # webui.py(進捗表示・アップロード名・履歴の削除・キュー表示など)
+├── test_scripts_*.py          # scripts/ 配下(Nemotron 比較)
+├── test_release_script.py     # scripts/release_dev_main.sh
+├── test_error_logs_one_line.py    # エラーログが 1 行であること
+├── test_docs_consistency.py   # 文書の整合検査(リンク先・パス・削除済みモジュール名・仕様書の数値)
 └── test_e2e_dry_run.py        # tc --dry-run による起動確認
 
 .github/workflows/
@@ -129,17 +165,21 @@ config/
 
 docs/
 ├── user-guides/                # 利用者向けガイド(TUTORIAL/TROUBLESHOOTING/configuration等)
-├── system-docs/                # 時点スナップショット(system_overview_2025.md等)
+├── spec/                       # 利用者に見える挙動の仕様書(00-project-spec.md が正本)
+├── system-docs/                # システム概要・運用手順(system_overview.md、release_operations.md、webui_architecture.md)
 ├── developer-guides/
 ├── historical-records/         # 過去の経緯・是正記録
 ├── feature/
-├── kaizen/
-└── obsolete/
+├── figures/                    # 文書の図
+├── obsolete/
+└── README.md                   # docs の索引
 
 scripts/
 ├── gpu_monitor.py              # GPU監視
 ├── simple_gpu_monitor.sh       # GPU監視(簡易版)
 ├── e2e_local.sh                # E2Eテスト(ローカル実行)
+├── release_dev_main.sh         # feature → dev → main の統合・push・WebUI 再起動
+├── check_figures.sh            # docs/figures/*.mmd の機械検査と SVG の書き戻し
 ├── compare_nemotron_baseline.py    # Nemotron回帰ゲート比較
 ├── nemotron_infer.py           # Nemotron推論(NemotronSubprocessEngine からサブプロセス起動される)
 ├── setup_nemotron_venv.sh      # Nemotron用の隔離venv構築
@@ -167,6 +207,16 @@ git commit -m "feat: add awesome new feature"
 # プッシュ
 git push origin feature/new-awesome-feature
 ```
+
+### 統合(feature → dev → main)と本番
+
+- 更新の順序は **feature → dev → main**。dev と main を feature から個別に更新してはいけない(`CLAUDE.md`)
+- WebUI は systemd のユーザーサービス `tc-webui.service` が `/home/abem/Projects/tc-prod`(**dev をチェックアウト**)で
+  `uv run streamlit run webui.py --server.headless true --server.port 8501 --server.fileWatcherType none` を実行しています。
+  **dev への統合 = 本番コードの更新**です
+- 統合・push・WebUI 再起動は `scripts/release_dev_main.sh` で行います(`--dry-run` で確認だけ、`--no-restart`、`--force-restart`)。
+  前提が崩れていれば何も変更せずに止まります。main の更新はユーザーの明示的な指示があるときだけです
+- 使い方・止まる条件・復旧の詳細は [docs/system-docs/release_operations.md](docs/system-docs/release_operations.md) を参照
 
 ### 2. バグ修正
 ```bash
@@ -272,7 +322,7 @@ def test_with_mock(mock_dependency):
 ### Strategy相当: TranscriptionEngine(抽象基底クラス)
 
 `core/transcription_types.py` の `TranscriptionEngine(ABC)` を
-`Qwen3ASREngine`・`WhisperTranscriptionEngine` が実装する、素朴な継承ベースの
+`Qwen3ASREngine`・`WhisperTranscriptionEngine`・`NemotronSubprocessEngine` が実装する、素朴な継承ベースの
 Strategyパターン。`patterns/strategies.py` のような専用レジストリ・登録機構は無い。
 
 ```python
@@ -294,8 +344,8 @@ class TranscriptionEngine(ABC):
 ### Command Pattern / Observer Pattern
 
 `AudioProcessingPipeline`・`CommandInvoker`・`setup_standard_monitoring` 等は
-削除済みで、現在の実装に対応物は無い。進捗表示は `progress_callback`
-（`tc`）や `Console.print`（`transcribe.py`）を直接呼ぶ単純なコールバック方式。
+削除済みで、現在の実装に対応物は無い。進捗通知は `core/progress.py` に集約されている
+(次節「進捗表示・ログのカスタマイズ」)。
 
 ## 🐛 デバッグ方法
 
@@ -385,7 +435,7 @@ class MyCustomEngine(TranscriptionEngine):
 ### 2. 新しい言語サポート追加
 
 言語ごとに専用のトランスクライバーを作るのではなく、`whisper.language` の値を
-`Qwen3ASREngine.lang_map`(`core/qwen3_engine.py`)に追加するだけでよい:
+`transcribe()` 内の `lang_map`(`core/qwen3_engine.py`)に追加するだけでよい:
 
 ```python
 lang_map = {"ja": "Japanese", "en": "English", "zh": "Chinese"}  # 追加例
@@ -396,10 +446,22 @@ WhisperTranscriptionEngine 側は `config.language` をそのまま渡すため�
 
 ### 3. 進捗表示・ログのカスタマイズ
 
-専用のObserver登録機構は無い。`tc` は `transcribe_audio()` 内で
-`progress_callback` を直接渡し、`transcribe.py` は `rich.console.Console.print`
-を直接呼ぶ単純なコールバック方式。カスタムしたい場合はこの呼び出し箇所を
-直接編集する。
+専用のObserver登録機構は無く、進捗通知は `core/progress.py` に集約されている。コールバックは `Callable[[str], None]` で、
+進捗率を持つ通知は `ProgressMessage(text, fraction)`(`str` のサブクラス。`fraction` は 0.0〜1.0、`None` は率が不明)。
+
+- `emit_progress(callback, text, fraction=None)`: 通知する。コールバックの例外で本処理を止めない
+- `throttled(printer, steps=10)`: CLI 用。率つきの通知は `1/steps` 進むごとに 1 回だけ `printer` へ渡す
+- `parse_ytdlp_progress(line)`: yt-dlp の進捗行から (進捗率, ETA) を取り出す
+
+利用側の違い:
+
+- `tc`: `transcribe(audio_path, progress_callback=lambda message: print(message))` を渡し、入力解決の `on_status` には `throttled(print)`
+- `transcribe.py`: 入力解決の `on_status` に `throttled(console.print)` を渡す。`transcribe()` には `progress_callback` を渡さない
+- WebUI: `fraction` を進捗バーに使う(ダウンロードの割合、Qwen3-ASR の 300 秒超の分割処理のチャンク進捗、Whisper の 30 秒チャンク進捗)。
+  経過・残り時間は `core/webui_workflow.py` の `format_elapsed` / `estimate_remaining`(進捗 3% 未満では残りを出さない)。
+  Nemotron と短い音声は経過時間のみ
+
+ログの出力先や形式を変えるときは `core.logging.UnifiedLogger.configure(...)` を使う。
 
 ## 🔧 設定カスタマイズ
 
@@ -407,13 +469,13 @@ WhisperTranscriptionEngine 側は `config.language` をそのまま渡すため�
 ```yaml
 whisper:
   model: "your-custom-model"    # 使用するモデル(モデル名でエンジンが自動選択される)
-  language: "ja"
+  language: null                # 既定は null(自動判定)。"ja" / "en" などを指定できる
   device: "cuda"
   context_file: "config/context_hints.txt"  # 固有名詞・専門用語のヒント(Qwen3-ASR用)
+  include_timestamps: false     # タイムスタンプ付与(Qwen3-ASR のみ。ForcedAligner を追加でロードする)
 ```
 
-> `whisper.language_models` セクションは現在dead code(どこからも参照されない)。
-> 削除はしていないが、ここに項目を追加しても動作には影響しない。
+設定の読み込み・既定値は `core/config.py` の `UnifiedConfig` を使う。キーの意味は `docs/user-guides/configuration.md` を参照。
 
 ## 📚 APIドキュメント生成
 

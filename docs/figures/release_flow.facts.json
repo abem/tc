@@ -1,0 +1,4 @@
+{
+  "labels": ["feature ブランチ","検査済みの変更","前提の確認","origin を取得して","現状と比べる","中止","何も変更しない","一時 worktree で","main にマージ","内容を照合","origin へ","dev と main を","一度に push","本番 dev を","fast-forward","手元の統合先も","更新","WebUI を再起動","ヘルスチェック","前提が崩れた"],
+  "edges": ["FE->CK","CK->ST","CK->MG","MG->PS","PS->FF","FF->RS"]
+}

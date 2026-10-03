@@ -1,0 +1,37 @@
+{
+  "labels": [
+    "入力",
+    "URL",
+    "アップロード",
+    "Drive・ローカル",
+    "解決",
+    "RESOLVING",
+    "音声を取得して",
+    "手元に置く",
+    "待機",
+    "QUEUED",
+    "1 件ずつ順に処理",
+    "処理",
+    "PROCESSING",
+    "エンジンを選んで",
+    "文字起こし",
+    "保存",
+    "output/ にテキスト",
+    "アップロード",
+    "YouTube・Drive の",
+    "入力は Drive へ",
+    "履歴",
+    "output/history.db",
+    "削除",
+    "取得した一時音声"
+  ],
+  "edges": [
+    "IN->RES",
+    "RES->QD",
+    "QD->TR",
+    "TR->SV",
+    "SV->UP",
+    "UP->HI",
+    "HI->CL"
+  ]
+}

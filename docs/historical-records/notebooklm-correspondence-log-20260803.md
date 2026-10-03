@@ -1,5 +1,7 @@
 # NotebookLM往復書簡ログ — ccc運用相談とtc改善への反映（2026-08-03）
 
+> 履歴資料(2026-08 時点の記録)。ccc 体制の運用記録で、現行のコードの説明ではない。現行の構成は docs/system-docs/system_overview.md を参照。
+
 生成日: 2026-08-03 / 記録: 采(sai)
 
 `ccc-tc-project-operations-summary-20260803.md`をNotebookLMへ投入して行われた質疑応答と、そこから実際にtcプロジェクトの改善へ反映した内容・反映しなかった内容とその理由を記録する。

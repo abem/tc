@@ -202,3 +202,45 @@ def test_option_sources_are_loaded():
     assert "--bogus" not in tc_opts
     tr_opts = _transcribe_options()
     assert {"--profile", "--language", "--folder-id"} <= tr_opts
+
+
+# --- 仕様書(docs/spec/00-project-spec.md)の数値と実装の定数の一致 ---------------------------
+# 定数を変えたら仕様書も直さないとここが落ちる。webui.py は import が重い(streamlit)ので
+# 値はソースから読む。
+
+def _source_constant(path: str, name: str) -> int:
+    text = (REPO / path).read_text(encoding="utf-8")
+    m = re.search(rf"^{name}\s*=\s*(\d+)\b", text, re.M)
+    assert m, f"{path} に {name} の定義が見つからない"
+    return int(m.group(1))
+
+
+def _spec_text() -> str:
+    return (REPO / "docs" / "spec" / "00-project-spec.md").read_text(encoding="utf-8")
+
+
+def test_spec_numbers_match_implementation_constants():
+    from core.nemotron_engine import CHUNK_THRESHOLD_SEC as NEMOTRON_CHUNK
+    from core.qwen3_engine import Qwen3ASREngine
+    from core.utils import MAX_UPLOAD_FILENAME_LENGTH
+    from handlers.youtube import (
+        DOWNLOAD_STALL_TIMEOUT_SECONDS,
+        ERROR_TEXT_LIMIT,
+        INFO_TIMEOUT_SECONDS,
+        SOCKET_TIMEOUT_SECONDS,
+    )
+
+    spec = _spec_text()
+    expected = {
+        "UPLOAD_RETENTION_DAYS": (_source_constant("webui.py", "UPLOAD_RETENTION_DAYS"), "保存から {n} 日を過ぎた"),
+        "DOWNLOAD_RETENTION_DAYS": (_source_constant("webui.py", "DOWNLOAD_RETENTION_DAYS"), "{n} 日を過ぎた項目を新しい投入"),
+        "ERROR_TEXT_LIMIT": (ERROR_TEXT_LIMIT, "エラー文は {n} 文字"),
+        "MAX_UPLOAD_FILENAME_LENGTH": (MAX_UPLOAD_FILENAME_LENGTH, "最大 {n} 文字"),
+        "SOCKET_TIMEOUT_SECONDS": (SOCKET_TIMEOUT_SECONDS, "`--socket-timeout` {n} 秒"),
+        "INFO_TIMEOUT_SECONDS": (INFO_TIMEOUT_SECONDS, "メタデータ取得 {n} 秒"),
+        "DOWNLOAD_STALL_TIMEOUT_SECONDS": (DOWNLOAD_STALL_TIMEOUT_SECONDS, "出力が {n} 秒途絶えたら"),
+        "Qwen3 CHUNK_THRESHOLD_SEC": (Qwen3ASREngine.CHUNK_THRESHOLD_SEC, "Qwen3-ASR {n} 秒"),
+        "Nemotron CHUNK_THRESHOLD_SEC": (NEMOTRON_CHUNK, "Nemotron {n} 秒"),
+    }
+    missing = [f"{name}={n}: 仕様書に「{fmt.format(n=n)}」が無い" for name, (n, fmt) in expected.items() if fmt.format(n=n) not in spec]
+    assert not missing, missing

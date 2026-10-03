@@ -104,6 +104,8 @@ tmp/
 !00_レビュー依頼/**/*.jpg
 !00_レビュー依頼/**/*.log
 !00_レビュー依頼/**/*.jpeg
+# 例外: README・文書に載せる WebUI の画面写真(ダミーのデータで撮ったもの)
+!docs/screenshots/*.png
 
 # テスト・開発
 .pytest_cache/

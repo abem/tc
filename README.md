@@ -115,6 +115,10 @@ uv run streamlit run webui.py --server.headless true --server.port 8501
 
 機能・保存先・自動削除・本番での常駐（systemd）は、[WebUI（Streamlit）](#webuistreamlit) の節を参照してください。
 
+![WebUI の「文字起こし」タブ。URL またはファイルを入力し、モデル・デバイス・言語を選んで「キューに追加」を押す](docs/screenshots/webui-transcribe.png)
+
+*「文字起こし」タブ。入力 → 設定 → 「キューに追加」の順に操作します。処理が始まると、下の「キュー状態」に進捗バーと経過時間が出ます。*
+
 ## 💻 使用方法
 
 ### 基本実行
@@ -217,6 +221,8 @@ uv run streamlit run webui.py --server.headless true --server.port 8501
   検索して閲覧できます。チェックを入れた履歴を Markdown 1 ファイルにまとめて出力できます。
   「古い履歴の一括削除」は、N日より前の履歴を「対象件数の確認」→「削除」の2段階で消します（消えるのはデータベースの
   記録だけで、`output/` のファイルと Google Drive 上のファイルは消えません）。
+
+  ![「履歴」タブ（履歴の1件を開いたところ。表示しているのはサンプルのデータ）](docs/screenshots/webui-history.png)
 
 **保存先と自動削除**（保持日数は `webui.py` の定数 `UPLOAD_RETENTION_DAYS` / `DOWNLOAD_RETENTION_DAYS`）:
 

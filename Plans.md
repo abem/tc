@@ -90,7 +90,7 @@
 |------|------|-----|---------|--------|
 | D4.1 | `[Verify]` `[lane:gate]` `[tdd:skip:verification]` 全体の機械検査と、文書のコマンドの実行確認 | `uv run ruff check .` 全通過、`uv run python -m pytest tests -q` 全 pass（D0.2 を含む）。全図が `fig.sh` で CLEAN。リンク切れ 0。結果を「機械の検査 / 目で見て確認 / 未確認」に分けて #592 に記録する | D2.1, D2.2, D2.3, D2.4, D2.6, D3.1 | cc:完了（ruff 全通過、pytest 701 passed、図 6 枚 CLEAN、docs 整合検査 95 passed） |
 | D4.2 | `[Review]` `[lane:gate]` `[tdd:skip:review]` 独立レビュー（読み取り専用）: (a) 各文書から 10 件の主張を抜き取り、実装と突き合わせる。(b) 初見の読み手（新しく入った開発者、運用担当）の視点で通読し、詰まる箇所・前提が足りない箇所・図と本文の食い違いを挙げる | APPROVE かつ critical・major が 0 件。レビューが実行した確認（コマンドと出力の要点）が #592 にある | D4.1 | cc:完了（R1 APPROVE、R2・R3 は REQUEST_CHANGES → 指摘を修正。修正後の再レビューは独立では行わず、機械検査と私の確認のみ） |
-| D4.3 | `[Release]` `[lane:release]` `[tdd:skip:release]` `dev` → `main` へ統合する（ユーザーが `scripts/release_dev_main.sh` を実行。`main` の更新は都度ユーザーの GO） | `origin/dev`・`origin/main` がローカルと一致。`main` と `dev` の tree が一致。WebUI の再起動は文書だけの変更なので不要（再起動しないことを実行前に確認する） | D4.2, D0.0 | cc:TODO（ユーザーの GO 待ち。scripts/release_dev_main.sh --no-restart docs/refresh-all-20261004） |
+| D4.3 | `[Release]` `[lane:release]` `[tdd:skip:release]` `dev` → `main` へ統合する（ユーザーが `scripts/release_dev_main.sh` を実行。`main` の更新は都度ユーザーの GO） | `origin/dev`・`origin/main` がローカルと一致。`main` と `dev` の tree が一致。WebUI の再起動は文書だけの変更なので不要（再起動しないことを実行前に確認する） | D4.2, D0.0 | cc:完了（2026-10-04 統合。origin/dev=52b5854、origin/main=93aa418、tree 一致、WebUI 再起動なし）。その後の README 追記（クイックスタートの WebUI 案内、画面写真 2 枚）はブランチ docs/readme-webui-quickstart-20261004 で統合 |
 
 ### 事前確認
 

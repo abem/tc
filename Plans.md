@@ -1,4 +1,120 @@
-# tc リファクタリング計画 Plans.md
+# tc 計画台帳 Plans.md
+
+---
+
+## 現行計画: ドキュメント刷新（tc-ops #592）
+
+作成日: 2026-10-04
+記録先: Redmine tc-ops #592
+状態: 計画のみ（未承認・未着手）。承認後に harness-work で実行する。
+タスク ID は完了済みの計画（下に残す）と衝突しないよう `D` を前置する。
+
+### 依頼
+
+「ドキュメント全般が古い。最新の説明文書に一気に更新してほしい」（2026-10-04、ユーザー）。
+
+### 調査で分かったこと（読み取りと機械検査。2026-10-04）
+
+- 追跡中の Markdown は 200 本。うち 143 本は `00_レビュー依頼/`（作業の依頼・報告の記録で、文書ではない）。現行文書は約 30 本、履歴資料が約 30 本。
+- 2026-10-02〜03 の Phase 4・5 で主要文書（README、DEVELOPMENT、docs/user-guides、docs/developer-guides ほか）は一度更新済み。それでも古い箇所が残る。
+  - `CHANGELOG.md` は 2025-08-11 から更新が無い。壊れたリンク 1 件、存在しないパスへの言及 3 件。
+  - `docs/INVESTIGATION_REPORT.md`・`docs/REFACTORING_LOG.md`（2026-03）は、存在しないパスへの言及が 8 件。現行文書の位置づけのまま索引に載っている。
+  - `SECURITY.md` に連絡先のプレースホルダ（`security@yourproject.com`）が残る。`.github/` のテンプレートは 2025-08 のまま。
+  - `docs/user-guides/configuration.md` が、存在しない `config/context_hints.txt` を実在のように参照する（サンプルのみ実在）。
+  - 直近の変更が文書に無い: 進捗バーと経過時間、`finalize_transcription`（保存→アップロード→履歴→削除の共通化）、`find_yt_dlp`（yt-dlp 検出）、ログの 1 行化（`one_line`）、`scripts/release_dev_main.sh`（統合手順）。`docs/system-docs/webui_architecture.md` はサーバー構成の運用手順だけで、アプリ内部（キュー・状態遷移・作業領域の整理）の説明が無い。
+- 全体像を図で示した文書が無い（構成、処理の流れ、状態遷移）。
+- 再発防止の仕組みが無い。文書と実装の整合を機械で検査するテストが無く、CI も文書を見ていない。
+- 確認できなかったこと（`unknown`）: 各文書の記述のうち、パス以外（手順・数値・挙動の説明）が実装と合っているかは未検査。Task D0.1 で全件確認する。harness-mem は `daemon-unreachable` のため過去の判断の検索ができなかった。
+
+### Spec delta / Spec skip reason
+
+- Spec delta: `docs/spec/00-project-spec.md`（Task D1.1）。記録されていない既存の決定を追記する（進捗表示の仕様、外部由来の文字列の扱い、作業領域の整理の値）。利用者に見える挙動は変えない。
+- Spec skip reason（D1.1 以外）: 文書だけの変更。仕様の正本は実装と `docs/spec/00-project-spec.md` で、文書は従う側。
+
+### 計画メタ情報
+
+- team_validation_mode: `manual-pass`（サブエージェント未使用。Product / Architecture / Security / QA / Skeptic の視点を単独で分けて評価した。棚卸しそのものを Task D0.1 に置いたため、計画段階では追加の独立調査をしない）
+- lint / formatter baseline: ruff 設定済み。文書の検査は D0.2 で追加する。
+- 既存仕様・過去判断との整合: 完了済み計画の D2（両 CLI を残す）、D4〜D8（`docs/spec/00-project-spec.md`）に従う。衝突なし。
+
+### 優先度の分類
+
+| 区分 | 内容 | 理由 |
+|------|------|------|
+| Required | D0.1 棚卸し、D0.2 整合検査の pytest 化、D0.3 図の検査環境、D1.1 仕様書、D2.1 システム全体像、D2.2 WebUI、D2.3 利用者向け、D2.4 開発者向け、D2.6 CHANGELOG、D4.1 検証、D4.2 独立レビュー、D4.3 統合 | 依頼の本体。D0.2 は再発防止で、これが無いと再び古くなる |
+| Recommended | D2.5 運用・リリース手順書、D3.1 履歴資料の整理 | 運用の事故（統合スクリプト）と、現行文書と履歴の混同を防ぐ |
+| Optional | D2.7 SECURITY.md と `.github` テンプレート（連絡先の決定が要る）、O1 API.md の半自動生成 | 効果はあるが、利用者の決定または規模が要る |
+| Reject | `00_レビュー依頼/`（143 本）、`docs/obsolete/`（15 本）、既存の `docs/historical-records/`、`docs/notebooklm/` | 記録・履歴であり、現状を説明する文書ではない。書き換えると記録が壊れる。`docs/notebooklm/` は D3.1 で扱いを判断する |
+| 別依頼 | 独立レビューの未対応指摘（統合スクリプト、`one_line`、ログの取りこぼし） | 文書ではなく実装の修正。D2.5 と D4.3 は修正後が望ましい（依存として下に記載） |
+
+### 図についての規則（`~/.claude/CLAUDE.md` に従う）
+
+構成・仕組みの説明には図を入れる。1 つの問いにつき 1 枚、1 枚あたり 8 要素前後まで。`diagram-design` で作り、`fig.sh` で機械検査し、画像を目視で確認する。図は検査環境のある `~/Projects/claude/explainer-trial/docs/tc-docs/figures/` で作り、検査済みの SVG を `docs/figures/` へ取り込む（D0.3 で運用を確認する）。要素が 4 つ未満の説明は図にせず、その理由を 1 行書く。
+
+### Phase D0: 基準づくり [Required]
+
+| Task | 内容 | DoD | Depends | Status |
+|------|------|-----|---------|--------|
+| D0.1 | `[Audit]` `[lane:gate]` `[tdd:skip:audit-no-code]` 現行文書（`README.md`、`CLAUDE.md`、`CONTRIBUTING.md`、`DEVELOPMENT.md`、`DEVELOPMENT_QUICKREF.md`、`SECURITY.md`、`docs/{developer-guides,system-docs,user-guides,feature,spec}/` の約 30 本）の記述を実装と突き合わせ、古い・誤り・欠落を全件一覧にする。確認方法（grep / コマンド実行 / 実装の該当箇所）を主張ごとに書く | 文書ごとに「確認した主張数 / 古い・誤り・欠落の件数 / 根拠」の表が Redmine #592 にある。古い記述が 0 件の文書も、根拠つきで 0 と書く。パス・コマンド・オプション・数値・挙動の説明のすべてを対象にしたと明記する | - | cc:TODO |
+| D0.2 | `[Tool]` `[lane:gate]` `[tdd:required]` 文書の整合検査を `tests/test_docs_consistency.py` として pytest に入れる。検査: (a) 相対リンク切れ、(b) バッククォート内の `core/…` `handlers/…` `scripts/…` `tests/…` `docs/…` `config/…` のパスの実在、(c) 削除済みモジュール名の言及（`CLAUDE.md` の削除済み一覧）、(d) `tc` のオプション（`--xxx`）が `build_parser()` に実在、(e) 文書中の `uv run python -m pytest <パス>` のパスの実在。対象は現行文書。`00_レビュー依頼/`・`docs/obsolete/`・`docs/historical-records/` を除外し、理由をテスト内に書く | 現状の文書で先に実行し、リンク切れ 2 件・存在しないパス 17 件を検出して失敗する（赤の証拠）。刷新後に pass。除外ディレクトリの根拠がテスト内にある。`ci.yml` の pytest で実行される | D0.1 | cc:TODO |
+| D0.3 | `[Spike]` `[lane:fast]` `[tdd:skip:spike]` 図の運用を確認する。`explainer-trial/docs/tc-docs/figures/` で試作図を `.mmd` → `fig.sh` → SVG と作り、`docs/figures/` へ取り込んで、tc の Markdown から `![…](figures/x.svg)` で参照できることを確認する | 試作図 1 枚が `fig.sh` で CLEAN。tc の Markdown から相対参照で表示できる（GitHub 上の表示は未確認のまま、ローカルの参照解決のみ確認と明記）。作り方と取り込み手順が `docs/README.md` に 5 行以内で書かれている | - | cc:TODO |
+
+### Phase D1: 正本の更新 [Required]
+
+| Task | 内容 | DoD | Depends | Status |
+|------|------|-----|---------|--------|
+| D1.1 | `[Contract]` `[lane:gate]` `[tdd:skip:docs-contract]` `docs/spec/00-project-spec.md` に、記録されていない既存の決定を追記する: 進捗表示（ダウンロードの割合、長音声のチャンク進捗、経過・残り時間、Nemotron は経過時間のみ）、外部由来の文字列（アップロード名・URL・エラー文）をログとラベルで 1 行にする方針、アップロード名の安全化。値は実装の定数に合わせる | 仕様書に書いた数値（保持日数 7 日と 1 日、エラー文の最大 1,000 文字、アップロード名の最大 200 文字）が、実装の定数（`UPLOAD_RETENTION_DAYS`、`DOWNLOAD_RETENTION_DAYS`、`ERROR_TEXT_LIMIT`、`MAX_UPLOAD_FILENAME_LENGTH`）と一致することを確認するテスト（`tests/test_docs_consistency.py` 内）が pass。各決定に決定日がある | D0.1 | cc:TODO |
+
+### Phase D2: 説明文書の刷新 [Required]
+
+| Task | 内容 | DoD | Depends | Status |
+|------|------|-----|---------|--------|
+| D2.1 | `[Docs]` `[lane:gate]` `[tdd:skip:docs-only]` システム全体像: `docs/system-docs/system_overview_2025.md` を `system_overview.md` へ改名し全面更新する。図 3 枚: (1) コンポーネント構成、(2) 1 件の処理の流れ（入力 → 解決 → キュー → 文字起こし → 保存 → アップロード → 履歴 → 削除）、(3) エンジン選択（`create_engine`） | 3 枚の図が `fig.sh` で CLEAN で、画像を目視確認済み（読めたか・直したかを報告に書く）。`grep -rn "system_overview_2025"`（`00_レビュー依頼/` と履歴資料を除く）が 0 件。本文の識別子が実在する（D0.2 が pass） | D0.2, D0.3, D1.1 | cc:TODO |
+| D2.2 | `[Docs]` `[lane:gate]` `[tdd:skip:docs-only]` WebUI: `docs/system-docs/webui_architecture.md` にアプリ内部の章を足す。キューの状態遷移図（`RESOLVING → QUEUED → PROCESSING → DONE / FAILED`）、進捗表示の流れ、作業領域（`output/uploads`、`output/queue_downloads`）と整理の規則、アップロードの安全化。既存の運用の章（systemd、ヘルスチェック）は実機に照らして再確認する | 状態遷移図の遷移が `core/webui_workflow.py` の `QueueItemState` と一致する（照合した行番号を報告に書く）。図が CLEAN。運用の章のコマンドを実機で実行して確認した結果（実行したもの・していないもの）を報告に分けて書く | D2.1 | cc:TODO |
+| D2.3 | `[Docs]` `[lane:gate]` `[tdd:skip:docs-only]` 利用者向け: `README.md`（更新履歴は CHANGELOG へ移し、概要・クイックスタート・機能・制約に絞る）、`TUTORIAL.md`、`new_cli_usage.md`、`configuration.md`、`language_support_guide.md`、`timestamp_feature.md`（D4 の保存形式を反映）、`TROUBLESHOOTING.md`（新しいエラー: yt-dlp 不在は `uv sync`、取得のタイムアウト、長い動画の所要時間、アップロード・ダウンロードの自動削除）を更新する | 文書に載せた `tc` のコマンドを `--help` または `--dry-run` で実行して成功を確認し、結果を #592 に残す。D0.2 が pass。D0.1 の「古い・誤り・欠落」のうち本タスクの文書に属する全件が解消済み | D1.1 | cc:TODO |
+| D2.4 | `[Docs]` `[lane:gate]` `[tdd:skip:docs-only]` 開発者向け: `DEVELOPMENT.md`、`DEVELOPMENT_QUICKREF.md`、`CONTRIBUTING.md`、`docs/developer-guides/API.md`、`coding_standards.md`、`CLAUDE.md`（べからず集）を更新する。新モジュール一覧（`progress`、`housekeeping`、`history`、`engine_factory`、`finalize_transcription` ほか）、ログ初期化（`setup_logging`）、外部由来の文字列の扱い、テストと lint の手順 | `API.md` の公開クラス・関数名が実在する（D0.2 が pass）。文書の手順（`uv run ruff check .`、`uv run python -m pytest tests -q`）を実行して成功し、件数を文書に書く場合は実測と一致する。`CLAUDE.md` の「main 更新は明示的な指示があるときだけ」などの禁止事項は変更しない（差分で確認） | D1.1 | cc:TODO |
+| D2.5 | `[Docs]` `[lane:gate]` `[tdd:skip:docs-only]` 運用・リリース手順書を新設する（`docs/system-docs/release_operations.md`）: ブランチ戦略（feature → dev → main）、本番 `tc-prod` の位置づけ、`scripts/release_dev_main.sh` の使い方・止まる条件・途中で止まったときの復旧、WebUI 再起動前のジョブ確認。図 1 枚（ブランチと環境の関係）。統合スクリプトの修正（別依頼）が済んでいなければ、既知の制約を明記して書く | スクリプトの引数と停止条件が、`--help` と実コード（`bash -n` と読解）と一致する。図が CLEAN。未修正の既知の制約を載せた場合は、その一覧が独立レビュー（`#578` のコメント）と一致する | D0.3, D1.1 | cc:TODO |
+| D2.6 | `[Docs]` `[lane:gate]` `[tdd:skip:docs-only]` `CHANGELOG.md` に、2025-08-11 以降の変更を Keep a Changelog 形式で追記する。出典は `git log --since=2025-08-11` と Redmine tc-ops。利用者に見える変更だけを載せる | 日付つきのセクションがあり、Redmine #546〜#592 のうち利用者に見える変更の一覧（出典の突合せ表を #592 に貼る）がすべて載っている。壊れたリンクと存在しないパスが 0 件（D0.2 が pass） | D1.1 | cc:TODO |
+| D2.7 | `[Docs]` `[lane:fast]` `[tdd:skip:docs-only]` `SECURITY.md` と `.github/` のテンプレートを実態に合わせる。プレースホルダの連絡先と、古い手順（規約の熟読宣言など）を直す。**連絡先はユーザーの決定が要る** | `grep -rn "yourproject" SECURITY.md .github` が 0 件。テンプレートのコマンドが `uv`・`pytest`・`ruff` である。連絡先をユーザーが決めた記録が #592 にある | - | blocked（連絡先の決定待ち） |
+
+### Phase D3: 履歴資料の整理 [Recommended]
+
+| Task | 内容 | DoD | Depends | Status |
+|------|------|-----|---------|--------|
+| D3.1 | `[Docs]` `[lane:fast]` `[tdd:skip:docs-only]` `docs/INVESTIGATION_REPORT.md` と `docs/REFACTORING_LOG.md`（存在しないパスを多数含む 2026-03 の資料）を `docs/historical-records/` へ移し、冒頭に「履歴資料。現状と異なる」と注記する。`docs/notebooklm/`・`docs/kaizen/` を現状と照合して扱いを決める（理由を書く）。`docs/README.md` の索引とリンクを更新する | `docs/` 配下の Markdown のうち `docs/README.md` の索引にないものが 0 件（機械検査）。移した 2 本が D0.2 の除外ディレクトリに入り、現行文書側のリンク切れが 0 件 | D0.2 | cc:TODO |
+
+### Phase D4: 検証と統合 [Required]
+
+| Task | 内容 | DoD | Depends | Status |
+|------|------|-----|---------|--------|
+| D4.1 | `[Verify]` `[lane:gate]` `[tdd:skip:verification]` 全体の機械検査と、文書のコマンドの実行確認 | `uv run ruff check .` 全通過、`uv run python -m pytest tests -q` 全 pass（D0.2 を含む）。全図が `fig.sh` で CLEAN。リンク切れ 0。結果を「機械の検査 / 目で見て確認 / 未確認」に分けて #592 に記録する | D2.1, D2.2, D2.3, D2.4, D2.6, D3.1 | cc:TODO |
+| D4.2 | `[Review]` `[lane:gate]` `[tdd:skip:review]` 独立レビュー（読み取り専用）: (a) 各文書から 10 件の主張を抜き取り、実装と突き合わせる。(b) 初見の読み手（新しく入った開発者、運用担当）の視点で通読し、詰まる箇所・前提が足りない箇所・図と本文の食い違いを挙げる | APPROVE かつ critical・major が 0 件。レビューが実行した確認（コマンドと出力の要点）が #592 にある | D4.1 | cc:TODO |
+| D4.3 | `[Release]` `[lane:release]` `[tdd:skip:release]` `dev` → `main` へ統合する（ユーザーが `scripts/release_dev_main.sh` を実行。`main` の更新は都度ユーザーの GO） | `origin/dev`・`origin/main` がローカルと一致。`main` と `dev` の tree が一致。WebUI の再起動は文書だけの変更なので不要（再起動しないことを実行前に確認する） | D4.2（推奨: 統合スクリプトの修正後） | cc:TODO |
+
+### 事前確認
+
+- 事項: destructive — 追跡中の文書の改名・移動（`system_overview_2025.md` → `system_overview.md`、`INVESTIGATION_REPORT.md` と `REFACTORING_LOG.md` → `docs/historical-records/`）
+  理由: 古い名前・位置づけの文書を現状に合わせる。参照元はすべて直す。履歴は git に残る
+  scope: Phase D2 / Task D2.1、Phase D3 / Task D3.1
+- 事項: rule-file — `CLAUDE.md`・`CONTRIBUTING.md`・`SECURITY.md`・`.github/` のテンプレートの修正
+  理由: 実装と食い違う記述を直す。禁止事項（`main` の更新、`.venv` の削除など）は変更しない
+  scope: Phase D2 / Task D2.4、D2.7
+- 事項: external-send — 検査環境のあるリポジトリ `~/Projects/claude/explainer-trial/docs/tc-docs/` への図の書き込み（tc の外）
+  理由: `fig.sh` が mermaid の入った `package.json` を要求するため、図はそこで作る。検査済みの SVG を tc に取り込む
+  scope: Phase D0 / Task D0.3、Phase D2 / Task D2.1、D2.2、D2.5
+- 事項: external-send — `git push`（`dev`・`main`）。ユーザーが `scripts/release_dev_main.sh` を実行する
+  理由: 統合と push は実行時の分類器が私の実行を拒否するため、ユーザーが行う
+  scope: Phase D4 / Task D4.3
+- 事項: `main` の更新は都度ユーザーの GO を得る
+  理由: `CLAUDE.md` の絶対厳守事項
+  scope: 全 Phase
+- 事項: secret-read は無い
+  理由: 認証情報ファイルは読まない（文書には名前だけを書く）
+  scope: 全 Phase
+
+---
+
+## 完了済み計画: tc リファクタリング（tc-ops #566 / #567）
 
 作成日: 2026-10-02
 記録先: Redmine tc-ops #566

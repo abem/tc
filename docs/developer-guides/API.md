@@ -77,7 +77,7 @@ print(result.text)
 
 ### TranscriptionResult / TranscriptionSegment
 
-`core.transcription_interface` で定義されたデータクラスです。
+`core.transcription_types` で定義されたデータクラスです（`core.transcription_interface` からも import できます）。
 
 `TranscriptionResult` の属性:
 
@@ -458,14 +458,15 @@ from core.transcription_interface import UnifiedTranscriber
 # YouTube / X / Google Drive の URL、またはローカルパスを音声ファイルに解決
 resolution = resolve_input_audio("https://youtube.com/watch?v=...", Path("output"))
 
-config = TranscriptionConfig(model="Qwen/Qwen3-ASR-1.7B", language=None)
-result = UnifiedTranscriber(config).transcribe(resolution.local_audio_path)
-print(result.text)
-
-# 一時ファイルの削除（yt-dlp 由来と Google Drive 由来の音声。ローカル入力は削除されない）
-warning = cleanup_input_audio(resolution)   # 削除に失敗したときだけ警告文が返る
-if warning:
-    print(warning)
+try:
+    config = TranscriptionConfig(model="Qwen/Qwen3-ASR-1.7B", language=None)
+    result = UnifiedTranscriber(config).transcribe(resolution.local_audio_path)
+    print(result.text)
+finally:
+    # 一時ファイルの削除（yt-dlp 由来と Google Drive 由来の音声。ローカル入力は削除されない）
+    warning = cleanup_input_audio(resolution)   # 削除に失敗したときだけ警告文が返る
+    if warning:
+        print(warning)
 ```
 
 結果の保存・アップロード・履歴までまとめて行うときは `finalize_transcription` を使います（一時音声の削除も含みます）。
@@ -481,22 +482,26 @@ from core.config import TranscriptionConfig
 yt_client = YouTubeClient()
 audio_path, metadata = yt_client.download_audio("https://youtube.com/watch?v=...")
 
-# 文字起こし
-config = TranscriptionConfig(model="Qwen/Qwen3-ASR-1.7B", language="ja")
-result = UnifiedTranscriber(config).transcribe(audio_path)
+try:
+    # 文字起こし
+    config = TranscriptionConfig(model="Qwen/Qwen3-ASR-1.7B", language="ja")
+    result = UnifiedTranscriber(config).transcribe(audio_path)
 
-# 結果をテキストファイルに保存
-with open("result.txt", "w", encoding="utf-8") as f:
-    f.write(result.text)
+    # 結果をテキストファイルに保存
+    with open("result.txt", "w", encoding="utf-8") as f:
+        f.write(result.text)
 
-# Google Driveにアップロード
-gdrive_client = GDriveClient()
-upload_result = gdrive_client.upload_youtube_transcription("result.txt", metadata)
+    # Google Driveにアップロード（失敗すると None が返る）
+    gdrive_client = GDriveClient()
+    upload_result = gdrive_client.upload_youtube_transcription("result.txt", metadata)
 
-print(f"処理完了: {upload_result['file_url']}")
-
-# yt-dlp が作った一時音声を削除
-yt_client.cleanup_temp_file(audio_path)
+    if upload_result:
+        print(f"処理完了: {upload_result['file_url']}")
+    else:
+        print("アップロードに失敗しました")
+finally:
+    # yt-dlp が作った一時音声を、成功・失敗のどちらでも削除
+    yt_client.cleanup_temp_file(audio_path)
 ```
 
 ### バッチ処理

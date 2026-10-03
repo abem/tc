@@ -467,7 +467,7 @@ cp config/context_hints.txt.sample config/context_hints.txt
 
 **原因:** エンジンと入口によって、付き方が違います。
 
-| 使っているもの | `[MM:SS]` |
+| 使っているもの（WebUI の行は Qwen3-ASR の場合） | `[MM:SS]` |
 |----------------|-----------|
 | Whisper 系のモデル | 設定に関係なく、常に 30 秒ごとに付く |
 | Qwen3-ASR（既定）を `./tc` で | `whisper.include_timestamps: true` のときだけ付く |
@@ -481,6 +481,8 @@ cp config/context_hints.txt.sample config/context_hints.txt
 whisper:
   include_timestamps: true   # Qwen3-ASRで有効。初回は ForcedAligner を追加でダウンロードする
 ```
+
+Whisper 系は WebUI の画面の結果欄にも `[MM:SS]` が出ます（エンジンが `result.text` に埋め込むため）。
 
 ForcedAligner の読み込みや実行に失敗したときは、警告のログを出してタイムスタンプなしで保存されます。
 詳細は [timestamp_feature.md](../feature/timestamp_feature.md) を参照してください。

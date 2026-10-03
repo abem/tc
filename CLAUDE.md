@@ -285,14 +285,13 @@ git diff
 # 3. 段階的なステージング（一度に全てコミットしない）
 git add <specific-files>
 
-# 4. 意味のあるコミットメッセージ
-git commit -m "docs: 開発者向け文書を最新の実装に合わせて更新 (tc-ops #592)
+# 4. 意味のあるコミットメッセージ（下は例ではなくテンプレート。<> の部分を書き換える）
+git commit -m "<prefix>: <変更内容を50文字以内で> (tc-ops #<チケット番号>)
 
-- CLAUDE.md の重要ファイル一覧に housekeeping / progress / finalize_transcription を追加
-- ブランチ戦略に dev と docs/ を追記
-- 変更理由と影響範囲をここに書く
+- <変更点1>
+- <変更の理由と影響範囲>
 
-Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>"
+Co-Authored-By: <使っているセッションが指定する署名>"
 ```
 署名の行は、使っているセッション（Claude Code）が指定する形式に従う。チケット番号（tc-ops #NNN）を概要に付ける。
 

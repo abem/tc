@@ -54,8 +54,8 @@ scripts/release_dev_main.sh <featureブランチ> "<mainのマージコミット
 - dev が feature の祖先で、取り込むコミットがある（fast-forward できる）。
 - main がどの worktree にもチェックアウトされていない。
 - WebUI のジョブ（ダウンロード中・待機中・処理中）が無い。ログの状態遷移と、WebUI 配下の
-  `yt-dlp` / `ffmpeg` / `nemotron_infer` のプロセスから判断する。**確認できなければ「ある」とみなす**
-  （ログが無い場合も含む）。ジョブの判定は、再起動する場合（`--no-restart` でない場合）にだけ、統合を止める条件になる。
+  `yt-dlp` / `ffmpeg` / `nemotron_infer` のプロセスから判断する（限界は「WebUI にジョブがあるときの扱い」）。
+  **確認できなければ「ある」とみなす**（ログが無い場合も含む）。ジョブの判定は、再起動する場合（`--no-restart` でない場合）にだけ、統合を止める条件になる。
 
 ### 手順の順序（本番を動かすのは最後）
 
@@ -71,7 +71,9 @@ scripts/release_dev_main.sh <featureブランチ> "<mainのマージコミット
 5. **WebUI の再起動**: `systemctl --user restart tc-webui.service` を実行し、最大 30 秒、ヘルスチェック
    （`http://localhost:8501/_stcore/health`）が 200 になるのを待つ。
 
-ジョブがあって再起動できない場合は、手順 2 より前（何も変更する前）に止まる。
+ジョブがあって再起動できない場合は、手順 2 より前（何も変更する前）に止まる。止まる条件は前提確認に限らない
+（図の「中止」の矢印は前提確認からだけ出ているが、実際にはマージ競合、マージ後の内容（tree）の不一致、
+WebUI のジョブがある場合にも、何も変更せずに止まる）。図の「手元の統合先」は、ローカルの main のことである。
 
 ### 実行例（`--dry-run`、2026-10-04 に実行）
 
@@ -100,8 +102,21 @@ main: 60a7838
 | ドキュメントだけの変更 | WebUI の動作に影響しないので、**再起動は不要**。`--no-restart` で統合する |
 
 画面のキューはブラウザセッション単位なので、別のブラウザの投入分は画面に出ない
-（[WebUI 内部サーバー構成](webui_architecture.md) §8。コードの読解による）。スクリプトはログとプロセスで判定するので、
-画面に出ないジョブも検出できる。
+（[WebUI 内部サーバー構成](webui_architecture.md) §8。コードの読解による）。スクリプトは画面ではなく、
+ログとプロセスで判定する。
+
+**検出できる範囲**: ログの状態遷移の「開始」（`(新規)->…` の行）の回数と「終了」（`->DONE` / `->FAILED`）の回数を
+数え、差が正なら実行中とみなす（`item_id` が別セッションで衝突しても、他セッションの終了が実行中の項目を隠さない）。
+`yt-dlp` / `ffmpeg` / `nemotron_infer` のプロセスがあれば実行中とみなす。画面に出ない別セッションの項目も、
+ログに開始が記録されていれば、この範囲で拾える。
+
+**検出できない範囲・限界**:
+
+- プロセスの中（スレッド）で動く Qwen / Whisper の推論は、プロセスの判定に出ない。ログの開始・終了の差だけが頼り。
+- **ブラウザを閉じて完了処理が走らなかったジョブは、終了（DONE）が記録されない**（webui_architecture.md §8）。
+  そのため、再起動するまで「実行中」と判定され続ける（安全側）。再起動したいときは `--force-restart`
+  （そのジョブの結果は、もともと保存されず失われている）。
+- ログに識別子が無いので、複数のセッションが同時に使われているとき、どのセッションのジョブかは分からない。
 
 ### 途中で止まったときの復旧
 
@@ -144,8 +159,12 @@ uv run python -m pytest tests/test_release_script.py -q
 1. WebUI の画面（キュー状態）で、解決中・待機・処理中の項目が無いことを確認する。
 2. 画面で確認できなければ、`logs/transcription.log` の `状態遷移` 行で、サービスの起動以降に DONE / FAILED に
    なっていない `item_id` が無いことを確認する。
-3. 迷うときは、スクリプトの `--dry-run` の「WebUI のジョブはありません」の表示を使う（画面に出ない
-   ブラウザセッションの分も、ログとプロセスで判定できる）。
+3. スクリプトの `--dry-run` の判定も参考になる（ログとプロセスで判定する。限界は §2 の「WebUI にジョブがあるときの扱い」）。
+   ただし `--dry-run <ブランチ>` は、dev より進んだ feature ブランチが無いと、取り込むコミットが無いので「中止」
+   （終了コード 1）になる。設定の変更だけの再起動では使えないので、そのときは上の画面とログ
+   （`grep 状態遷移 logs/transcription.log`）で確認する。
+4. 処理中のジョブがあるうちは、ブラウザのタブを閉じない・再読み込みしない（完了後の保存・履歴の記録が走らなくなる。
+   [WebUI 内部サーバー構成](webui_architecture.md) §8）。
 
 ```bash
 systemctl --user restart tc-webui.service
@@ -171,9 +190,8 @@ journalctl --user -u tc-webui.service -n 20 --no-pager
 
 この文書のコマンドのうち、実機で実行して確認したのは次のとおり。
 
-- 実行した: `bash -n scripts/release_dev_main.sh`、`scripts/release_dev_main.sh --help`、
+- 実行した: `curl -sf http://localhost:8501/_stcore/health`（2026-10-04。`ok` が返った）、`bash -n scripts/release_dev_main.sh`、`scripts/release_dev_main.sh --help`、
   `scripts/release_dev_main.sh --dry-run <ブランチ>`、`uv run python -m pytest tests/test_release_script.py -q`（20 件が通過）。
 - 実行していない: `scripts/release_dev_main.sh` の統合・push・再起動（`--dry-run` 以外）、
-  `systemctl --user restart` / `stop`、2026-10-04 の `systemctl --user status` とヘルスチェックの `curl`（同じ呼び出しの中で実行を試みたが、
-  この環境の安全フックに止められ、結果を得ていない。2026-08-05 に実行した結果が `webui_architecture.md` §6・§7 にある）、復旧のコマンド（表の `git ... merge --ff-only` など。
+  `systemctl --user restart` / `stop`、2026-10-04 の `systemctl --user status`（2026-08-05 に実行した結果が `webui_architecture.md` §6・§7 にある）、復旧のコマンド（表の `git ... merge --ff-only` など。
   スクリプトの本文のメッセージに書かれたとおりに転記した）。

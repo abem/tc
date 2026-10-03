@@ -88,7 +88,7 @@ gdrive:
   url: "https://drive.google.com/file/d/your_file_id/view"
 
 whisper:
-  model: Qwen/Qwen3-ASR-1.7B   # デフォルト（最高精度）
+  model: Qwen/Qwen3-ASR-1.7B   # デフォルト
   language: null                # 既定は自動判定（ja/en等を指定すると強制）
   device: cuda  # または cpu、auto
 ```

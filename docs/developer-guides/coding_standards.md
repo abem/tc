@@ -7,7 +7,9 @@
 
 - **本規約を冒頭から末尾まで読み、PR の冒頭に「既読・理解済み」と明記する。** 記載のない PR は差し戻す
 - **Git 操作**
-  - force push・rebase・reset など、履歴を書き換える操作は**絶対禁止**
+  - force push・rebase・reset など、履歴を書き換える操作は**絶対禁止**。
+    例外は、ブランチの ahead / behind の分岐（「This branch is X commits ahead of, Y commits behind」）が出たときだけで、
+    `CLAUDE.md` の「ブランチ同期問題が発生した場合の正しい対処」に従う（分岐した dev / feature だけを削除・再作成する。main は削除しない）
   - コンフリクトは自力で解決せず、直ちにリード（レビュー担当）へ報告して指示を待つ
   - 指示された操作以外の git 操作はしない（`status` / `log` / `diff` などの参照は可）。push は明示的な指示があるときだけ
   - ブランチの更新順序（feature → dev → main）と main の扱いは `CLAUDE.md` が正本

@@ -170,8 +170,9 @@ docs/
 ├── developer-guides/
 ├── historical-records/         # 過去の経緯・是正記録
 ├── feature/
-├── kaizen/
-└── obsolete/
+├── figures/                    # 文書の図
+├── obsolete/
+└── README.md                   # docs の索引
 
 scripts/
 ├── gpu_monitor.py              # GPU監視
@@ -434,7 +435,7 @@ class MyCustomEngine(TranscriptionEngine):
 ### 2. 新しい言語サポート追加
 
 言語ごとに専用のトランスクライバーを作るのではなく、`whisper.language` の値を
-`Qwen3ASREngine.lang_map`(`core/qwen3_engine.py`)に追加するだけでよい:
+`transcribe()` 内の `lang_map`(`core/qwen3_engine.py`)に追加するだけでよい:
 
 ```python
 lang_map = {"ja": "Japanese", "en": "English", "zh": "Chinese"}  # 追加例
@@ -460,7 +461,9 @@ WhisperTranscriptionEngine 側は `config.language` をそのまま渡すため�
   経過・残り時間は `core/webui_workflow.py` の `format_elapsed` / `estimate_remaining`(進捗 3% 未満では残りを出さない)。
   Nemotron と短い音声は経過時間のみ
 
-ログの出力先や形式を変えるときは `core.logging.UnifiedLogger.configure(...)` を使う。## 🔧 設定カスタマイズ
+ログの出力先や形式を変えるときは `core.logging.UnifiedLogger.configure(...)` を使う。
+
+## 🔧 設定カスタマイズ
 
 ### config/config.yaml編集
 ```yaml

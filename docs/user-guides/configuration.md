@@ -31,7 +31,7 @@ transcribe_audioシステムの設定管理に関するガイドです。
 | `whisper.context_file` | 読む | 読む | 読まない（画面で指定） |
 | `whisper.include_timestamps` | 読む | 読まない | 読まない（画面の「タイムスタンプ付与」で指定） |
 
-WebUI は `config/config.yaml` の項目を実質的に使いません（画面で指定します）。特に `gdrive.upload_folder_id` は読まないため、
+WebUI は `config/config.yaml` の項目を実質的に使いません（画面で指定します。ただし `gdrive.scopes` は Drive 認証で全入口が読むので、OAuth スコープはどの入口でも設定が効きます）。特に `gdrive.upload_folder_id` は読まないため、
 WebUI の Google Drive 入力は、結果を常に元ファイルと同じフォルダに保存します。
 
 ## config.yaml詳細

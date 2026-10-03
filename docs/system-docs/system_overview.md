@@ -42,7 +42,7 @@
 
 ## エンジンの選択
 
-![モデル名に nemotron を含めば Nemotron、含まず qwen3-asr を含めば Qwen3-ASR、どちらでもなければ Whisper が選ばれる判定図](../figures/overview_engines.svg)
+![モデル名に nemotron を含めば Nemotron、含まず qwen3-asr または qwen3_asr を含めば Qwen3-ASR、どちらでもなければ Whisper が選ばれる判定図](../figures/overview_engines.svg)
 
 `core/engine_factory.py` の `create_engine` が、この順に判定します（`UnifiedTranscriber.__init__` から呼ばれます。`qwen3_asr` の表記も Qwen3-ASR になります）。
 
@@ -82,8 +82,10 @@ Nemotron は、初回のみ専用の仮想環境を作ります。
 WebUI の起動（開発時）:
 
 ```bash
-uv run streamlit run webui.py --server.headless true --server.port 8501
+uv run streamlit run webui.py --server.headless true --server.port 8503
 ```
+
+本番の WebUI が稼働中は 8501 を使っているので、手動で起動するときは別のポート（上の例は 8503）にしてください。
 
 WebUI の内部構成は [webui_architecture.md](webui_architecture.md) を参照してください。
 
@@ -105,7 +107,7 @@ WebUI の内部構成は [webui_architecture.md](webui_architecture.md) を参�
 
 ## 本番運用
 
-WebUI は systemd のユーザーサービス `tc-webui.service` が、`/home/abem/Projects/tc-prod`（`dev` をチェックアウト）で常駐させています。`tc-prod` の `output` / `logs` / `.venv` / `.env` / `venv-nemotron` などは、開発用の作業ツリー（`/home/abem/Projects/tc`）へのシンボリックリンクで共有しています。`dev` から `main` への統合・push・WebUI の再起動は `scripts/release_dev_main.sh` が行います（`--dry-run` で確認できます）。手順の詳細は `release_operations.md` を参照してください（作成中のため、この文書からのリンクは張っていません）。
+WebUI は systemd のユーザーサービス `tc-webui.service` が、`/home/abem/Projects/tc-prod`（`dev` をチェックアウト）で常駐させています。`tc-prod` の `output` / `logs` / `.venv` / `.env` / `venv-nemotron` などは、開発用の作業ツリー（`/home/abem/Projects/tc`）へのシンボリックリンクで共有しています。`dev` から `main` への統合・push・WebUI の再起動は `scripts/release_dev_main.sh` が行います（`--dry-run` で確認できます）。手順の詳細は [release_operations.md](release_operations.md) を参照してください。
 
 ## 設定
 

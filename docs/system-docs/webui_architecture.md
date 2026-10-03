@@ -52,11 +52,12 @@ uv run streamlit run webui.py
 既定値はLinuxでSSH接続時など一部条件でtrueになる場合があるが、明示指定が確実）:
 
 ```bash
-uv run streamlit run webui.py --server.headless true --server.port 8501
+uv run streamlit run webui.py --server.headless true --server.port 8503
 ```
 
-**ポートについて**: 本番（systemd、§7）のポートは **8501**。この文書のコマンド例も 8501 に揃えている。
-下の起動ログの例だけは、2026-08-05 に検証用として 8503 で起動して採取した**過去の記録**で、
+**ポートについて**: 本番（systemd、§7）のポートは **8501** で、本番稼働中は 8501 を使っているので、手動で起動する
+例は別ポートの 8503 に統一している（8501 で起動すると本番と衝突する）。
+下の起動ログの例は、2026-08-05 に検証用として 8503 で起動して採取した**過去の記録**で、
 ポート番号と IP アドレス以外の形式は今も同じと考えられる（再採取はしていない）。
 
 **起動ログの代表例**（2026-08-05 に実機で採取。ポート 8503 で起動した検証用の記録）:
@@ -121,9 +122,9 @@ LISTEN 0      2048                *:8501             *:*    users:(("streamlit",
   - VPN等、信頼できるネットワーク経由でのみアクセス可能にする。
 - 本番も同じ構成(認証なし・全インターフェースで待受)であり、到達できる範囲は、ホストのネットワークと
   ファイアウォールの設定で決まる。到達範囲の制限は WebUI の外側(ネットワーク)の責任になる。
-- 本プロトタイプ(Phase2)の時点では認証機能は設計・実装のいずれにも含まれていない
-  (`00_レビュー依頼/作から計への設計書_WebUIフレームワーク選定とプロトタイプ方針_20260806.md`にも
-  認証に関する記載なし)。認証機能が必要な場合はPhase3以降の検討課題として別途起案すること。
+- 現行の実装に認証機能は無い(本番稼働中も同じ。設計書
+  `00_レビュー依頼/作から計への設計書_WebUIフレームワーク選定とプロトタイプ方針_20260806.md` にも認証の記載は無い)。
+  認証が必要な場合は別途起案すること。到達範囲はネットワークの設定で決まる。
 
 ## 4. WSL2固有の挙動
 
@@ -168,7 +169,7 @@ Detected WSL. Using poll-based file watching for better compatibility. To force 
 
 本番(`tc-prod`)の WebUI は systemd で常駐している(§7)。この節の手動起動は、開発機での確認や
 自動テスト用で、**本番のサービスと同じポート(8501)で起動すると衝突する**。本番が動いている間は、
-別のポート(例: 8503)で起動すること。
+別のポート(例: 8503)で起動すること(本番稼働中は 8501 を使っている)。この節の手動起動の例は 8503 に統一している。
 
 ### 起動(フォアグラウンド、開発時の通常利用)
 
@@ -182,7 +183,7 @@ uv run streamlit run webui.py
 ### 起動(バックグラウンド、動作確認・自動テスト用途)
 
 ```bash
-nohup uv run streamlit run webui.py --server.headless true --server.port 8501 \
+nohup uv run streamlit run webui.py --server.headless true --server.port 8503 \
   > /tmp/webui.log 2>&1 &
 echo $!   # PIDを控える
 ```
@@ -193,7 +194,7 @@ Streamlit 自体の標準出力・標準エラー(起動ログ、例外のトレ
 ### 起動確認(ヘルスチェック)
 
 ```bash
-curl -sf http://localhost:8501/_stcore/health
+curl -sf http://localhost:8503/_stcore/health   # 手動起動したポート(本番は 8501)
 # 正常時: "ok" を返す
 ```
 
@@ -225,8 +226,9 @@ tail -f logs/transcription.log
 # 起動時に控えたPIDで停止
 kill <PID>
 
-# PIDを控えていない場合、プロセス名で検索して停止
-pkill -f "streamlit run webui.py"
+# 注意: プロセス名の一括停止(pkill -f)は使わない。本番(tc-prod、2 プロセス)にも一致し、
+# 処理中のジョブごと本番の WebUI が落ちる。PID を控えていないときは、下の確認で PID と
+# ポートを見分けてから `kill <PID>` を使う。
 ```
 
 ### 稼働中プロセス・ポートの確認
@@ -234,7 +236,7 @@ pkill -f "streamlit run webui.py"
 ```bash
 ss -tlnp | grep <PORT>
 # または
-ps aux | grep "streamlit run webui.py"
+ps aux | grep "streamlit run webui.py"   # 本番(tc-prod)のプロセスも表示される。PID とポートで見分ける
 ```
 
 ## 7. systemdによる常駐化・自動起動
@@ -342,7 +344,8 @@ journalctl --user -u tc-webui.service -n 20 --no-pager
 失われる（ジョブのスレッドとキューはサービスのプロセスの中にあるため。§8）。
 
 1. WebUI の画面（キュー状態）で、解決中・待機・処理中の項目が無いことを確認する。ただしキューは
-   ブラウザセッション単位なので（§8）、別のブラウザの投入分は画面に出ない。
+   ブラウザセッション単位なので（§8）、別のブラウザの投入分は画面に出ない。処理中のジョブがあるうちは、
+   ブラウザのタブを閉じない・再読み込みしない（完了後の保存と履歴の記録が走らなくなる。§8）。
 2. 画面で確認できない場合は、`logs/transcription.log` の `状態遷移` 行で、サービスの起動後に
    DONE / FAILED になっていない `item_id` が無いことを確認する。
 3. 統合してから再起動する場合は、`scripts/release_dev_main.sh` を使う。スクリプトが上の確認を
@@ -351,7 +354,7 @@ journalctl --user -u tc-webui.service -n 20 --no-pager
 再起動後は、ヘルスチェック（`curl -sf http://localhost:8501/_stcore/health` が `ok` を返す）で確認する。
 
 実機で実行して確認したのは、`systemctl --user status`、`journalctl` の直近表示（以上 2026-08-05）、
-`ss -ltnp`、サービスファイルの `cat`、`ls -la /home/abem/Projects/tc-prod`、`git -C` での `tc-prod` のブランチ確認
+ヘルスチェックの `curl -sf http://localhost:8501/_stcore/health`（2026-10-04。`ok` が返った）、`ss -ltnp`、サービスファイルの `cat`、`ls -la /home/abem/Projects/tc-prod`、`git -C` での `tc-prod` のブランチ確認
 （以上 2026-10-04）。`restart` と `stop` は、稼働中のサービスが実際の利用で使われているため、この文書の
 作成・更新では**実行していない**。
 
@@ -374,9 +377,13 @@ journalctl --user -u tc-webui.service -n 20 --no-pager
 
 - 別のタブや別のブラウザ、ページの再読み込みでは、新しいセッションになり、**キューの一覧（待機・処理中・完了済み）が
   見えなくなる**。
-- 一方、文字起こしのスレッドと解決のスレッドはサービスのプロセスの中で動き続け、完了すれば `finalize_transcription` が
-  保存・アップロード・履歴の記録まで行う。結果のテキストは `output/` に、履歴は `output/history.db`（「履歴」タブ）に残る。
-  見えなくなるのは、画面上のキュー一覧と、完了済みの詳細表示だけである。
+- 文字起こしのスレッドと解決のスレッドはサービスのプロセスの中で動き続けるが、**完了後の処理は走らない**。
+  `_save_and_record`（`finalize_transcription` の呼び出し。保存・アップロード・履歴の記録）を呼ぶのは、
+  `_render_queue_and_result()`（`@st.fragment(run_every="1s")`）だけで、`job.done` の判定と `mark_done` もそこだけにある。
+  スレッドは結果を `job.result` に持つだけで、保存はしない。セッションが消える（タブを閉じる・再読み込み）と
+  フラグメントが走らないので、**結果は `output/` に保存されず、履歴にも記録されず、ログに DONE も出ない**
+  （`webui.py` の `_save_and_record` の呼び出しは L481 の 1 か所。コードの読解による）。
+  **運用上は、処理中のジョブがあるうちは、ブラウザのタブを閉じない・再読み込みしない。**
 - 同じ理由で、複数の人（複数のブラウザ）が投入した分は、互いのキューには出ない。ただし処理は**サービス全体で 1 件ずつ
   ではなく、セッションごとに 1 件**（キューがセッションごとにあるため）。複数のセッションから投入すると、
   GPU 上で複数の文字起こしが同時に走り得る（コードの読解による。この点も実機未確認）。

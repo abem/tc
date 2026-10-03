@@ -127,7 +127,10 @@ uv sync
 ### システム復旧手順
 1. **git status** / **git diff** で変更内容確認
 2. **./tc --help** で基本動作確認
-3. 問題があれば、履歴を書き換える操作（reset / rebase / force push）はせず、リードに報告して指示を待つ
+3. 問題があれば、履歴を書き換える操作（reset / rebase / force push）はせず、リードに報告して指示を待つ。
+   例外は、ブランチの ahead / behind の分岐（「This branch is X commits ahead of, Y commits behind」）が出たときだけ。
+   このときは `CLAUDE.md` の「ブランチ同期問題が発生した場合の正しい対処」に従う（分岐した dev / feature だけを削除・再作成する。main は削除しない）。
+   それ以外の履歴の書き換え（force push、reset、rebase）は絶対禁止
    （戻す場合は、変更を打ち消す新しいコミットを作る。`git revert` は指示を受けてから）
 
 ### 重要ファイル復旧

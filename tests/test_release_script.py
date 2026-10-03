@@ -314,18 +314,19 @@ class TestBusyDetection:
 
         assert r.returncode != 0
         assert sandbox.refs() == before  # 何も変更されない
-        assert "RESOLVING" in (r.stdout + r.stderr)
+        assert "ジョブが終了していません" in (r.stdout + r.stderr)  # ログに開始があり終了が無い
 
     def test_processing_item_blocks_restart(self, sandbox):
         self._log(
             sandbox,
+            "2026-10-03 03:58:00,000 - core.webui_workflow - INFO - 状態遷移 item_id=3 (新規)->RESOLVING label=y",
             "2026-10-03 03:58:32,494 - core.webui_workflow - INFO - 状態遷移 item_id=3 QUEUED->PROCESSING label=y",
         )
 
         r = sandbox.run("feature", "msg")
 
         assert r.returncode != 0
-        assert "PROCESSING" in (r.stdout + r.stderr)
+        assert "ジョブが終了していません" in (r.stdout + r.stderr)
 
     def test_finished_items_do_not_block(self, sandbox, health_server):
         self._log(
@@ -334,6 +335,49 @@ class TestBusyDetection:
             "2026-10-03 04:11:37,428 - core.webui_workflow - INFO - 状態遷移 item_id=1 PROCESSING->DONE output_file=o",
             "2026-10-03 04:20:00,000 - core.webui_workflow - INFO - 状態遷移 item_id=2 (新規)->RESOLVING label=z",
             "2026-10-03 04:20:30,000 - core.webui_workflow - INFO - 状態遷移 item_id=2 RESOLVING->FAILED error=e",
+        )
+
+        r = sandbox.run("feature", "msg", TC_PORT=str(health_server))
+
+        assert r.returncode == 0, r.stdout + r.stderr
+
+    def test_item_ids_colliding_across_sessions_do_not_hide_a_running_job(self, sandbox):
+        """item_id はブラウザセッションごとに 1 から採番されるため、別セッションの項目と衝突する。
+        後から終了した別セッションの FAILED が、処理中の項目(同じ item_id)を隠してはいけない
+        (独立レビュー D4.2 R3 の実験: セッション A が PROCESSING、B が FAILED で、旧判定は IDLE だった)。"""
+        self._log(
+            sandbox,
+            "2026-10-03 03:51:15,889 - core.webui_workflow - INFO - 状態遷移 item_id=1 (新規)->RESOLVING label=A",
+            "2026-10-03 03:52:00,000 - core.webui_workflow - INFO - 状態遷移 item_id=1 RESOLVING->QUEUED label=A",
+            "2026-10-03 03:52:01,000 - core.webui_workflow - INFO - 状態遷移 item_id=1 QUEUED->PROCESSING label=A",
+            "2026-10-03 03:53:00,000 - core.webui_workflow - INFO - 状態遷移 item_id=1 (新規)->RESOLVING label=B",
+            "2026-10-03 03:53:05,000 - core.webui_workflow - INFO - 状態遷移 item_id=1 RESOLVING->FAILED error=e",
+        )
+
+        r = sandbox.run("--dry-run", "feature")
+
+        assert "ジョブが終了していません" in r.stdout and "WebUI のジョブはありません" not in r.stdout
+
+    def test_each_finished_item_cancels_exactly_one_started_item(self, sandbox, health_server):
+        """同じ item_id が別セッションで 2 回作られ、どちらも終了していれば、実行中のジョブは無い。"""
+        self._log(
+            sandbox,
+            "2026-10-03 03:51:15,889 - core.webui_workflow - INFO - 状態遷移 item_id=1 (新規)->RESOLVING label=A",
+            "2026-10-03 03:52:01,000 - core.webui_workflow - INFO - 状態遷移 item_id=1 QUEUED->PROCESSING label=A",
+            "2026-10-03 03:53:00,000 - core.webui_workflow - INFO - 状態遷移 item_id=1 (新規)->RESOLVING label=B",
+            "2026-10-03 03:53:05,000 - core.webui_workflow - INFO - 状態遷移 item_id=1 RESOLVING->FAILED error=e",
+            "2026-10-03 03:59:00,000 - core.webui_workflow - INFO - 状態遷移 item_id=1 PROCESSING->DONE output_file=o",
+        )
+
+        r = sandbox.run("feature", "msg", TC_PORT=str(health_server))
+
+        assert r.returncode == 0, r.stdout + r.stderr
+
+    def test_terminal_event_without_a_start_in_the_window_is_ignored(self, sandbox, health_server):
+        """ログのローテーションなどで開始の行が窓の外にあっても、終了の行だけで負にならず、他の項目の開始を打ち消さない。"""
+        self._log(
+            sandbox,
+            "2026-10-03 04:20:30,000 - core.webui_workflow - INFO - 状態遷移 item_id=7 PROCESSING->DONE output_file=o",
         )
 
         r = sandbox.run("feature", "msg", TC_PORT=str(health_server))

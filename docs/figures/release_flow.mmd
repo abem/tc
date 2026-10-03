@@ -1,0 +1,14 @@
+flowchart TD
+  FE["feature ブランチ<br/>検査済みの変更"]
+  CK["前提の確認<br/>origin を取得して<br/>現状と比べる"]
+  ST["中止<br/>何も変更しない"]
+  MG["一時 worktree で<br/>main にマージ<br/>内容を照合"]
+  PS["origin へ<br/>dev と main を<br/>一度に push"]
+  FF["本番 dev を<br/>fast-forward<br/>手元の統合先も<br/>更新"]
+  RS["WebUI を再起動<br/>ヘルスチェック"]
+  FE --> CK
+  CK -->|"前提が崩れた"| ST
+  CK --> MG
+  MG --> PS
+  PS --> FF
+  FF --> RS

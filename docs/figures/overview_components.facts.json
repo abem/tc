@@ -1,0 +1,2 @@
+{"labels":["入口","tc","transcribe.py","webui.py","共通の処理","cli_workflow","入力解決と","保存・履歴","エンジン","Qwen3-ASR","Whisper","Nemotron","yt-dlp","YouTube・X","Google Drive","output/","テキスト","history.db"],
+"edges":["IN->WF","IN->ENG","WF->YT","WF->GD","WF->OUT"]}

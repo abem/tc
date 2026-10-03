@@ -1,0 +1,16 @@
+flowchart TD
+  IN["入力<br/>URL<br/>アップロード<br/>Drive・ローカル"]
+  RES["解決<br/>音声を取得して<br/>手元に置く"]
+  QD["待機<br/>WebUI のみ<br/>1 件ずつ順に"]
+  TR["処理<br/>エンジンを選んで<br/>文字起こし"]
+  SV["保存<br/>output/ に<br/>テキスト"]
+  UP["アップロード<br/>YouTube・Drive<br/>の入力だけ<br/>X は対象外"]
+  HI["履歴<br/>output/<br/>history.db"]
+  CL["削除<br/>取得した<br/>一時音声"]
+  IN --> RES
+  RES --> QD
+  QD --> TR
+  TR --> SV
+  SV --> UP
+  UP --> HI
+  HI --> CL

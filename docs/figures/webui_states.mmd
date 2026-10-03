@@ -1,0 +1,13 @@
+flowchart TD
+  NW["新規<br/>投入"]
+  RS["RESOLVING<br/>入力を解決中"]
+  QD["QUEUED<br/>処理待ち"]
+  PR["PROCESSING<br/>文字起こし中<br/>同時に 1 件"]
+  DN["DONE<br/>完了"]
+  FL["FAILED<br/>失敗"]
+  NW -->|"キューに追加"| RS
+  RS -->|"解決に成功"| QD
+  RS -->|"解決に失敗"| FL
+  QD -->|"先頭を起動"| PR
+  PR -->|"保存まで成功"| DN
+  PR -->|"処理に失敗"| FL

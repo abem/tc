@@ -23,16 +23,19 @@ uv run python3 -c "from core.config import UnifiedConfig; UnifiedConfig.load(); 
 
 ## 📁 プロジェクト構造
 
-### 核心コンポーネント
+### 核心コンポーネント(抜粋。全体は DEVELOPMENT.md の「プロジェクト構造」)
 ```
 core/                    # 統一アーキテクチャ（新機能はここに）
 ├── config.py           # UnifiedConfig（設定統一）
 ├── logging.py          # 統一ログシステム
-├── model_manager.py    # モデル管理
-└── transcription_interface.py  # 転写インターフェース
+├── engine_factory.py   # create_engine（モデル名でエンジンを選ぶ）
+├── cli_workflow.py     # 入力解決・finalize_transcription（保存・アップロード・履歴・一時音声の削除）
+└── transcription_interface.py  # UnifiedTranscriber（ファサード）
 
+handlers/               # gdrive.py / gdrive_auth.py / youtube.py
 tc                      # メインCLI（config/config.yaml 連携、argparse ベース）
 transcribe / transcribe.py  # 対話型CLI（transcribe は transcribe.py を起動するシェルラッパー）
+webui.py                # WebUI（本番は tc-prod の tc-webui.service。dev を更新すると本番コードが変わる）
 ```
 
 ### 重要な設定
@@ -46,8 +49,11 @@ credentials.json        # Google Drive認証
 
 ### 開発・テスト
 ```bash
-# 基本的な転写テスト
-./tc "https://www.youtube.com/watch?v=gjWPtgafPMA" --language ja
+# 起動確認(設定読み込み・入力解決までで、文字起こしはしない)
+./tc --dry-run "<入力(URLまたはローカルファイルパス)>"
+
+# 基本的な転写(入力は手元で有効なものを使う。テスト用のURLを使い、重要な Drive フォルダでは試さない)
+./tc "<入力>" --language ja
 
 # CPU 実行（GPU 問題の切り分け）
 ./tc "URL" --device cpu
@@ -100,30 +106,29 @@ uv sync
 
 ### 転写品質劣化
 ```bash
-# 統一システムに問題がある場合
-# core/whisper_engine.py の _transcribe_with_original_logic() を確認
-# max_new_tokens パラメータを調整（通常400）
+# エンジンごとに確認する場所が違う（どのエンジンかは config/config.yaml の whisper.model で決まる）
+# Qwen3-ASR（既定）: core/qwen3_engine.py の max_new_tokens（1024）と、core/qwen3_chunking.py の分割処理
+# Whisper 系: core/whisper_engine.py の _transcribe_with_original_logic() の max_new_tokens（400）
 ```
 
 ## 📊 品質チェック
 
-### 転写品質確認
-- 文字数: 4,000文字程度（15分動画）
-- タイムスタンプ: `[MM:SS]` 形式で30秒間隔
-- 日本語精度: 専門用語も正確に転写
+出力の確認観点（具体的な数値は、エンジンと設定に依存するため、固定の基準は置かない）:
 
-### システム性能確認  
-- GPU使用率: 90%以上（CUDA使用時）
-- 処理時間: 15分動画を2-3分で処理
-- メモリ使用量: 3GB程度（モデル込み）
+- 保存形式: `[MM:SS] ` 付きになるのは、Whisper 系（エンジンが 30 秒ごとに付ける）と、
+  `include_timestamps: true` のときの Qwen3-ASR（`tc` / WebUI。`transcribe.py` は渡さないので付かない）。
+  既定の Qwen3-ASR（`include_timestamps: false`）では付かない
+- 欠落の兆候: Qwen3-ASR の `metadata["failed_chunks"]` / `repeated_chunks`（0 が正常）
+- 用語: 専門用語が崩れるときは `config/context_hints.txt`（Qwen3-ASR のみ）を確認
+- 保存形式・一時ファイルの仕様は [docs/spec/00-project-spec.md](docs/spec/00-project-spec.md)（正本）
 
 ## 🚨 緊急時対応
 
 ### システム復旧手順
-1. **git status** で変更内容確認
-2. **git stash** で一時的に変更を退避
-3. **./tc --help** で基本動作確認
-4. 問題があれば **git reset --hard HEAD~1** で前のコミットに戻る
+1. **git status** / **git diff** で変更内容確認
+2. **./tc --help** で基本動作確認
+3. 問題があれば、履歴を書き換える操作（reset / rebase / force push）はせず、リードに報告して指示を待つ
+   （戻す場合は、変更を打ち消す新しいコミットを作る。`git revert` は指示を受けてから）
 
 ### 重要ファイル復旧
 ```bash
@@ -136,5 +141,13 @@ uv sync --reinstall
 git checkout HEAD -- config/config.yaml
 ```
 
+## 🔄 統合と WebUI の再起動
+
+- 更新の順序は **feature → dev → main**（個別に更新しない。main の更新はユーザーの明示的な指示があるときだけ）
+- dev は本番 tc-prod が追従する。dev の更新は本番コードの更新
+- 統合・push・WebUI 再起動は `scripts/release_dev_main.sh <featureブランチ> "<mainのマージメッセージ>"`
+  （`--dry-run` で確認だけ。WebUI のジョブがあると止まる）。詳細は
+  [docs/system-docs/release_operations.md](docs/system-docs/release_operations.md)
+
 ---
-*迷った時は CLAUDE.md のべからず集も確認してください*
+*迷った時は CLAUDE.md のべからず集も確認してください（詳細は DEVELOPMENT.md）*

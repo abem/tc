@@ -48,9 +48,10 @@
   - 変更前にバックアップを取ってください
 
 ### コード変更関連
-- **AppConfig から UnifiedConfig への移行は慎重に行うべし**
-  - 既存の参照箇所をすべて特定してから変更する
-  - exec.sh などのシェルスクリプト内の参照も忘れずに更新する
+- **設定クラス（`core/config.py` の UnifiedConfig / TranscriptionConfig / SystemConfig）の変更は慎重に行うべし**
+  - AppConfig から UnifiedConfig への移行は完了済み（`AppConfig` は廃止。参照しない）
+  - 設定クラスやキーを変えるときは、既存の参照箇所をすべて特定してから変更する
+  - Python だけでなく、シェルスクリプト（`transcribe` / `scripts/*.sh`）や設定ファイル（`config/config.yaml`）内の参照も忘れずに更新する
 
 - **import文の変更は依存関係を確認してから行うべし**
   - core/ 配下の統一システムへの移行時は特に注意
@@ -136,16 +137,30 @@
   - `core/whisper_engine.py` / `core/whisper_text.py`: Whisper エンジンと `[MM:SS]` 整形
   - `core/transcription_types.py`: TranscriptionSegment / TranscriptionResult / TranscriptionEngine
   - `core/nemotron_engine.py`: Nemotron系モデル用サブプロセスエンジン
-  - `core/history.py`: 変換履歴 DB の検索・件数・削除
-  - `core/progress.py`: 進捗通知（ProgressMessage）
+  - `core/cli_workflow.py`: 入力解決（`resolve_input_audio` / `InputResolution` / `cleanup_input_audio`）と、**`finalize_transcription`（保存 → アップロード → 履歴 → 一時音声の削除の集約点。`tc` / `transcribe.py` / `webui.py` が共用）**。保存テキストの整形は `save_transcription_text` / `format_transcript_text`
+  - `core/cli_common.py`: CLI 共通ヘルパー（出力ファイル名 `build_output_file`、Drive の元ファイルと同じフォルダへのアップロードなど）
+  - `core/webui_workflow.py`: WebUI のジョブキュー、進捗の反映（`apply_progress`）と経過・残り時間（`format_elapsed` / `estimate_remaining`）
+  - `core/history.py`: 変換履歴 DB の検索・件数・削除（`connect_history` / `search_history` / `count_history_before` / `delete_history_before`）
+  - `core/housekeeping.py`: `cleanup_old_entries`（WebUI の `output/uploads` は 7 日、`output/queue_downloads` は 1 日を過ぎた項目を、新しい投入のたびに削除。処理待ち・処理中のファイルは消さない）
+  - `core/progress.py`: 進捗通知（`ProgressMessage(text, fraction)` / `emit_progress` / `throttled` / `parse_ytdlp_progress`）。WebUI の進捗バーと CLI の進捗表示が使う
+  - `core/model_manager.py`: Whisper 系エンジン用のモデルキャッシュ（`UnifiedModelManager`）
+  - `core/utils.py`: URL検出・デバイス解決・context_hints 読込のほか、`sanitize_upload_filename`（アップロード名の無害化。最大 200 文字）、`one_line`（ログ・ラベルを 1 行にする。エラー文は 1000 文字まで）、`get_audio_duration`
+  - `core.logging.setup_logging()`: `tc` / `transcribe.py` / `webui.py` の `main()` が呼ぶ（`core` はインポートしただけではログを設定しない。pytest 中は `logs/transcription_test.log`）
   - `docs/spec/00-project-spec.md`: 利用者に見える挙動の正本（保存形式・一時ファイル削除・yt-dlp 不在時）
-  - `core/utils.py`: URL検出・デバイス解決ユーティリティ
 - `handlers/`: 外部サービスハンドラー
   - `handlers/gdrive.py`: GDriveClient（Google Drive操作）
   - `handlers/gdrive_auth.py`: Google Drive の OAuth 認証（`get_drive_service`）
-  - `handlers/youtube.py`: YouTubeClient（YouTube音声抽出）
-- `transcribe.py`: Rich UI対話型CLI（プロファイル選択式）
+  - `handlers/youtube.py`: YouTubeClient（YouTube / X の音声抽出）。`find_yt_dlp()`（PATH → 現在の Python と同じ `bin/` → `.venv/bin/yt-dlp`）、`YtDlpNotFoundError`（`ValueError` のサブクラス。自動 pip install はせず `uv sync` を案内）、タイムアウト（`--socket-timeout 30`、メタデータ取得 60 秒、出力が 300 秒途絶えると中断）
+- `transcribe.py`: Rich UI対話型CLI（プロファイル選択式）。`transcribe` はそれを起動するシェルラッパー
 - `tc`: config/config.yaml連携の推奨CLI（argparseベース、オプション指定可）
+- `webui.py`: Streamlit の WebUI（進捗バー・経過時間・履歴）
+- `scripts/release_dev_main.sh`: feature → dev → main の統合・push・WebUI 再起動（使い方・止まる条件・復旧は `docs/system-docs/release_operations.md`）
+
+### WebUI の本番稼働と dev の意味
+- WebUI は systemd のユーザーサービス `tc-webui.service` が `/home/abem/Projects/tc-prod`（**dev をチェックアウト**）で `uv run streamlit run webui.py --server.headless true --server.port 8501 --server.fileWatcherType none` を実行している
+- **dev を更新することは本番コードの更新**になる。dev への統合は、手元で動作確認し、WebUI のジョブが無いことを確かめてから行う
+- tc-prod の `output` / `logs` / `.venv` / `.env` / `credentials.json` / `token.pickle` / `venv-nemotron` は `/home/abem/Projects/tc` へのシンボリックリンク。tc-prod 側の削除・上書きは本体のデータに及ぶ
+- main の更新はユーザーの明示的な指示があるときだけ（上の禁止事項どおり）
 
 ### 新CLI (transcribe.py / tc コマンド)
 - **推奨実行方法**: `./tc` コマンドでシンプル実行
@@ -171,6 +186,14 @@ config = TranscriptionConfig.for_language("ja", "high")
 from core.transcription_interface import UnifiedTranscriber
 transcriber = UnifiedTranscriber(config)
 result = transcriber.transcribe("audio.wav")
+
+# 入力解決 → 保存・アップロード・履歴・一時音声の削除（tc / webui.py と同じ経路）
+from pathlib import Path
+from core.cli_workflow import resolve_input_audio, finalize_transcription, cleanup_input_audio
+resolution = resolve_input_audio(source, Path("output"))
+# ... transcribe して result を得たあと
+outcome = finalize_transcription(result=result, resolution=resolution, output_dir=Path("output"), settings={})
+# finalize_transcription は一時音声の削除まで行う。文字起こし自体が失敗したときは cleanup_input_audio(resolution) を呼ぶ
 
 # Google Drive操作
 from handlers import GDriveClient
@@ -199,7 +222,7 @@ audio_path, metadata = yt_client.download_audio(youtube_url)
 - GPU/CPUの切り替えは環境確認してから
 
 ## 📚 参考資料
-- システム概要: `docs/system-docs/system_overview_2025.md`
+- システム概要: `docs/system-docs/system_overview.md`
 - 設定方法: `docs/user-guides/configuration.md`  
 - トラブルシューティング: `docs/`配下の各種ドキュメント
 
@@ -209,22 +232,22 @@ audio_path, metadata = yt_client.download_audio(youtube_url)
 ## 🧪 テスト自動化ガイドライン
 
 ### テストスペシャリストエージェントの活用
-Claude Codeには専用のテストスペシャリストサブエージェントが設定されており、包括的なテスト作成と実行を自動化できます。
+Claude Codeには専用のテストスペシャリストサブエージェントが設定されている環境では、包括的なテスト作成と実行を任せられます（設定が無い環境では通常のエージェントで同じ方針に従う）。
 
 ### テスト作成時の方針
-- **カバレッジ目標**: 90%以上のコードカバレッジを目指す
+- **カバレッジ目標**: 90%以上のコードカバレッジを目指す（現状は 79%。`uv run python -m pytest tests --cov=core --cov=handlers -q` の TOTAL、2026-10-04 時点）
 - **テスト種別**: 単体テスト、統合テスト、E2Eテストを適切に使い分ける
 - **エッジケース**: 境界値、null値、異常入力を徹底的にカバー
 
 ### テストフレームワーク
 - **Python**: pytest（このプロジェクトのメイン）
-- **JavaScript/TypeScript**: Jest、React Testing Library
+- **JavaScript/TypeScript**: このリポジトリに JS/TS のコードは無いため該当なし
 - **E2Eテスト**: Playwright（MCP経由で利用可能）
 
 ### テスト実行のベストプラクティス
 1. **既存テストの確認**
-   - `pytest`でPythonテストを実行
-   - テスト設定は`pytest.ini`や`setup.cfg`を確認
+   - `uv run python -m pytest tests -q` でPythonテストを実行（GPU・ネットワーク・Drive 認証は不要。モデルや外部呼び出しはモックされる）
+   - テスト設定は `pyproject.toml` の `[tool.pytest.ini_options]` を確認（`testpaths = ["tests"]`）
 
 2. **新規テスト作成時**
    - AAA（Arrange-Act-Assert）パターンを使用
@@ -263,22 +286,22 @@ git diff
 git add <specific-files>
 
 # 4. 意味のあるコミットメッセージ
-git commit -m "fix: AppConfigからUnifiedConfigへの移行
+git commit -m "docs: 開発者向け文書を最新の実装に合わせて更新 (tc-ops #592)
 
-- config.pyの廃止されたAppConfig.get()を修正
-- UnifiedConfig.get()への置き換えで統一システムに対応
-- Google Drive API認証の安定性を向上
+- CLAUDE.md の重要ファイル一覧に housekeeping / progress / finalize_transcription を追加
+- ブランチ戦略に dev と docs/ を追記
+- 変更理由と影響範囲をここに書く
 
-🤖 Generated with [Claude Code](https://claude.ai/code)
-
-Co-Authored-By: Claude <noreply@anthropic.com>"
+Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>"
 ```
+署名の行は、使っているセッション（Claude Code）が指定する形式に従う。チケット番号（tc-ops #NNN）を概要に付ける。
 
 ### コミットメッセージの形式
 - **prefix**: `fix:`, `feat:`, `refactor:`, `docs:`, `test:`など
 - **概要**: 50文字以内で変更内容を簡潔に
 - **詳細**: 変更理由と影響範囲を明記
-- **Claude Code署名**: 自動生成コミットには署名を追加
+- **チケット番号**: 概要の末尾に `(tc-ops #NNN)` を付ける
+- **Claude Code署名**: 自動生成コミットには署名（`Co-Authored-By:` の行）を追加
 
 ### 絶対に避けるべきコミット
 - **未テストの変更**: 動作確認していない変更
@@ -287,10 +310,13 @@ Co-Authored-By: Claude <noreply@anthropic.com>"
 - **一時ファイル**: *.bak、*.tmp、テスト用画像ファイルなど
 
 ### ブランチ戦略
-- **main**: 安定版のみ
+- **main**: 安定版のみ（ユーザーの明示的な指示なしに更新しない）
+- **dev**: 統合ブランチ。本番 tc-prod が追従する（dev の更新 = 本番コードの更新）
+- 更新の順序は **feature/* → dev → main**。統合は `scripts/release_dev_main.sh` で行う（手順・止まる条件・復旧は `docs/system-docs/release_operations.md`）
 - **feature/***: 新機能開発
 - **fix/***: バグ修正
 - **refactor/***: リファクタリング
+- **docs/***: ドキュメント更新
 
 ### プッシュ前の最終確認
 ```bash

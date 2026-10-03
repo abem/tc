@@ -7,8 +7,8 @@
 
 | エンジン | タイムスタンプ |
 |---|---|
-| Qwen3-ASR（既定） | オプトイン。`config/config.yaml` の `whisper.include_timestamps: true` で有効化。ForcedAligner を使い、`tc` の保存ファイルでは各行の行頭に `[MM:SS]` を付ける |
-| Whisper | 常時。30秒ごとに `[MM:SS]` を行頭に付ける |
+| Qwen3-ASR（既定） | オプトイン。`tc` は `config/config.yaml` の `whisper.include_timestamps: true`、WebUI は「タイムスタンプ付与」のチェックで有効化。ForcedAligner を使い、保存ファイルの各行の行頭に `[MM:SS]` を付ける。`transcribe.py` は設定を渡さないので付かない |
+| Whisper | 常時。設定に関係なく、エンジンが30秒ごとに `[MM:SS]` を行頭に付ける |
 | Nemotron | 非対応。出力はタイムスタンプなしの1つのテキスト |
 
 録音時刻（壁時計の時刻）を基準にした表示や、音声ファイルのメタデータ読み取りは実装していません。
@@ -27,8 +27,9 @@ whisper:
 - 既定は `false`（既存の出力形式を変えないため）。
 - `tc` は `whisper.include_timestamps` を読みます。WebUI は設定パネルの「タイムスタンプ付与」
   チェックボックスで切り替えます（Nemotron を選ぶと無効になります）。
-- `transcribe.py`（Rich 対話型）は `include_timestamps` を渡さないため、タイムスタンプは付きません。
-- Qwen3-ASR 以外のモデルでは、この設定は使われません。
+- `transcribe.py`（Rich 対話型）は `include_timestamps` を渡さないため、Qwen3-ASR のタイムスタンプは付きません。
+  これは保存関数の違いではなく、設定を渡さないことによる違いです（保存は3つの入口とも同じ関数が行います。下記）。
+- この設定が作用するのは Qwen3-ASR だけです。Whisper 系は、設定に関係なく常に30秒ごとに付き、Nemotron は付きません。
 
 ### 仕組み
 
@@ -38,8 +39,11 @@ whisper:
 3. 文節ごとに改行された各行を、アライナー出力の対応する区間に近似的に対応付け、
    各行の開始・終了秒を `TranscriptionSegment`（`start` / `end`）に設定します。
    厳密な1対1対応の保証はなく、音声位置の目安として使う近似処理です。
-4. `tc` の `save_result()` が、各セグメントの先頭に `[MM:SS]`（開始秒）を付けて保存します。
-   分は 60 を超えても繰り上げません（75分30秒は `[75:30]`）。
+4. 保存時に、各セグメントの先頭に `[MM:SS] `（開始秒）を付け、1セグメント1行で保存します。整形は
+   `core.cli_workflow.format_transcript_text`（`save_transcription_text` から呼ばれる）で、`tc`・`transcribe.py`・WebUI が
+   同じ `finalize_transcription` 経由で使います（`tc` の `save_result()` は、これを呼ぶだけの薄いラッパーです）。
+   付く条件は、`result.metadata["timestamps_included"]` が真で、かつ `result.segments` があるときだけです。
+   それ以外は `result.text` をそのまま保存します。分は 60 を超えても繰り上げません（75分30秒は `[75:30]`）。
 
 ForcedAligner のモデル重みはメインモデルとは別のチェックポイントで、初回利用時に追加でダウンロードされます
 （GPU メモリを約1.2GB追加で使います）。ForcedAligner のロードや実行に失敗した場合は、警告をログに出して
@@ -59,9 +63,14 @@ ForcedAligner のモデル重みはメインモデルとは別のチェックポ
 
 | 出力 | `[MM:SS]` |
 |---|---|
-| `tc` が保存するテキスト（`output/YYYYMMDD_HHMMSS_transcription.txt`） | 付く |
-| WebUI が保存するテキスト、`transcribe.py` が保存するテキスト | 付かない（`result.text` をそのまま保存） |
-| WebUI の「SRTプレビュー」 | SRT 形式で表示（`include_timestamps` を有効にした場合） |
+| `tc` が保存するテキスト（`output/YYYYMMDD_HHMMSS_transcription.txt`） | `include_timestamps: true` で、アライナーが成功すれば付く |
+| WebUI が保存するテキスト（同じファイル名） | 「タイムスタンプ付与」にチェックを入れ、アライナーが成功すれば付く（`tc` と同じ） |
+| `transcribe.py` が保存するテキスト | Qwen3-ASR では付かない（`include_timestamps` を渡さないため。保存関数は同じ） |
+| WebUI の画面の「文字起こし結果」欄 | 付かない（`result.text` をそのまま表示する。`[MM:SS]` が付くのは保存ファイル） |
+| WebUI の「SRTプレビュー」 | チェックを入れたとき、SRT 形式で表示。区間の情報（セグメント）が無いときは「SRTを生成できるタイムスタンプ情報がありません」と表示される |
+
+Whisper 系は、エンジンが `result.text` の中に `[MM:SS]` を入れているので、どの入口でも保存ファイルに付きます
+（`timestamps_included` は設定されず、保存関数は `result.text` をそのまま保存します）。
 
 ## Whisper のタイムスタンプ
 
@@ -93,15 +102,16 @@ head -20 output/YYYYMMDD_HHMMSS_transcription.txt
 次の順に確認してください。
 
 - 使っているモデルが Qwen3-ASR か（Whisper は常に付きます。Nemotron は付きません）
-- `whisper.include_timestamps` が `true` か（`tc`・WebUI の場合）。`transcribe.py` は対応していません
-- 保存先が `tc` の出力ファイルか（WebUI・`transcribe.py` の保存ファイルには付きません）
+- `whisper.include_timestamps` が `true` か（`tc` の場合）、または WebUI の「タイムスタンプ付与」にチェックを入れたか。
+  `transcribe.py` は `include_timestamps` を渡さないため、Qwen3-ASR では付きません
+- 見ているのが保存ファイルか（WebUI の画面の結果欄には付きません。保存された `output/..._transcription.txt` を見てください）
 - ログに「ForcedAlignerのロードに失敗しました」「ForcedAlignerの実行に失敗しました」が出ていないか
   （ログは `logs/transcription.log`）。初回はモデルの追加ダウンロードにネットワークが必要です
 
 ## テスト
 
 - `tests/test_core_transcription_interface_timestamps.py`: エンジン側のタイムスタンプ処理
-- `tests/test_tc_save_result.py`: `tc` の `save_result()` が `[MM:SS]` を付ける処理
+- `tests/test_tc_save_result.py`: `tc` の `save_result()`（`format_transcript_text` を呼ぶ薄いラッパー）が `[MM:SS]` を付ける処理
 
 ```bash
 uv run pytest tests/test_core_transcription_interface_timestamps.py tests/test_tc_save_result.py -v

@@ -29,7 +29,10 @@ transcribe_audioシステムの設定管理に関するガイドです。
 | `gdrive.upload_folder_id` | 読む | 読む | 読まない |
 | `whisper.model` / `whisper.language` / `whisper.device` | 読む | 読まない（プロファイルで指定） | 読まない（画面で指定） |
 | `whisper.context_file` | 読む | 読む | 読まない（画面で指定） |
-| `whisper.include_timestamps` | 読む | 読まない | 読まない（画面で指定） |
+| `whisper.include_timestamps` | 読む | 読まない | 読まない（画面の「タイムスタンプ付与」で指定） |
+
+WebUI は `config/config.yaml` の項目を実質的に使いません（画面で指定します）。特に `gdrive.upload_folder_id` は読まないため、
+WebUI の Google Drive 入力は、結果を常に元ファイルと同じフォルダに保存します。
 
 ## config.yaml詳細
 
@@ -51,7 +54,8 @@ gdrive:
 ```
 
 - **`url`**: YouTube / X / Google Drive の URL を書けます（入力と同じ判定）。
-- **`upload_folder_id`**: Google Drive 入力の結果を保存するフォルダID。優先順位は
+- **`upload_folder_id`**: Google Drive 入力の結果を保存するフォルダID（`./tc` と `./transcribe.py` が読みます。
+  WebUI は読まず、常に元ファイルと同じフォルダに保存します）。優先順位は
   `--folder-id` 引数 > `upload_folder_id` > 元ファイルと同じフォルダ。YouTube 入力のアップロード先は
   この設定の対象外です（`handlers/gdrive.py` の `upload_youtube_transcription` が決めるフォルダに保存されます）。
 - **認証ファイル**: `credentials.json` と `token.pickle` は、実行したディレクトリ直下の固定名のファイルを使います
@@ -67,7 +71,7 @@ whisper:
   language: null                         # null=自動判定。ja / en 等を指定すると強制
   device: cuda                           # cuda / cpu / auto
   context_file: "config/context_hints.txt"  # 固有名詞・専門用語の認識ヒントファイル（下記参照）
-  include_timestamps: false              # true で各行頭に [MM:SS] を付与（Qwen3-ASR専用）
+  include_timestamps: false              # true で Qwen3-ASR の各行頭に [MM:SS] を付与（Whisper系は設定に関係なく常に付く）
 ```
 
 - **`model`**: モデル名に応じて 3 つのエンジンから自動選択されます。
@@ -81,9 +85,13 @@ whisper:
   判定は `core/engine_factory.py` の `create_engine`（`UnifiedTranscriber.__init__` から呼ばれる）で行います。
   Nemotron の準備は `./scripts/setup_nemotron_venv.sh`（詳細は [多言語対応ガイド](language_support_guide.md)）。
 - **`language`**: エンジンごとの扱いは [多言語対応ガイド](language_support_guide.md) を参照。
+  既定は `null`（自動判定）です。`language` のキー自体を `config.yaml` から**削除すると**、`./tc` は `ja` として扱います
+  （`null` と書けば自動判定）。
 - **`device`**: `auto` は CUDA が使えれば `cuda`、使えなければ `cpu` になります。
-- **`include_timestamps`**: `true` にすると ForcedAligner（`Qwen/Qwen3-ForcedAligner-0.6B`）を追加で読み込み、
-  GPUメモリを約1.2GB追加で使います。Qwen3-ASR 以外のエンジンでは使われません。詳細は
+- **`include_timestamps`**: Qwen3-ASR で、`true` にすると ForcedAligner（`Qwen/Qwen3-ForcedAligner-0.6B`）を追加で
+  読み込み、GPUメモリを約1.2GB追加で使って、保存テキストの各行頭に `[MM:SS]` を付けます（`./tc` が読みます）。
+  この設定は Qwen3-ASR にだけ作用します。Whisper 系は、設定に関係なく常に 30 秒ごとの `[MM:SS]` が付き、
+  Nemotron は付きません。`./transcribe.py` はこの設定を読みません。詳細は
   [timestamp_feature.md](../feature/timestamp_feature.md) を参照。
 
 > `config.yaml` に上記以外のキーを書いても、現在のコードは読まないため結果は変わりません。
@@ -112,7 +120,8 @@ GAZOO Racing
 スーパーGT
 ```
 
-記載した語彙はすべて連結され、Qwen3-ASRへの認識ヒント文字列として渡されます。
+記載した語彙はすべて `, `（カンマと半角スペース）で連結され、Qwen3-ASRへの認識ヒント文字列として渡されます
+（WebUI の入力欄から渡すヒントは、1行1語を半角スペースで連結します。WebUI ではこのファイルは使いません）。
 `config/context_hints.txt` は `.gitignore`（`*.txt`）により既定でGit管理対象外です
 （固有名詞・個人情報を誤ってコミットしないため）。`context_file` のパスは
 `whisper.context_file` で変更できます。

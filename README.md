@@ -9,10 +9,11 @@
 
 **シンプルで高精度な日本語音声文字起こしツール**
 
-- **🏆 最高精度** - Qwen3-ASR-1.7Bによる2026年ベンチマークトップクラスの日本語文字起こし（デフォルト）
-- **⚡ ワンコマンド実行** - `./tc`だけでconfig.yamlから設定を自動読み込み、仮想環境も自動構築
+- **🏆 既定モデルは Qwen3-ASR-1.7B** - 日本語・英語とも同じモデルで処理（他のモデルとの精度比較の根拠はこのリポジトリには載せていません）
+- **⚡ ワンコマンド実行** - `./tc`だけでconfig.yamlから設定を自動読み込み（`uv run` 経由で起動するため、`uv sync` 済みの仮想環境を使います）
 - **🎛️ 3つの文字起こしエンジン** - Qwen3-ASR（既定）・Whisper・Nemotron をモデル名で自動切替
 - **☁️ 入力はローカル・Google Drive・YouTube・X（旧Twitter）** - Google Drive / YouTube の音声は結果を自動アップロード
+- **🖥️ WebUI（本番稼働中）** - ブラウザから投入でき、進捗バーと経過・残り時間、履歴の検索ができる
 - **🔧 uv パッケージ管理** - 最新のPython依存関係管理ツール使用
 - **🎯 シンプル設計** - 複雑な設定不要、すぐに使える
 
@@ -102,6 +103,8 @@ whisper:
 # 入力が Google Drive / YouTube の場合は Google Drive にもアップロードされます
 ```
 
+動作だけ確認したいときは `./tc --dry-run` を使います（設定読み込みと入力解決までで終了し、文字起こしはしません）。
+
 ## 💻 使用方法
 
 ### 基本実行
@@ -152,34 +155,68 @@ whisper:
 ./tc --help
 ```
 
-Rich 画面で対話的に選びたい場合は `./transcribe`（`transcribe.py` を起動するシェルスクリプト）を使います。
+プロファイル（モデルと言語の組）で選びたい場合は `./transcribe.py` を使います（カスタム設定のプロファイル `6` では
+対話式にモデルなどを尋ねます）。
 指定できるのは、入力（位置引数）、`--profile`（`-p`、プロファイル番号。`1` 日本語（高速）・`3` English・
 `5` 日本語（最高精度・Qwen3-ASR）・`6` カスタム設定）、`--language`（`-l`、`ja` / `en`）、`--folder-id` です。
+`./transcribe` は `.venv` を有効化して `transcribe.py` を実行するだけのシェルスクリプトなので、先に `uv sync` で
+`.venv` を作っておく必要があります（`./tc` と `./transcribe.py` は `uv run` で起動します）。
+詳細は [CLIの使用方法](docs/user-guides/new_cli_usage.md) を参照してください。
 
-### WebUI（Streamlitプロトタイプ）
+### 一時ファイルと処理後に残るファイル
 
-CLI（`./tc`）に加えて、ブラウザから操作できるWebUI（Streamlitプロトタイプ）も利用できます。
+- YouTube / X の動画から取り出した音声と、Google Drive からダウンロードした音声は、処理の終了時
+  （成功・失敗・中断のいずれでも）に削除されます。削除に失敗したときは警告だけを出し、処理結果は失敗にしません。
+  ローカルファイルの入力は削除しません。
+- `yt-dlp` が見つからないときは、自動インストールはせず、`uv sync` を案内するエラーで止まります。
+  yt-dlp の呼び出しにはタイムアウトがあります（メタデータ取得 60 秒、ダウンロード中に出力が 300 秒途絶えると中断）。
+- 処理後に残るのは、`output/<日時>_transcription.txt`、`output/history.db`、`logs/transcription.log` です。
+  WebUI ではさらに `output/uploads/` と `output/queue_downloads/` が使われます（次節）。
 
-**起動方法**:
+### WebUI（Streamlit）
+
+CLI（`./tc`）に加えて、ブラウザから操作できるWebUI（`webui.py`、Streamlit 製）があります。本番環境では、
+systemd のユーザーサービス `tc-webui.service` が `tc-prod` ディレクトリ（`dev` ブランチ）で常駐させています。
+常駐化・再起動・内部構成は [`docs/system-docs/webui_architecture.md`](docs/system-docs/webui_architecture.md) を
+参照してください。
+
+**手動で起動する場合**（開発・動作確認用）:
 
 ```bash
 uv run streamlit run webui.py --server.headless true --server.port 8501
 ```
 
-systemdによる常駐化・自動起動を含む内部構成の詳細は
-[`docs/system-docs/webui_architecture.md`](docs/system-docs/webui_architecture.md) を参照してください。
+起動後、ブラウザで `http://localhost:8501` を開きます。
 
 **機能概要**:
 
-- **文字起こしタブ**: YouTube / Google DriveのURL入力（X の動画URLも入力できます）、またはローカルファイルの
-  アップロードから文字起こしを実行できます。モデル（Qwen3-ASR・kotoba-whisper・whisper-large-v3・Nemotron）・
-  デバイス・言語の選択、タイムスタンプ付与（ForcedAligner使用、Nemotron では選べません）、
-  認識ヒント（固有名詞・専門用語のヒント指定）に対応しています。
+- **文字起こしタブ**: YouTube / Google Drive / X の動画URL（入力欄のラベルは「YouTube / Google Drive URL」ですが、
+  X のURLも入力できます）、またはローカルファイルのアップロードから文字起こしを実行できます。
+  モデル（Qwen3-ASR・kotoba-whisper・whisper-large-v3・Nemotron）・デバイス・言語の選択、
+  タイムスタンプ付与（ForcedAligner使用、Nemotron では選べません）に対応しています。
+  認識ヒント（固有名詞・専門用語）は、折りたたみ欄に入力し、「リスクを理解した」チェックを入れたときだけ使われます。
 - **ジョブキュー**: 複数の入力を投入すると、現在の処理完了後に自動で次の処理を開始します
-  （同時並列実行は行わず、逐次処理のみ対応）。待機件数・処理中の対象・完了済み一覧をUI上で
-  確認できます。
-- **履歴タブ**: 過去の変換履歴（`output/history.db`、SQLite）を日付で絞り込み、キーワード（3文字以上）で
-  検索して閲覧できます。古い履歴の一括削除もできます。
+  （同時並列実行は行わず、逐次処理のみ対応）。待機件数・処理中の対象・完了済み一覧をUI上で確認できます。
+- **進捗表示**: 進捗バーと「経過 m:ss / 残り約 m:ss」を表示します。進捗率が分かるのは、YouTube / X のダウンロード、
+  Qwen3-ASR で 300 秒を超える音声のチャンク進捗、Whisper 系の 30 秒チャンク進捗です。残り時間は進捗が 3% に
+  なってから出ます。Nemotron、Qwen3-ASR の 300 秒以下の音声、Google Drive のダウンロードは経過時間のみです。
+- **タイムスタンプとSRT**: タイムスタンプ付与にチェックを入れると、保存テキストの各行頭に `[MM:SS]` が付き
+  （ForcedAligner が成功したとき）、完了結果に「SRTプレビュー」が出ます。SRTにできる区間情報が無いときは
+  「SRTを生成できるタイムスタンプ情報がありません」と表示されます（[タイムスタンプ機能](docs/feature/timestamp_feature.md)）。
+- **履歴タブ**: 過去の変換履歴（`output/history.db`、SQLite）を開始日・終了日で絞り込み、キーワード（3文字以上）で
+  検索して閲覧できます。チェックを入れた履歴を Markdown 1 ファイルにまとめて出力できます。
+  「古い履歴の一括削除」は、N日より前の履歴を「対象件数の確認」→「削除」の2段階で消します（消えるのはデータベースの
+  記録だけで、`output/` のファイルと Google Drive 上のファイルは消えません）。
+
+**保存先と自動削除**（保持日数は `webui.py` の定数 `UPLOAD_RETENTION_DAYS` / `DOWNLOAD_RETENTION_DAYS`）:
+
+| 場所 | 内容 | 削除 |
+|------|------|------|
+| `output/uploads/<一意>/<ファイル名>` | アップロードしたファイル（同名でも上書きしない） | 7 日を過ぎた項目を、新しい投入のたびに削除 |
+| `output/queue_downloads/<トークン>/` | URL入力のダウンロード作業領域（音声は処理の終了時に削除されるが、空のディレクトリや失敗時の部分ファイルが残る） | 1 日を過ぎた項目を、新しい投入のたびに削除 |
+
+処理待ち・処理中のジョブが使うファイルは消しません。履歴DBが記録するアップロード元のパスは、7 日後には存在しなくなります。
+挙動の正本は [プロジェクト仕様](docs/spec/00-project-spec.md)（D7・D8）です。
 
 ## 🔧 設定
 
@@ -191,11 +228,11 @@ gdrive:
   upload_folder_id: "アップロード先フォルダID"  # 省略時は元ファイルと同じフォルダ（--folder-id で上書き可）
 
 whisper:
-  model: Qwen/Qwen3-ASR-1.7B   # デフォルト: 最高精度（2026年ベンチマークトップ）
+  model: Qwen/Qwen3-ASR-1.7B   # デフォルト
   language: null                # 既定は自動判定（ja/en等を指定すると強制）
   device: cuda                  # cuda / cpu / auto
   context_file: "config/context_hints.txt"  # 認識ヒント（Qwen3-ASR用、任意）
-  include_timestamps: false     # true で行頭に [MM:SS] を付与（Qwen3-ASR専用、後述）
+  include_timestamps: false     # true で行頭に [MM:SS] を付与（Qwen3-ASRで有効、後述）
 ```
 
 - `whisper.model` は `whisper:` の下にありますが、Qwen3-ASR・Nemotron を含む全モデル共通の設定です。
@@ -204,8 +241,12 @@ whisper:
   参照してください。ファイルが無い・空の場合はヒントなしで動作します。
   認識ヒントを使うのは Qwen3-ASR だけです（Whisper・Nemotron は無視します）。
   音声が長くてチャンク分割される場合、ヒントは最初のチャンクにだけ適用されます。
-- `whisper.include_timestamps`: Qwen3-ASR 専用のオプトイン機能です。詳細は
+- `whisper.include_timestamps`: Qwen3-ASR で有効になるオプトイン機能です（`tc` が読みます）。
+  Whisper 系は、この設定に関係なく常に 30 秒ごとの `[MM:SS]` が付き、Nemotron は付きません。詳細は
   [`docs/feature/timestamp_feature.md`](docs/feature/timestamp_feature.md) を参照してください。
+- `whisper.language` を `config.yaml` から**削除した**場合、`tc` は `ja` として扱います（`null` と書けば自動判定）。
+- 項目ごとに、`tc` / `transcribe.py` / WebUI のどれが読むかは [設定ガイド](docs/user-guides/configuration.md) を
+  参照してください（WebUI は `gdrive.upload_folder_id` を読まず、Drive 入力の結果は常に元ファイルと同じフォルダに保存します）。
 
 ### 環境変数と .env ファイル
 
@@ -228,23 +269,29 @@ tc/
 │   └── context_hints.txt.sample  # 認識ヒントの書式サンプル
 ├── core/                      # コア機能
 │   ├── config.py              # 統一設定管理
-│   ├── logging.py             # 統一ロガー
+│   ├── logging.py             # 統一ロガー（setup_logging を tc / transcribe.py / webui.py の main() が呼ぶ）
 │   ├── transcription_interface.py  # UnifiedTranscriber（ファサード）
+│   ├── transcription_types.py # TranscriptionResult などの型
 │   ├── engine_factory.py      # モデル名でエンジンを選ぶ（create_engine）
 │   ├── qwen3_engine.py        # Qwen3-ASR エンジン（+ qwen3_chunking.py / qwen3_text.py）
 │   ├── whisper_engine.py      # Whisper エンジン（+ whisper_text.py）
 │   ├── history.py             # 変換履歴 DB の検索・件数・削除
 │   ├── nemotron_engine.py     # Nemotron エンジン（隔離venvのサブプロセス）
 │   ├── model_manager.py       # モデルキャッシュ管理（Whisper用）
-│   ├── cli_common.py          # CLI共通ヘルパー
-│   ├── cli_workflow.py        # 入力解決・アップロード・変換履歴
+│   ├── cli_common.py          # CLI共通ヘルパー（出力ファイル名、Drive への保存）
+│   ├── cli_workflow.py        # 入力解決、finalize_transcription（保存・アップロード・履歴・一時音声の削除）
+│   ├── progress.py            # 進捗通知（ProgressMessage、yt-dlp の進捗の解析）
+│   ├── housekeeping.py        # WebUI の output/uploads・queue_downloads の古い項目の削除
 │   ├── webui_workflow.py      # WebUIのジョブキュー
-│   └── utils.py               # URL検出・デバイス解決
+│   └── utils.py               # URL検出・デバイス解決、sanitize_upload_filename、one_line
 ├── handlers/                  # 外部サービスハンドラー
 │   ├── gdrive.py              # Google Drive クライアント
 │   ├── gdrive_auth.py         # Google Drive の OAuth 認証（get_drive_service）
-│   └── youtube.py             # YouTube / X 音声抽出（yt-dlp）
-├── scripts/                   # 補助スクリプト（E2E、Nemotron 用 venv 構築など）
+│   └── youtube.py             # YouTube / X 音声抽出（yt-dlp。タイムアウトと進捗通知つき）
+├── scripts/                   # 補助スクリプト
+│   ├── release_dev_main.sh    # dev → main の統合・push・WebUI 再起動（開発者向け）
+│   ├── setup_nemotron_venv.sh # Nemotron 用 venv の構築
+│   └── e2e_local.sh ほか      # E2E、GPU 監視など
 ├── tests/                     # テストファイル
 ├── output/                    # 出力ファイル（履歴DB output/history.db を含む）
 ├── logs/                      # ログファイル
@@ -263,7 +310,7 @@ tc/
 2. **文字起こしエンジン** (`core/transcription_interface.py`、判定は `core/engine_factory.py`)
    - Qwen3-ASR / Whisper / Nemotron の3エンジン（モデル名で自動切替。Nemotron は `core/nemotron_engine.py`）
    - 音声前処理
-   - Qwen3-ASR は長音声を5分単位でチャンク分割して処理（Nemotron は350秒を超えるとストリーミング推論で処理）
+   - Qwen3-ASR は長音声を5分（300秒）単位でチャンク分割して処理（Nemotron は350秒を超えるとストリーミング推論で処理）
    - Qwen3-ASR は文節改行フォーマット
 
 3. **Google Drive連携** (`handlers/gdrive.py`)
@@ -272,20 +319,19 @@ tc/
    - 権限管理
 
 4. **YouTube / X 音声抽出** (`handlers/youtube.py`)
-   - YouTube・X の動画から音声抽出（yt-dlp）
-   - メタデータ取得
+   - YouTube・X の動画から音声抽出（yt-dlp。`PATH`、現在の Python と同じ `bin/`、`.venv/bin/yt-dlp` の順に探す）
+   - メタデータ取得（60 秒でタイムアウト）、ダウンロードの進捗通知
 
-5. **CLIインターフェース** (`tc`)
-   - 引数解析
-   - 設定読み込み
-   - 進捗表示
-   - エラーハンドリング
+5. **CLIインターフェース** (`tc`、`transcribe.py`)
+   - 引数解析、設定読み込み、進捗表示、エラーハンドリング
+   - 保存・アップロード・履歴記録・一時音声の削除は、共通の `core/cli_workflow.py`（`finalize_transcription`）が行う
 
 ## 🎯 サポートモデル
 
-### 🏆 最高精度モデル（デフォルト）
-- **Qwen/Qwen3-ASR-1.7B** (推奨・2026年ベンチマーク WER 0.185)
-  - 52の言語・方言に対応、長音声のチャンク分割に対応
+### デフォルトモデル
+- **Qwen/Qwen3-ASR-1.7B**
+  - 日本語・英語を指定でき、それ以外の言語指定と `null` は自動判定になります（[多言語対応ガイド](docs/user-guides/language_support_guide.md)）
+  - 長音声は5分単位のチャンクに分割して処理します
   - `./tc` でデフォルト動作
 
 ### 日本語特化モデル（Whisperエンジン）
@@ -328,11 +374,14 @@ tc/
 ...
 ```
 
-> Whisperエンジン（`--model kotoba-tech/kotoba-whisper-v2.2`）を選択した場合は、
-> 30秒毎の `[MM:SS]` タイムスタンプ付き形式になります。
-> Qwen3-ASR でも `whisper.include_timestamps: true`（`tc` が読みます）にすると、各行の行頭に
-> `[MM:SS]` が付きます（[タイムスタンプ機能](docs/feature/timestamp_feature.md)）。
-> Nemotron の出力はタイムスタンプなしの1つのテキストです。
+タイムスタンプ（`[MM:SS]`）の付き方はエンジンと入口で異なります
+（詳細は [タイムスタンプ機能](docs/feature/timestamp_feature.md)）。
+
+| エンジン | `[MM:SS]` |
+|----------|-----------|
+| Whisper 系（`--model kotoba-tech/kotoba-whisper-v2.2` など） | 設定に関係なく、常に30秒ごと |
+| Qwen3-ASR | 既定では付かない。`tc` は `whisper.include_timestamps: true`、WebUI は「タイムスタンプ付与」のチェックで、各行の行頭に付く。`transcribe.py` は設定を渡さないので付かない |
+| Nemotron | 付かない（出力は1つのテキスト） |
 
 ファイル名は `output/YYYYMMDD_HHMMSS_transcription.txt` です（`--output-dir` で出力先を変更できます）。
 
@@ -346,6 +395,8 @@ tc/
 - チャンク失敗数・反復検出数
 - タイムスタンプ付与・認識ヒント使用の有無
 - 結果テキスト・出力ファイルのパス・Google Drive の URL
+
+`output/history.db` は実行したディレクトリ基準のパスで、`--output-dir` を変えても移りません。
 
 ## 🔍 トラブルシューティング
 
@@ -383,9 +434,9 @@ tc/
 
 **原因**: `resampy`パッケージの依存関係の問題です。
 
-**解決策**: このエラーはv2025.11.21で修正済み（`librosa`に切り替え）
+**解決策**: 現行の依存関係は `resampy` ではなく `librosa` を使います。再発したときは依存関係を再同期してください。
 ```bash
-# 念のため依存関係を再同期(pyproject.toml/uv.lockが情報源)
+# 依存関係を再同期(pyproject.toml/uv.lockが情報源)
 uv sync
 ```
 
@@ -407,10 +458,17 @@ uv sync
 ./scripts/setup_nemotron_venv.sh
 ```
 
+#### 7. 「yt-dlp が見つかりません」で止まる
+自動インストールは行いません。プロジェクトのディレクトリで `uv sync` を実行してください。
+
+#### 8. YouTube / X の取得が止まる・失敗する
+yt-dlp の呼び出しにはタイムアウトがあります（メタデータ取得 60 秒、ダウンロード中に出力が 300 秒途絶えると中断）。
+画面やログの文言と対処は [TROUBLESHOOTING.md](docs/user-guides/TROUBLESHOOTING.md) を参照してください。
+
 ### ログ確認
 
 ```bash
-# 詳細ログの確認
+# 詳細ログの確認（pytest 実行中のログは logs/transcription_test.log）
 tail -f logs/transcription.log
 
 # エラーログの検索
@@ -474,43 +532,11 @@ MIT License
 
 - Issues: [GitHub Issues](../../issues)
 - ドキュメント: `docs/` フォルダ内の各種ガイド
-- 設定ガイド: `CLAUDE.md` (べからず集)
+- 設定ガイド: [docs/user-guides/configuration.md](docs/user-guides/configuration.md)
 
 ## 🔄 更新履歴
 
-### v2025.11.21 - WSL環境対応とOAuth認証改善
-- 🔧 **WSL環境での認証フロー改善**
-  - `OAUTHLIB_INSECURE_TRANSPORT`環境変数の設定（現在は再認証に入るときだけ設定）
-  - 手動認証フロー（localhostリダイレクト対応）
-  - WSL環境でのブラウザ起動問題を解決
-- 🎯 **音声処理エンジンの安定化**
-  - `resampy`から`librosa`への切り替え
-  - `numba`初期化エラーを回避
-  - 音声リサンプリングのフォールバック機能強化
-- 📦 **依存関係の明確化**
-  - Google API関連パッケージの追加
-  - scipy、librosa、soundfileの明示的インストール
-  - インストール手順の詳細化
-- 📚 **ドキュメント大幅改善**
-  - Google Cloud Console設定手順の追加
-  - OAuth 2.0認証の詳細ガイド
-  - WSL特有の問題と解決策の追加
-  - トラブルシューティングの充実
-
-### v2025.09.16 - シンプル化リリース
-- ✅ `./tc`ワンコマンド実行を実現
-- ✅ config.yamlから全設定を自動読み込み
-- ✅ .env自動読み込み機能追加
-- ✅ UI/UX大幅改善（絵文字・進捗表示）
-- ✅ kotoba-whisper-v2.2日本語特化モデル採用
-- ✅ Google Drive自動アップロード
-- ✅ uv パッケージマネージャー対応
-
-### v2025.07.29 - 統一システム
-- 🔧 コア機能の統一化
-- 📊 パフォーマンス監視機能
-- 🧪 包括的テストスイート
-- 📚 ドキュメント整備
+変更履歴は [CHANGELOG.md](CHANGELOG.md) を参照してください。
 
 ---
 

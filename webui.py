@@ -44,7 +44,8 @@ from core.logging import get_logger, setup_logging
 from core.nemotron_engine import is_nemotron_model
 from core.transcription_interface import UnifiedTranscriber
 from core.housekeeping import cleanup_old_entries
-from core.utils import one_line, sanitize_upload_filename
+from core.paths import OUTPUT_DIR
+from core.utils import markdown_link, markdown_safe, one_line, sanitize_upload_filename
 from core.webui_workflow import (
     QueueItem,
     QueueItemState,
@@ -62,9 +63,9 @@ st.set_page_config(page_title="Transcribe Audio WebUI", layout="wide")
 
 logger = get_logger(__name__)
 
-UPLOAD_DIR = Path("output/uploads")
+UPLOAD_DIR = OUTPUT_DIR / "uploads"
 UPLOAD_RETENTION_DAYS = 7  # アップロードの保持日数。これを過ぎた項目は新しい投入のたびに整理する(docs/spec D7)
-DOWNLOAD_DIR = Path("output/queue_downloads")  # URL入力のダウンロード(<トークン>/ごと)
+DOWNLOAD_DIR = OUTPUT_DIR / "queue_downloads"  # URL入力のダウンロード(<トークン>/ごと)
 DOWNLOAD_RETENTION_DAYS = 1  # 処理後の音声は消えるので、残るのは空ディレクトリや失敗時の部分ファイル(docs/spec D8)
 
 
@@ -357,7 +358,7 @@ def _cleanup_temp_file(resolution: InputResolution) -> None:
     削除対象の判定・削除は `core.cli_workflow.cleanup_input_audio`、ここでは警告表示だけを行う。"""
     warning = cleanup_input_audio(resolution)
     if warning:
-        st.warning(warning)
+        st.warning(markdown_safe(warning))
 
 
 def _save_and_record(
@@ -375,15 +376,15 @@ def _save_and_record(
     outcome = finalize_transcription(
         result=job.result,
         resolution=resolution,
-        output_dir=Path("output"),
+        output_dir=OUTPUT_DIR,
         settings=settings_values,
     )
     if outcome.upload_error is not None:
-        st.warning(f"Google Driveアップロードに失敗しました: {outcome.upload_error}")
+        st.warning(f"Google Driveアップロードに失敗しました: {markdown_safe(outcome.upload_error)}")
     if outcome.history_error is not None:
-        st.warning(f"変換履歴の記録に失敗しました: {outcome.history_error}")
+        st.warning(f"変換履歴の記録に失敗しました: {markdown_safe(outcome.history_error)}")
     if outcome.cleanup_warning:
-        st.warning(outcome.cleanup_warning)
+        st.warning(markdown_safe(outcome.cleanup_warning))
 
     return str(outcome.output_file), outcome.gdrive_url
 
@@ -402,7 +403,7 @@ def _format_finished_item_label(item: QueueItem) -> str:
     画面上で区別できない問題(識別不能問題)と、なぜこの並び順なのかが読み取れない問題
     (表示順問題)の両方を改善する。"""
     status_label = "完了" if item.state == QueueItemState.DONE else "失敗"
-    return f"[{status_label}] #{item.item_id} {item.label} (確定 {_format_time(item.finished_at)})"
+    return f"[{status_label}] #{item.item_id} {markdown_safe(item.label)} (確定 {_format_time(item.finished_at)})"
 
 
 def _sorted_finished_items(job_queue: TranscriptionJobQueue) -> List[QueueItem]:
@@ -422,9 +423,9 @@ def _render_result_detail(item: QueueItem) -> None:
     if result is None:
         return
 
-    st.success(f"文字起こし完了(保存先: {item.output_file})")
+    st.success(f"文字起こし完了(保存先: {markdown_safe(item.output_file)})")
     if item.gdrive_url:
-        st.write(f"Google Drive URL: {item.gdrive_url}")
+        st.write(f"Google Drive URL: {markdown_link(item.gdrive_url)}")
 
     metadata = result.metadata or {}
     failed = metadata.get("failed_chunks", 0)
@@ -452,12 +453,12 @@ def _render_item_progress(item: QueueItem, *, since: float, idle_text: str) -> N
     elapsed = time.time() - since
     if item.progress is not None:
         remaining = estimate_remaining(elapsed, item.progress)
-        text = f"{item.progress_text}  経過 {format_elapsed(elapsed)}"
+        text = f"{markdown_safe(item.progress_text)}  経過 {format_elapsed(elapsed)}"
         if remaining is not None:
             text += f" / 残り約 {format_elapsed(remaining)}"
         st.progress(item.progress, text=text)
     else:
-        st.info(f"{item.progress_text or idle_text}  経過 {format_elapsed(elapsed)}")
+        st.info(f"{markdown_safe(item.progress_text or idle_text)}  経過 {format_elapsed(elapsed)}")
 
 
 @st.fragment(run_every="1s")
@@ -474,7 +475,7 @@ def _render_queue_and_result() -> None:
 
         if current.job.done:
             if current.job.error is not None:
-                st.error(f"文字起こしに失敗しました: {current.job.error}")
+                st.error(f"文字起こしに失敗しました: {markdown_safe(current.job.error)}")
                 _cleanup_temp_file(current.resolution)
                 job_queue.mark_failed(current, error_message=str(current.job.error))
             else:
@@ -488,7 +489,7 @@ def _render_queue_and_result() -> None:
     resolving = job_queue.resolving
     if resolving:
         for item in resolving:
-            st.write(f"解決中(ダウンロード等): {item.label}")
+            st.write(f"解決中(ダウンロード等): {markdown_safe(item.label)}")
             _render_item_progress(item, since=item.submitted_at, idle_text="取得の準備中です...")
             if item.log:
                 st.text("\n".join(item.log[-5:]))
@@ -499,7 +500,7 @@ def _render_queue_and_result() -> None:
     if current is None:
         st.caption("処理中のジョブはありません。入力・設定後に「キューに追加」を押してください。")
     else:
-        st.write(f"処理中: {current.label}")
+        st.write(f"処理中: {markdown_safe(current.label)}")
         if current.log:
             st.text("\n".join(current.log[-10:]))
         _render_item_progress(
@@ -518,7 +519,7 @@ def _render_queue_and_result() -> None:
                 if item.state == QueueItemState.DONE:
                     _render_result_detail(item)
                 else:
-                    st.error(f"文字起こしに失敗しました: {item.error_message}")
+                    st.error(f"文字起こしに失敗しました: {markdown_safe(item.error_message)}")
 
 
 # 履歴DB操作は core.history へ移設済み。既存テスト(tests/test_webui_history_cleanup.py)が
@@ -601,12 +602,12 @@ def _render_history_tab() -> None:
 
     for row in rows:
         title = row["source_title"] or row["source_original"]
-        with st.expander(f"{row['processed_at']} - {title} ({row['model_name']})"):
+        with st.expander(f"{markdown_safe(row['processed_at'])} - {markdown_safe(title)} ({markdown_safe(row['model_name'])})"):
             st.checkbox("出力対象に含める", key=f"history_select_{row['id']}")
-            st.write(f"音源種別: {row['source_type']}")
+            st.write(f"音源種別: {markdown_safe(row['source_type'])}")
             st.write(f"文字数: {row['char_count']} / 処理時間: {row['processing_time_sec']:.1f}秒")
             if row["gdrive_url"]:
-                st.write(f"Google Drive: {row['gdrive_url']}")
+                st.write(f"Google Drive: {markdown_link(row['gdrive_url'])}")
             st.text_area(
                 "結果テキスト",
                 value=row["result_text"],

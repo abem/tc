@@ -51,6 +51,9 @@ FAKE_SCRIPT = textwrap.dedent(
         sys.exit(0)
 
     out_path = args[args.index("-o") + 1]
+    if CONFIG.get("forbidden_unless_android") and "youtube:player_client=android" not in args:
+        sys.stderr.write("ERROR: unable to download video data: HTTP Error 403: Forbidden\\n")
+        sys.exit(1)
     if CONFIG["download_exit"] != 0:
         sys.stderr.write("ERROR: fake download failure\\n")
         sys.exit(CONFIG["download_exit"])
@@ -81,6 +84,7 @@ def make_client(tmp_path):
         info_exit=0,
         download_exit=0,
         write_suffix="",
+        forbidden_unless_android=False,
     ):
         out_dir = tmp_path / "out"
         out_dir.mkdir(exist_ok=True)
@@ -91,6 +95,7 @@ def make_client(tmp_path):
             "info_stdout": json.dumps(info) if info_stdout is None else info_stdout,
             "download_exit": download_exit,
             "write_suffix": write_suffix,
+            "forbidden_unless_android": forbidden_unless_android,
         }
         script = tmp_path / "fake-yt-dlp"
         script.write_text(
@@ -382,3 +387,46 @@ class TestLogsStayOnOneLine:
         titles = [r.getMessage() for r in caplog.records if "Video title" in r.getMessage()]
         assert len(titles) == 1
         assert "\n" not in titles[0] and "evil\\n2026" in titles[0]
+
+
+class TestForbiddenFallback:
+    """YouTube の既定クライアントが 403 のとき、android クライアントで 1 回だけ再試行する。"""
+
+    def _downloads(self, tmp_path):
+        return [c for c in read_calls(tmp_path) if "--dump-json" not in c]
+
+    def test_retries_with_android_client_on_403(self, make_client, tmp_path):
+        client = make_client(forbidden_unless_android=True)
+        explicit = str(tmp_path / "out" / "x.wav")
+
+        path, _ = client.download_audio(YOUTUBE_URL, output_path=explicit)
+
+        assert os.path.exists(path)
+        downloads = self._downloads(tmp_path)
+        assert len(downloads) == 2
+        assert "--extractor-args" not in downloads[0]
+        retry = downloads[1]
+        assert retry[retry.index("--extractor-args") + 1] == "youtube:player_client=android"
+
+    def test_no_retry_when_first_attempt_succeeds(self, make_client, tmp_path):
+        client = make_client()
+        client.download_audio(YOUTUBE_URL, output_path=str(tmp_path / "out" / "x.wav"))
+        assert len(self._downloads(tmp_path)) == 1
+
+    def test_no_retry_for_non_403_failure(self, make_client, tmp_path):
+        client = make_client(download_exit=1)
+        with pytest.raises(RuntimeError, match="fake download failure"):
+            client.download_audio(YOUTUBE_URL, output_path=str(tmp_path / "out" / "x.wav"))
+        assert len(self._downloads(tmp_path)) == 1
+
+    def test_no_retry_for_x_url(self, make_client, tmp_path):
+        client = make_client(forbidden_unless_android=True)
+        with pytest.raises(RuntimeError, match="403"):
+            client.download_audio(X_URL, output_path=str(tmp_path / "out" / "x.wav"))
+        assert len(self._downloads(tmp_path)) == 1
+
+    def test_raises_original_error_when_retry_also_fails(self, make_client, tmp_path):
+        client = make_client(download_exit=1, forbidden_unless_android=True)
+        with pytest.raises(RuntimeError, match="fake download failure"):
+            client.download_audio(YOUTUBE_URL, output_path=str(tmp_path / "out" / "x.wav"))
+        assert len(self._downloads(tmp_path)) == 2

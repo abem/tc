@@ -29,7 +29,7 @@ from core.config import UnifiedConfig, TranscriptionConfig
 from core.logging import setup_logging
 from core.progress import throttled
 from core.transcription_interface import UnifiedTranscriber
-from core.utils import load_context_hints
+from core.utils import load_context_hints, safe_console_text
 
 console = Console(width=200, soft_wrap=True)
 
@@ -134,11 +134,11 @@ class TranscribeLoader:
             input_info["source"],
             Path("output"),
             ensure_yt_dlp=True,
-            on_status=throttled(console.print),
+            on_status=throttled(lambda message: console.print(safe_console_text(message))),
         )
         try:
             if resolution.source_type == "youtube" and resolution.metadata:
-                console.print(f"ダウンロード完了: {resolution.metadata.get('title', 'unknown')}")
+                console.print(f"ダウンロード完了: {safe_console_text(resolution.metadata.get('title', 'unknown'))}")
             elif resolution.source_type == "gdrive":
                 console.print("ダウンロード完了")
 
@@ -164,10 +164,10 @@ class TranscribeLoader:
             # 文字起こしの失敗・中断でも一時音声を削除する(D5)。成功後の削除は save_results() 内の
             # finalize_transcription が行う。
             if isinstance(e, Exception):
-                console.print(f"エラー: {str(e)}")
+                console.print(f"エラー: {safe_console_text(e)}")
             warning = cleanup_input_audio(resolution)
             if warning:
-                console.print(f"警告: {warning}")
+                console.print(f"警告: {safe_console_text(warning)}")
             raise
 
         # チャンク失敗があれば警告表示(長音声分割時に一部欠落の可能性)
@@ -188,7 +188,7 @@ class TranscribeLoader:
 
         def on_saved(output_file):
             console.print("文字起こし完了")
-            console.print(f"ローカル保存先: {output_file}")
+            console.print(f"ローカル保存先: {safe_console_text(output_file)}")
 
         outcome = finalize_transcription(
             result=result,
@@ -201,17 +201,17 @@ class TranscribeLoader:
         )
 
         if outcome.upload_error is not None:
-            console.print(f"Google Driveアップロードエラー: {outcome.upload_error}")
+            console.print(f"Google Driveアップロードエラー: {safe_console_text(outcome.upload_error)}")
         elif outcome.upload_attempted:
             if outcome.gdrive_url:
                 console.print("Google Drive URL:")
-                console.print(f"{outcome.gdrive_url}")
+                console.print(safe_console_text(outcome.gdrive_url))
             else:
                 console.print("Google Driveアップロードに失敗")
         if outcome.history_error is not None:
-            console.print(f"変換履歴の記録に失敗しました: {outcome.history_error}")
+            console.print(f"変換履歴の記録に失敗しました: {safe_console_text(outcome.history_error)}")
         if outcome.cleanup_warning:
-            console.print(f"警告: {outcome.cleanup_warning}")
+            console.print(f"警告: {safe_console_text(outcome.cleanup_warning)}")
 
     def run(self):
         """メイン実行"""
@@ -222,7 +222,7 @@ class TranscribeLoader:
             UnifiedConfig.load("config/config.yaml")
             console.print("設定ファイルを読み込みました")
         except Exception as e:
-            console.print(f"設定ファイルエラー: {e}")
+            console.print(f"設定ファイルエラー: {safe_console_text(e)}")
             return 1
         
         # 引数パース
@@ -242,7 +242,7 @@ class TranscribeLoader:
             try:
                 default_url = UnifiedConfig.get('gdrive', 'url')
                 if default_url:
-                    console.print(f"設定ファイルのURLを使用: {default_url}")
+                    console.print(f"設定ファイルのURLを使用: {safe_console_text(default_url)}")
                     input_source = default_url
                 else:
                     input_source = Prompt.ask("\n🎵 音声ソースを入力してください (URL/ファイルパス)")
@@ -253,7 +253,7 @@ class TranscribeLoader:
         input_info = self.detect_input_type(input_source)
         
         if input_info["type"] == "unknown":
-            console.print(f"エラー: 入力を認識できません: {input_source}")
+            console.print(f"エラー: 入力を認識できません: {safe_console_text(input_source)}")
             return 1
         
         # 入力タイプ表示

@@ -17,6 +17,7 @@ from googleapiclient.http import MediaIoBaseDownload, MediaIoBaseUpload, MediaFi
 
 from handlers.gdrive_auth import get_drive_service
 from core.logging import get_logger
+from core.utils import one_line
 
 logger = get_logger(__name__)
 
@@ -85,7 +86,7 @@ class GDriveClient(StorageBackend):
             ).execute()
             return file.get("webViewLink")
         except Exception as e:
-            logger.error(f"Failed to get file URL: {e}")
+            logger.error(f"Failed to get file URL: {one_line(e)}")
             return None
 
     def get_parent_folder_id(self, file_id: str) -> Optional[str]:
@@ -98,13 +99,13 @@ class GDriveClient(StorageBackend):
 
             parents = file_metadata.get('parents')
             if parents:
-                logger.info(f"Parent folder ID for {file_id}: {parents[0]}")
+                logger.info(f"Parent folder ID for {one_line(file_id)}: {one_line(parents[0])}")
                 return parents[0]
             else:
-                logger.warning(f"No parent folder found for file {file_id}")
+                logger.warning(f"No parent folder found for file {one_line(file_id)}")
                 return None
         except Exception as e:
-            logger.error(f"Failed to get parent folder ID: {e}")
+            logger.error(f"Failed to get parent folder ID: {one_line(e)}")
             return None
 
     def download_file(self, file_id: str, output_path: str) -> None:
@@ -119,7 +120,7 @@ class GDriveClient(StorageBackend):
                     if status:
                         logger.info(f"Download progress: {int(status.progress() * 100)}%")
         except Exception as e:
-            logger.error(f"Download failed: {e}")
+            logger.error(f"Download failed: {one_line(e)}")
             raise DownloadError(f"Failed to download file: {e}")
 
     def upload_file(
@@ -141,13 +142,13 @@ class GDriveClient(StorageBackend):
             if isinstance(file_content, io.BytesIO):
                 file_content.seek(0)
                 media_body_content = file_content
-                logger.info(f"Uploading from BytesIO: {filename}")
+                logger.info(f"Uploading from BytesIO: {one_line(filename)}")
             elif isinstance(file_content, (str, Path)):
                 file_path_obj = Path(file_content)
                 if not file_path_obj.is_file():
                     raise FileNotFoundError(f"File not found: {file_path_obj}")
                 media_body_content = io.FileIO(str(file_path_obj), "rb")
-                logger.info(f"Uploading from file: {file_path_obj}")
+                logger.info(f"Uploading from file: {one_line(file_path_obj)}")
             else:
                 raise TypeError("file_content must be str, Path, or BytesIO")
 
@@ -165,11 +166,11 @@ class GDriveClient(StorageBackend):
                 supportsAllDrives=True
             ).execute()
 
-            logger.info(f"File uploaded: {file.get('webViewLink')}")
+            logger.info(f"File uploaded: {one_line(file.get('webViewLink'))}")
             return file.get("id")
 
         except Exception as e:
-            logger.error(f"Upload failed: {e}")
+            logger.error(f"Upload failed: {one_line(e)}")
             raise UploadError(f"Failed to upload file: {e}")
 
     # =====================
@@ -195,14 +196,14 @@ class GDriveClient(StorageBackend):
 
             files = results.get('files', [])
             if files:
-                logger.info(f"Folder '{folder_name}' found: {files[0]['id']}")
+                logger.info(f"Folder '{one_line(folder_name)}' found: {one_line(files[0]['id'])}")
                 return files[0]['id']
             else:
-                logger.info(f"Folder '{folder_name}' not found")
+                logger.info(f"Folder '{one_line(folder_name)}' not found")
                 return None
 
         except Exception as e:
-            logger.error(f"Folder search error: {e}")
+            logger.error(f"Folder search error: {one_line(e)}")
             return None
 
     def create_folder(
@@ -226,11 +227,11 @@ class GDriveClient(StorageBackend):
             ).execute()
 
             folder_id = folder.get('id')
-            logger.info(f"Folder '{folder_name}' created: {folder_id}")
+            logger.info(f"Folder '{one_line(folder_name)}' created: {one_line(folder_id)}")
             return folder_id
 
         except Exception as e:
-            logger.error(f"Folder creation error: {e}")
+            logger.error(f"Folder creation error: {one_line(e)}")
             return None
 
     # =====================
@@ -253,7 +254,7 @@ class GDriveClient(StorageBackend):
 
         folder_id = self.find_folder_by_name(self.base_folder_name)
         if not folder_id:
-            logger.info(f"Creating base folder '{self.base_folder_name}'")
+            logger.info(f"Creating base folder '{one_line(self.base_folder_name)}'")
             folder_id = self.create_folder(self.base_folder_name)
 
         self._base_folder_id = folder_id
@@ -273,7 +274,7 @@ class GDriveClient(StorageBackend):
 
         folder_id = self.find_folder_by_name(folder_name, base_folder_id)
         if not folder_id:
-            logger.info(f"Creating date folder '{folder_name}'")
+            logger.info(f"Creating date folder '{one_line(folder_name)}'")
             folder_id = self.create_folder(folder_name, base_folder_id)
 
         return folder_id
@@ -297,7 +298,7 @@ class GDriveClient(StorageBackend):
             youtube_title = youtube_metadata.get('title', 'unknown_video')
             video_id = youtube_metadata.get('video_id', 'unknown')
 
-            logger.info(f"Uploading transcription for '{youtube_title}'")
+            logger.info(f"Uploading transcription for '{one_line(youtube_title)}'")
 
             target_folder_id = self._get_or_create_date_folder(youtube_title)
             if not target_folder_id:
@@ -332,8 +333,8 @@ class GDriveClient(StorageBackend):
             file_id = file_result.get('id')
             file_url = file_result.get('webViewLink')
 
-            logger.info(f"Upload complete: {file_name}")
-            logger.info(f"File URL: {file_url}")
+            logger.info(f"Upload complete: {one_line(file_name)}")
+            logger.info(f"File URL: {one_line(file_url)}")
 
             return {
                 'file_id': file_id,
@@ -343,7 +344,7 @@ class GDriveClient(StorageBackend):
             }
 
         except Exception as e:
-            logger.error(f"YouTube transcription upload error: {e}")
+            logger.error(f"YouTube transcription upload error: {one_line(e)}")
             return None
 
     # =====================

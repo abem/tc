@@ -9,8 +9,8 @@
 - `st.warning` は `webui.st` 経由で差し替え、Streamlit のランタイムは起動しない。
 - 実ダウンロード・実 Drive API・実履歴 DB には触れない(`resolve_input_audio` /
   `upload_transcription_result` / `record_transcription_history` は差し替える)。
-- `webui.py` は出力先を相対パス `Path("output")` / `Path("output/uploads")` で持つため、
-  テスト中は `monkeypatch.chdir(tmp_path)` で実リポジトリの `output/` を汚さない。
+- `webui.py` の出力先は core.paths.OUTPUT_DIR(リポジトリ直下)に固定されているため、
+  テスト中は conftest の `redirect_output` で tmp_path 配下へ向け、実リポジトリの `output/` を汚さない。
 """
 
 import os
@@ -20,6 +20,7 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pytest
+from conftest import redirect_output
 
 import webui
 from core import cli_workflow
@@ -34,7 +35,7 @@ from core.webui_workflow import TranscriptionJob
 @pytest.fixture
 def in_tmp_cwd(tmp_path, monkeypatch):
     """相対パスの `output/` を `tmp_path` 配下へ向ける。"""
-    monkeypatch.chdir(tmp_path)
+    redirect_output(monkeypatch, tmp_path)
     return tmp_path
 
 
@@ -177,7 +178,7 @@ class TestResolveInputUploadedFile:
 
         saved = Path(actual.local_audio_path)
         # output/uploads/<アップロードごとの一意なディレクトリ>/会議 録音.wav (同名ファイルを上書きしないため)
-        assert saved.parent.parent == Path("output/uploads")
+        assert saved.parent.parent == in_tmp_cwd / "output" / "uploads"
         assert saved.name == "会議 録音.wav"
         assert saved.read_bytes() == payload
         assert (in_tmp_cwd / saved).read_bytes() == payload
@@ -189,7 +190,7 @@ class TestResolveInputUploadedFile:
             metadata=None,
             youtube_handler=None,
         )
-        assert not saved.is_absolute()  # 相対パスのまま
+        assert saved.is_absolute()  # 出力先は固定の絶対パス(カレントディレクトリに依存しない)
         resolver.assert_not_called()
 
     def test_download_dir_is_not_used_for_uploaded_file(self, in_tmp_cwd, monkeypatch):
@@ -350,7 +351,8 @@ class TestCleanupTempFile:
         webui._cleanup_temp_file(_resolution("twitter", local_audio_path=audio, is_temp_file=True))
 
         warning_mock.assert_called_once()
-        message = warning_mock.call_args.args[0]
+        # 画面へはMarkdownの記号をエスケープして渡す(見た目は同じ)。比較はエスケープを外して行う。
+        message = warning_mock.call_args.args[0].replace("\\", "")
         assert message.startswith("一時ファイルの削除に失敗しました: ")
         assert "denied" in message
 
@@ -399,7 +401,7 @@ class TestSaveAndRecordFile:
         output_file, gdrive_url = webui._save_and_record(_job(_result(text)), resolution, _SETTINGS)
 
         saved = Path(output_file)
-        assert saved.parent == Path("output")
+        assert saved.parent == in_tmp_cwd / "output"
         assert re.fullmatch(r"\d{8}_\d{6}_transcription\.txt", saved.name)
         assert (in_tmp_cwd / saved).read_text(encoding="utf-8") == text
         assert (in_tmp_cwd / saved).read_bytes() == text.encode("utf-8")  # BOM・改行変換なし
@@ -583,7 +585,7 @@ class TestSaveAndRecordFailures:
         self, tmp_path, monkeypatch, workflow_mocks, warning_mock
     ):
         """ファイル保存自体の失敗は握りつぶされず例外が伝播する(アップロード・履歴・削除は実行されない)。"""
-        monkeypatch.chdir(tmp_path)
+        redirect_output(monkeypatch, tmp_path)
         (tmp_path / "output").write_text("これはディレクトリではなくファイル")  # mkdir/open が失敗する
 
         with pytest.raises(OSError):

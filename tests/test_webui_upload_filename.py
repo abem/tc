@@ -9,6 +9,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+from conftest import redirect_output
 
 import webui
 from core.utils import sanitize_upload_filename
@@ -63,7 +64,7 @@ class TestResolveInputUpload:
         "evil_name", ["../../outside.wav", "..\\..\\outside.wav", "/tmp/should-not-be-here.wav"]
     )
     def test_malicious_name_is_written_only_inside_output_uploads(self, tmp_path, monkeypatch, evil_name):
-        monkeypatch.chdir(tmp_path)
+        redirect_output(monkeypatch, tmp_path)
         form = {"source_url": "", "uploaded_file": self._upload(evil_name)}
 
         resolution = webui._resolve_input(form, tmp_path / "dl", on_status=lambda m: None)
@@ -77,7 +78,7 @@ class TestResolveInputUpload:
         assert resolution.is_temp_file is False
 
     def test_normal_name_is_kept(self, tmp_path, monkeypatch):
-        monkeypatch.chdir(tmp_path)
+        redirect_output(monkeypatch, tmp_path)
         form = {"source_url": "", "uploaded_file": self._upload("meeting.wav")}
 
         resolution = webui._resolve_input(form, tmp_path / "dl", on_status=lambda m: None)
@@ -87,7 +88,7 @@ class TestResolveInputUpload:
     def test_same_name_uploads_do_not_overwrite_each_other(self, tmp_path, monkeypatch):
         """同名のファイルを続けてアップロードしても、先のファイルが後のもので置き換わらない
         (キューに同名が複数あると、先のジョブが処理中のファイルが書き換わっていた)。"""
-        monkeypatch.chdir(tmp_path)
+        redirect_output(monkeypatch, tmp_path)
 
         first = webui._resolve_input(
             {"source_url": "", "uploaded_file": self._upload("meeting.wav", b"FIRST")},
@@ -104,7 +105,7 @@ class TestResolveInputUpload:
         assert Path(first.local_audio_path).name == Path(second.local_audio_path).name == "meeting.wav"
 
     def test_uploads_stay_inside_upload_area_when_same_name_repeated(self, tmp_path, monkeypatch):
-        monkeypatch.chdir(tmp_path)
+        redirect_output(monkeypatch, tmp_path)
         area = (tmp_path / "output" / "uploads").resolve()
 
         paths = [

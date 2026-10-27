@@ -16,6 +16,7 @@ from importlib.machinery import SourceFileLoader
 from pathlib import Path
 
 import pytest
+from conftest import redirect_output
 
 import transcribe
 from core import cli_workflow
@@ -104,7 +105,7 @@ class CliHarness:
         self.tmp_path = tmp_path
         self.monkeypatch = monkeypatch
         self.resolution = None
-        monkeypatch.chdir(tmp_path)
+        redirect_output(monkeypatch, tmp_path)
         mod = tc_module if kind == "tc" else transcribe
         monkeypatch.setattr(mod, "UnifiedTranscriber", FakeTranscriber)
         monkeypatch.setattr(mod, "resolve_input_audio", lambda *a, **k: self.resolution)

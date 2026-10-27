@@ -5,7 +5,6 @@ Transcribe Audio - モダンなCLI音声文字起こしツール
 
 import argparse
 import sys
-from pathlib import Path
 from typing import Any, Dict, Optional
 
 # 警告抑制を統一設定(suppress_warnings.py は import 時に自動で全抑制を実行)
@@ -27,6 +26,7 @@ from core.cli_workflow import (
 )
 from core.config import UnifiedConfig, TranscriptionConfig
 from core.logging import setup_logging
+from core.paths import OUTPUT_DIR
 from core.progress import throttled
 from core.transcription_interface import UnifiedTranscriber
 from core.utils import load_context_hints, safe_console_text
@@ -133,7 +133,7 @@ class TranscribeLoader:
         """シンプルな処理"""
         resolution = resolve_input_audio(
             input_info["source"],
-            Path("output"),
+            OUTPUT_DIR,
             ensure_yt_dlp=True,
             on_status=throttled(lambda message: console.print(safe_console_text(message))),
         )
@@ -194,7 +194,7 @@ class TranscribeLoader:
         outcome = finalize_transcription(
             result=result,
             resolution=resolution,
-            output_dir=Path("output"),
+            output_dir=OUTPUT_DIR,
             settings=settings,
             folder_id=folder_id,
             on_saved=on_saved,

@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable, Dict, Optional
 
 from core.cli_common import build_output_file, detect_input_type, upload_text_to_gdrive_sibling
+from core.paths import OUTPUT_DIR
 
 if TYPE_CHECKING:
     from core.transcription_interface import TranscriptionResult
@@ -330,7 +331,7 @@ CREATE TRIGGER IF NOT EXISTS transcription_history_au AFTER UPDATE ON transcript
 END;
 """
 
-DEFAULT_HISTORY_DB_PATH = Path("output/history.db")
+DEFAULT_HISTORY_DB_PATH = OUTPUT_DIR / "history.db"
 
 
 def ensure_history_table(conn: sqlite3.Connection) -> None:

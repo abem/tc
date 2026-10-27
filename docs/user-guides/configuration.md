@@ -130,12 +130,16 @@ GAZOO Racing
 
 ## 環境変数
 
-このリポジトリのコードが独自に読む環境変数はありません。`./tc` は起動時に `.env`（`python-dotenv`）を読み込みますが、
-その値を読むのは PyTorch や Hugging Face などの外部ライブラリです。たとえば次の標準の変数が使えます。
+このリポジトリのコードが独自に読む環境変数は `TC_OUTPUT_DIR` だけです。
+
+- `TC_OUTPUT_DIR`: 文字起こし結果・履歴DB（`history.db`）・アップロード・ダウンロードの置き場。省略するとリポジトリ直下の `output/` になります（どのディレクトリから起動しても同じ場所です）。テストが実際の `output/` を汚さないためにも使います。
+
+`./tc` は起動時に `.env`（`python-dotenv`）を読み込みますが、その値を読むのは PyTorch や Hugging Face などの外部ライブラリです。たとえば次の標準の変数が使えます。
 
 ```bash
 export CUDA_VISIBLE_DEVICES=0           # 使用するGPU ID（PyTorch/CUDA側の標準変数）
 export HF_HOME=/custom/cache/path       # Hugging Faceのキャッシュ先（Hugging Face側の標準変数）
+export TC_OUTPUT_DIR=/data/tc-output    # tc の出力先（省略時はリポジトリ直下の output/）
 ```
 
 ## 実行時パラメータ

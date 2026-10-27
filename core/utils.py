@@ -199,3 +199,28 @@ def safe_console_text(value: object, limit: int = 500) -> str:
     from rich.markup import escape
 
     return escape(one_line(value, limit))
+
+
+# Markdownで意味を持つ記号(リンク・装飾・HTML・表・`:red[..]`・数式)。`%`や`/`など無関係な記号は触らない。
+_MARKDOWN_PUNCTUATION_RE = re.compile(r"([\\`*_{}\[\]()<>~|#$&:!])")
+# 行頭で箇条書き・番号付きリストになる書き出し(`- x`・`+ x`・`1. x`)
+_MARKDOWN_LEAD_RE = re.compile(r"^(?:([-+])|(\d+)([.)]))")
+_DRIVE_URL_RE = re.compile(r"https://(?:drive|docs)\.google\.com/[A-Za-z0-9_\-/?=&%.#]+")
+
+
+def markdown_safe(value: object, limit: int = 500) -> str:
+    """Streamlit(`st.warning`・`st.write`・`st.caption`等はMarkdownとして描画する)へ外部由来の文字列を出すための安全化。
+
+    1行化し、Markdownで意味を持つ記号をバックスラッシュでエスケープして、リンク・装飾・`:red[..]`・HTMLを
+    ただの文字として表示させる。内容は残る(見た目は同じ)。
+    """
+    text = _MARKDOWN_PUNCTUATION_RE.sub(r"\\\1", one_line(value, limit))
+    return _MARKDOWN_LEAD_RE.sub(lambda m: f"\\{m.group(1)}" if m.group(1) else f"{m.group(2)}\\{m.group(3)}", text)
+
+
+def markdown_link(url: object) -> str:
+    """Google Drive の URL だけクリックできるリンクにし、それ以外は文字として表示する。"""
+    text = str(url)
+    if _DRIVE_URL_RE.fullmatch(text):
+        return f"[{markdown_safe(text, 1000)}]({text})"
+    return markdown_safe(text)

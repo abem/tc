@@ -130,3 +130,20 @@ def test_missing_yt_dlp_exits_with_hint_instead_of_traceback(monkeypatch):
     loader = _prepare_run(monkeypatch, buf, boom)
     assert loader.run() == 1
     assert "uv sync" in buf.getvalue()
+
+
+def test_sanitize_upload_filename_fits_filesystem_byte_limit():
+    """日本語は1文字3バイト。200文字でも600バイトになり、255バイト上限のOSでOSErrorになる。"""
+    from core.utils import sanitize_upload_filename
+
+    name = sanitize_upload_filename("あ" * 200 + ".wav")
+    assert len(name.encode("utf-8")) <= 255
+    assert name.endswith(".wav")
+    name2 = sanitize_upload_filename("い" * 300)
+    assert len(name2.encode("utf-8")) <= 255 and name2
+
+
+def test_sanitize_upload_filename_keeps_short_japanese_name():
+    from core.utils import sanitize_upload_filename
+
+    assert sanitize_upload_filename("会議の録音.mp3") == "会議の録音.mp3"

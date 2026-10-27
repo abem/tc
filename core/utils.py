@@ -127,6 +127,7 @@ def get_audio_duration(audio_path: str, fallback_sec: float = DEFAULT_AUDIO_DURA
 
 
 MAX_UPLOAD_FILENAME_LENGTH = 200
+MAX_UPLOAD_FILENAME_BYTES = 240  # UTF-8でのバイト上限(多くのFSは255。同名回避の接尾辞の余裕を残す)
 DEFAULT_UPLOAD_FILENAME = "upload"
 
 
@@ -150,7 +151,24 @@ def sanitize_upload_filename(name: object, default: str = DEFAULT_UPLOAD_FILENAM
             base = stem[: MAX_UPLOAD_FILENAME_LENGTH - len(ext) - 1] + "." + ext
         else:
             base = base[:MAX_UPLOAD_FILENAME_LENGTH]
-    return base
+    return _fit_filename_bytes(base)
+
+
+def _fit_filename_bytes(name: str, max_bytes: int = MAX_UPLOAD_FILENAME_BYTES) -> str:
+    """ファイル名をUTF-8で`max_bytes`バイト以内にする(拡張子は残し、文字の途中では切らない)。
+
+    ファイルシステムの上限は文字数ではなくバイト数(多くは255)。日本語は1文字3バイトなので、
+    文字数の上限だけでは`OSError: File name too long`になる。
+    """
+    if len(name.encode("utf-8")) <= max_bytes:
+        return name
+    stem, dot, ext = name.rpartition(".")
+    if not (dot and 0 < len(ext.encode("utf-8")) <= 20):
+        stem, ext = name, ""
+    suffix = f".{ext}" if ext else ""
+    budget = max_bytes - len(suffix.encode("utf-8"))
+    fitted = stem.encode("utf-8")[:budget].decode("utf-8", errors="ignore")
+    return (fitted or "file") + suffix
 
 
 # 制御文字に加え、改行や見た目の偽装に使える文字も対象にする:

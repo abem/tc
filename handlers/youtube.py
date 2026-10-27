@@ -28,6 +28,7 @@ SOCKET_TIMEOUT_SECONDS = 30  # yt-dlp --socket-timeout。単発通信の無応�
 INFO_TIMEOUT_SECONDS = 60  # extract_video_info()のsubprocess.run全体タイムアウト。メタデータ取得は実測0.9秒程度のため十分な余裕を持たせた値。
 ERROR_TEXT_LIMIT = 1000  # ログ・例外メッセージに載せるエラー文の最大文字数(1行化して切り詰める)
 FALLBACK_PLAYER_CLIENT = "android"  # 既定クライアントが403のときの再試行先。
+STDERR_CAPTURE_LIMIT_BYTES = 1_000_000  # 保持するstderrの上限。超えた分は読み捨てる(パイプは詰まらせない)
 DOWNLOAD_STALL_TIMEOUT_SECONDS = 300  # download_audio()の出力停止監視。--socket-timeoutでは捕捉できない非ネットワーク要因(後段処理のハング等)への保険。
 
 
@@ -191,47 +192,76 @@ class YouTubeClient:
     def _run_download(
         self, cmd: list, url: str, progress_callback: Optional[Callable[[str], None]]
     ) -> Tuple[int, str]:
-        """yt-dlpを実行し、進捗を通知しながら(終了コード, stderr)を返す。出力停止が続けば中断する。"""
-        process = subprocess.Popen(
-            cmd,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True
-        )
+        """yt-dlpを実行し、進捗を通知しながら(終了コード, stderr)を返す。出力停止が続けば中断する。
 
-        last_percent = -1
-        notified_converting = False
+        stdout/stderrの両方を`os.read`で読む。`readline`はPython側のバッファに行を溜め込み、
+        selectが「読めない」と答えても未処理の行が残って通知が遅れる。stderrを読まないと、
+        大量に出された時に子プロセスが書き込みで止まる(パイプ詰まり)。
+        """
+        process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+
+        progress = {"last_percent": -1, "converting": False}
         sel = selectors.DefaultSelector()
         sel.register(process.stdout, selectors.EVENT_READ)
+        sel.register(process.stderr, selectors.EVENT_READ)
+        out_buffer = b""
+        err_chunks: list = []
+        err_size = 0
 
-        while True:
-            events = sel.select(timeout=DOWNLOAD_STALL_TIMEOUT_SECONDS)
-            if not events:
-                process.kill()
-                process.wait()
+        try:
+            while sel.get_map():
+                events = sel.select(timeout=DOWNLOAD_STALL_TIMEOUT_SECONDS)
+                if not events:
+                    raise TimeoutError(
+                        f"yt-dlp出力が{DOWNLOAD_STALL_TIMEOUT_SECONDS}秒間停止したため中断: {url}"
+                    )
+                for key, _ in events:
+                    data = os.read(key.fd, 65536)
+                    if not data:
+                        sel.unregister(key.fileobj)
+                        continue
+                    if key.fileobj is process.stdout:
+                        out_buffer += data
+                        *lines, out_buffer = re.split(rb"[\r\n]", out_buffer)
+                        for line in lines:
+                            self._handle_output_line(line, progress, progress_callback)
+                    elif err_size < STDERR_CAPTURE_LIMIT_BYTES:
+                        err_chunks.append(data)
+                        err_size += len(data)
+            if out_buffer:
+                self._handle_output_line(out_buffer, progress, progress_callback)
+            try:
+                process.wait(timeout=DOWNLOAD_STALL_TIMEOUT_SECONDS)
+            except subprocess.TimeoutExpired:
                 raise TimeoutError(
-                    f"yt-dlp出力が{DOWNLOAD_STALL_TIMEOUT_SECONDS}秒間停止したため中断: {url}"
+                    f"yt-dlpが出力を閉じたあと{DOWNLOAD_STALL_TIMEOUT_SECONDS}秒経っても終了しないため中断: {url}"
                 )
-            output = process.stdout.readline()
-            if output == '' and process.poll() is not None:
-                break
-            if output:
-                if "[download]" in output and "%" in output:
-                    print(f"\r{output.strip()}", end='', flush=True)
-                parsed = parse_ytdlp_progress(output)
-                if parsed is not None:
-                    fraction, eta = parsed
-                    percent = int(fraction * 100)
-                    if percent != last_percent:
-                        last_percent = percent
-                        suffix = f"(残り {eta})" if eta else ""
-                        emit_progress(progress_callback, f"ダウンロード中 {percent}%{suffix}", fraction)
-                    if fraction >= 1.0 and not notified_converting:
-                        notified_converting = True
-                        emit_progress(progress_callback, "音声をwavに変換中(長い動画は数分かかります)")
+        except BaseException:
+            process.kill()
+            process.wait()
+            raise
+        finally:
+            sel.close()
 
-        _, stderr = process.communicate()
-        return process.returncode, stderr
+        return process.returncode, b"".join(err_chunks).decode("utf-8", errors="replace")
+
+    def _handle_output_line(self, raw: bytes, progress: dict, progress_callback) -> None:
+        """yt-dlpのstdout1行分を処理する(端末への進捗表示と、進捗通知)。"""
+        output = raw.decode("utf-8", errors="replace")
+        if "[download]" in output and "%" in output:
+            print(f"\r{output.strip()}", end='', flush=True)
+        parsed = parse_ytdlp_progress(output)
+        if parsed is None:
+            return
+        fraction, eta = parsed
+        percent = int(fraction * 100)
+        if percent != progress["last_percent"]:
+            progress["last_percent"] = percent
+            suffix = f"(残り {eta})" if eta else ""
+            emit_progress(progress_callback, f"ダウンロード中 {percent}%{suffix}", fraction)
+        if fraction >= 1.0 and not progress["converting"]:
+            progress["converting"] = True
+            emit_progress(progress_callback, "音声をwavに変換中(長い動画は数分かかります)")
 
     def cleanup_temp_file(self, file_path: str):
         """Remove temporary file."""

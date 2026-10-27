@@ -27,6 +27,7 @@ logger = get_logger(__name__)
 SOCKET_TIMEOUT_SECONDS = 30  # yt-dlp --socket-timeout。単発通信の無応答をyt-dlp自身に検知させる。
 INFO_TIMEOUT_SECONDS = 60  # extract_video_info()のsubprocess.run全体タイムアウト。メタデータ取得は実測0.9秒程度のため十分な余裕を持たせた値。
 ERROR_TEXT_LIMIT = 1000  # ログ・例外メッセージに載せるエラー文の最大文字数(1行化して切り詰める)
+FALLBACK_PLAYER_CLIENT = "android"  # 既定クライアントが403のときの再試行先。
 DOWNLOAD_STALL_TIMEOUT_SECONDS = 300  # download_audio()の出力停止監視。--socket-timeoutでは捕捉できない非ネットワーク要因(後段処理のハング等)への保険。
 
 
@@ -134,47 +135,19 @@ class YouTubeClient:
         try:
             logger.info(f"Starting audio extraction: {one_line(url)}")
 
-            process = subprocess.Popen(
-                cmd,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True
-            )
+            returncode, stderr = self._run_download(cmd, url, progress_callback)
 
-            last_percent = -1
-            notified_converting = False
-            sel = selectors.DefaultSelector()
-            sel.register(process.stdout, selectors.EVENT_READ)
+            if returncode != 0 and self._should_retry_with_android(url, stderr):
+                # YouTubeの既定クライアント(android_vr)は、動画によって全形式が403になる(ブラウザでは再生できる)。
+                # androidクライアントでは取得できることを実機で確認したため、403のときだけ1回再試行する。
+                logger.warning(
+                    f"HTTP 403のため{FALLBACK_PLAYER_CLIENT}クライアントで再試行: {one_line(url)}"
+                )
+                emit_progress(progress_callback, "403のため別のYouTubeクライアントで再試行中")
+                retry_cmd = cmd[:-1] + ["--extractor-args", f"youtube:player_client={FALLBACK_PLAYER_CLIENT}", url]
+                returncode, stderr = self._run_download(retry_cmd, url, progress_callback)
 
-            while True:
-                events = sel.select(timeout=DOWNLOAD_STALL_TIMEOUT_SECONDS)
-                if not events:
-                    process.kill()
-                    process.wait()
-                    raise TimeoutError(
-                        f"yt-dlp出力が{DOWNLOAD_STALL_TIMEOUT_SECONDS}秒間停止したため中断: {url}"
-                    )
-                output = process.stdout.readline()
-                if output == '' and process.poll() is not None:
-                    break
-                if output:
-                    if "[download]" in output and "%" in output:
-                        print(f"\r{output.strip()}", end='', flush=True)
-                    parsed = parse_ytdlp_progress(output)
-                    if parsed is not None:
-                        fraction, eta = parsed
-                        percent = int(fraction * 100)
-                        if percent != last_percent:
-                            last_percent = percent
-                            suffix = f"(残り {eta})" if eta else ""
-                            emit_progress(progress_callback, f"ダウンロード中 {percent}%{suffix}", fraction)
-                        if fraction >= 1.0 and not notified_converting:
-                            notified_converting = True
-                            emit_progress(progress_callback, "音声をwavに変換中(長い動画は数分かかります)")
-
-            stdout, stderr = process.communicate()
-
-            if process.returncode != 0:
+            if returncode != 0:
                 raise RuntimeError(f"Audio extraction failed: {one_line(stderr, ERROR_TEXT_LIMIT)}")
 
             if not os.path.exists(output_path):
@@ -211,6 +184,54 @@ class YouTubeClient:
         except Exception as e:
             logger.error(f"Unexpected error: {one_line(e, ERROR_TEXT_LIMIT)}")
             raise
+
+    def _should_retry_with_android(self, url: str, stderr: str) -> bool:
+        return self.is_youtube_url(url) and "HTTP Error 403" in (stderr or "")
+
+    def _run_download(
+        self, cmd: list, url: str, progress_callback: Optional[Callable[[str], None]]
+    ) -> Tuple[int, str]:
+        """yt-dlpを実行し、進捗を通知しながら(終了コード, stderr)を返す。出力停止が続けば中断する。"""
+        process = subprocess.Popen(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True
+        )
+
+        last_percent = -1
+        notified_converting = False
+        sel = selectors.DefaultSelector()
+        sel.register(process.stdout, selectors.EVENT_READ)
+
+        while True:
+            events = sel.select(timeout=DOWNLOAD_STALL_TIMEOUT_SECONDS)
+            if not events:
+                process.kill()
+                process.wait()
+                raise TimeoutError(
+                    f"yt-dlp出力が{DOWNLOAD_STALL_TIMEOUT_SECONDS}秒間停止したため中断: {url}"
+                )
+            output = process.stdout.readline()
+            if output == '' and process.poll() is not None:
+                break
+            if output:
+                if "[download]" in output and "%" in output:
+                    print(f"\r{output.strip()}", end='', flush=True)
+                parsed = parse_ytdlp_progress(output)
+                if parsed is not None:
+                    fraction, eta = parsed
+                    percent = int(fraction * 100)
+                    if percent != last_percent:
+                        last_percent = percent
+                        suffix = f"(残り {eta})" if eta else ""
+                        emit_progress(progress_callback, f"ダウンロード中 {percent}%{suffix}", fraction)
+                    if fraction >= 1.0 and not notified_converting:
+                        notified_converting = True
+                        emit_progress(progress_callback, "音声をwavに変換中(長い動画は数分かかります)")
+
+        _, stderr = process.communicate()
+        return process.returncode, stderr
 
     def cleanup_temp_file(self, file_path: str):
         """Remove temporary file."""

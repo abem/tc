@@ -127,6 +127,7 @@ def get_audio_duration(audio_path: str, fallback_sec: float = DEFAULT_AUDIO_DURA
 
 
 MAX_UPLOAD_FILENAME_LENGTH = 200
+MAX_UPLOAD_FILENAME_BYTES = 240  # UTF-8でのバイト上限(多くのFSは255。同名回避の接尾辞の余裕を残す)
 DEFAULT_UPLOAD_FILENAME = "upload"
 
 
@@ -150,10 +151,30 @@ def sanitize_upload_filename(name: object, default: str = DEFAULT_UPLOAD_FILENAM
             base = stem[: MAX_UPLOAD_FILENAME_LENGTH - len(ext) - 1] + "." + ext
         else:
             base = base[:MAX_UPLOAD_FILENAME_LENGTH]
-    return base
+    return _fit_filename_bytes(base)
 
 
-_CONTROL_CHARS_RE = re.compile(r"[\x00-\x1f\x7f]")
+def _fit_filename_bytes(name: str, max_bytes: int = MAX_UPLOAD_FILENAME_BYTES) -> str:
+    """ファイル名をUTF-8で`max_bytes`バイト以内にする(拡張子は残し、文字の途中では切らない)。
+
+    ファイルシステムの上限は文字数ではなくバイト数(多くは255)。日本語は1文字3バイトなので、
+    文字数の上限だけでは`OSError: File name too long`になる。
+    """
+    if len(name.encode("utf-8")) <= max_bytes:
+        return name
+    stem, dot, ext = name.rpartition(".")
+    if not (dot and 0 < len(ext.encode("utf-8")) <= 20):
+        stem, ext = name, ""
+    suffix = f".{ext}" if ext else ""
+    budget = max_bytes - len(suffix.encode("utf-8"))
+    fitted = stem.encode("utf-8")[:budget].decode("utf-8", errors="ignore")
+    return (fitted or "file") + suffix
+
+
+# 制御文字に加え、改行や見た目の偽装に使える文字も対象にする:
+# C1制御(U+0080-9F。U+0085=NEL、U+009B=CSI)、行/段落区切り(U+2028/2029)、ゼロ幅・方向記号(U+200B-200F)、
+# bidi埋め込み・上書き(U+202A-202E)、bidi分離(U+2066-2069)、BOM/ゼロ幅非改行(U+FEFF)。
+_CONTROL_CHARS_RE = re.compile("[\x00-\x1f\x7f-\x9f\u200b-\u200f\u2028-\u202e\u2066-\u2069\ufeff]")
 
 
 def one_line(value: object, limit: int = 200) -> str:
@@ -167,3 +188,14 @@ def one_line(value: object, limit: int = 200) -> str:
     if len(text) > limit:
         text = text[: max(limit - 1, 0)] + "…"
     return text
+
+
+def safe_console_text(value: object, limit: int = 500) -> str:
+    """Rich のコンソールへ外部由来の文字列を出すための安全化。
+
+    `one_line` で1行化したうえで、Rich の Markup(`[red]`・`[/x]`)を文字として表示させる
+    (`[/x]` のような不正な閉じタグは `MarkupError` で処理を落とす)。
+    """
+    from rich.markup import escape
+
+    return escape(one_line(value, limit))

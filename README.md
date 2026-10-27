@@ -204,8 +204,7 @@ uv run streamlit run webui.py --server.headless true --server.port 8501
 
 **機能概要**:
 
-- **文字起こしタブ**: YouTube / Google Drive / X の動画URL（入力欄のラベルは「YouTube / Google Drive URL」ですが、
-  X のURLも入力できます）、またはローカルファイルのアップロードから文字起こしを実行できます。
+- **文字起こしタブ**: YouTube / Google Drive / X の動画URL（入力欄のラベルは「YouTube / X / Google Drive URL」です）、またはローカルファイルのアップロードから文字起こしを実行できます。
   モデル（Qwen3-ASR・kotoba-whisper・whisper-large-v3・Nemotron）・デバイス・言語の選択、
   タイムスタンプ付与（ForcedAligner使用、Nemotron では選べません）に対応しています。
   認識ヒント（固有名詞・専門用語）は、折りたたみ欄に入力し、「リスクを理解した」チェックを入れたときだけ使われます。

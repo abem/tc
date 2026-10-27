@@ -58,7 +58,7 @@ def main() -> int:
         page.wait_for_selector("text=Transcribe Audio WebUI", timeout=30000)
         log("app loaded")
 
-        url_input = page.get_by_label("YouTube / Google Drive URL")
+        url_input = page.get_by_label("YouTube / X / Google Drive URL")
 
         url_input.fill(args.url1)
         page.get_by_role("button", name="キューに追加").click()

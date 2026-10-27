@@ -102,7 +102,7 @@ def _warmup_qwen_asr() -> bool:
 def _render_input_form() -> Dict[str, Any]:
     """入力フォーム(設計書§3-1)。"""
     st.subheader("入力")
-    source_url = st.text_input("YouTube / Google Drive URL", value="", key="source_url")
+    source_url = st.text_input("YouTube / X / Google Drive URL", value="", key="source_url")
     allowed_extensions = [ext.lstrip(".") for ext in SystemConfig().allowed_file_types]
     uploaded_file = st.file_uploader(
         "またはローカルファイルをアップロード",

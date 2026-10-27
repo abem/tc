@@ -291,8 +291,7 @@ uv run streamlit run webui.py --server.headless true --server.port 8501
 
 ### 文字起こしタブ
 
-1. 「YouTube / Google Drive URL」欄に URL を入力するか（ラベルは YouTube / Google Drive ですが X の動画URLも
-   入力できます）、「またはローカルファイルをアップロード」でファイルを選びます。
+1. 「YouTube / X / Google Drive URL」欄に URL を入力するか、「またはローカルファイルをアップロード」でファイルを選びます。
 2. 「設定」で、モデル・デバイス・言語（既定は「自動判定」）を選びます。
    「タイムスタンプ付与」にチェックを入れると、保存テキストの各行頭に `[MM:SS]` が付きます（ForcedAligner を
    追加で読み込みます。Nemotron では選べません）。

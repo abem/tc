@@ -30,6 +30,7 @@ from core.logging import setup_logging
 from core.progress import throttled
 from core.transcription_interface import UnifiedTranscriber
 from core.utils import load_context_hints, safe_console_text
+from handlers.youtube import YtDlpNotFoundError
 
 console = Console(width=200, soft_wrap=True)
 
@@ -277,7 +278,10 @@ class TranscribeLoader:
 
 
         # 設定表示（確認なし）
-        console.print(f"日本語音声文字起こしを開始 (デバイス: {settings['device']})")
+        console.print(
+            f"音声文字起こしを開始 (言語: {safe_console_text(settings.get('language', '?'))}, "
+            f"デバイス: {safe_console_text(settings['device'])})"
+        )
 
         # フォルダID決定: 引数 > config.yaml
         folder_id = None
@@ -290,7 +294,12 @@ class TranscribeLoader:
                 pass
 
         # 処理実行
-        self.process_with_progress(input_info, settings, folder_id=folder_id)
+        try:
+            self.process_with_progress(input_info, settings, folder_id=folder_id)
+        except YtDlpNotFoundError as e:
+            # yt-dlp 未導入は利用者向けの対処(uv sync)を案内して終了する(D6)。トレースバックは出さない。
+            console.print(f"エラー: {safe_console_text(e)}")
+            return 1
         
         console.print("すべての処理が完了しました")
         return 0

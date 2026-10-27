@@ -101,3 +101,32 @@ def test_save_results_prints_external_strings_safely(monkeypatch):
     out = buf.getvalue()
     assert "bad [/x]" in out and "h [/y]" in out and "c [/z]" in out
     assert "\nFAKE" not in out
+
+
+def _prepare_run(monkeypatch, buf, process):
+    monkeypatch.setattr(transcribe, "console", Console(file=buf, force_terminal=False, width=200))
+    monkeypatch.setattr(transcribe.UnifiedConfig, "load", lambda *a, **k: None)
+    monkeypatch.setattr(transcribe.UnifiedConfig, "get", classmethod(lambda cls, *a, **k: None))
+    monkeypatch.setattr("sys.argv", ["transcribe.py", "https://www.youtube.com/watch?v=abc123", "--profile", "3"])
+    loader = transcribe.TranscribeLoader()
+    monkeypatch.setattr(loader, "process_with_progress", process)
+    return loader
+
+
+def test_start_message_shows_the_selected_language(monkeypatch):
+    buf = io.StringIO()
+    loader = _prepare_run(monkeypatch, buf, lambda *a, **k: None)
+    assert loader.run() == 0
+    out = buf.getvalue()
+    assert "言語: en" in out and "日本語音声" not in out
+
+
+def test_missing_yt_dlp_exits_with_hint_instead_of_traceback(monkeypatch):
+    buf = io.StringIO()
+
+    def boom(*a, **k):
+        raise transcribe.YtDlpNotFoundError("yt-dlp が見つかりません。`uv sync` を実行してください")
+
+    loader = _prepare_run(monkeypatch, buf, boom)
+    assert loader.run() == 1
+    assert "uv sync" in buf.getvalue()
